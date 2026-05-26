@@ -1,0 +1,50 @@
+# CODEOWNERS — automatic reviewer assignment.
+#
+# Format: <path-pattern> @owner1 @owner2
+# Lines are matched LAST-MATCH-WINS, so more specific patterns go later.
+#
+# The repo follows a single-maintainer model today. As contributors take
+# stewardship of subsystems, add domain owners below their area's section.
+
+# ──────────────────────────────────────────────────────────────────────
+# Default — repo-wide fallback.
+# ──────────────────────────────────────────────────────────────────────
+*                                       @nexus-maintainer
+
+# ──────────────────────────────────────────────────────────────────────
+# AI vibe-coding workbench artifacts.
+# Changes to rules / skills / lint / CLAUDE.md affect every contributor,
+# so they explicitly route to the maintainer.
+# ──────────────────────────────────────────────────────────────────────
+/CLAUDE.md                              @nexus-maintainer
+/.cursor/rules/                         @nexus-maintainer
+/.claude/skills/                        @nexus-maintainer
+/scripts/check-*                        @nexus-maintainer
+/.githooks/                             @nexus-maintainer
+
+# ──────────────────────────────────────────────────────────────────────
+# Services.
+# ──────────────────────────────────────────────────────────────────────
+/packages/ai-gateway/                   @nexus-maintainer
+/packages/compliance-proxy/             @nexus-maintainer
+/packages/control-plane/                @nexus-maintainer
+/packages/control-plane-ui/             @nexus-maintainer
+/packages/nexus-hub/                    @nexus-maintainer
+/packages/agent/                        @nexus-maintainer
+/packages/shared/                       @nexus-maintainer
+/packages/ui-shared/                    @nexus-maintainer
+
+# ──────────────────────────────────────────────────────────────────────
+# Database + migrations.
+# ──────────────────────────────────────────────────────────────────────
+/tools/db-migrate/                      @nexus-maintainer
+
+# ──────────────────────────────────────────────────────────────────────
+# Documentation.
+# ──────────────────────────────────────────────────────────────────────
+/docs/                                  @nexus-maintainer
+
+# ──────────────────────────────────────────────────────────────────────
+# CI / build infrastructure.
+# ──────────────────────────────────────────────────────────────────────
+/.github/                               @nexus-maintainer

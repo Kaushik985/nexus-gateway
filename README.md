@@ -1,7 +1,7 @@
 # Nexus Gateway
 
-[![CI](https://github.com/your-org/abc-nexus-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/your-org/abc-nexus-gateway/actions/workflows/ci.yml)
-[![Go CI](https://github.com/your-org/abc-nexus-gateway/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/your-org/abc-nexus-gateway/actions/workflows/go-ci.yml)
+[![CI](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/ci.yml)
+[![Go CI](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/go-ci.yml)
 [![Coverage gate](https://img.shields.io/badge/coverage-%E2%89%A595%25%20per%20package-brightgreen)](./scripts/check-go-coverage.sh)
 [![Status: Pre-GA](https://img.shields.io/badge/status-Pre--GA%20%C2%B7%20active%20development-orange)](./CHANGELOG.md)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)

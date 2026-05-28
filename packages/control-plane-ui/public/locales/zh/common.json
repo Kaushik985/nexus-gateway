@@ -147,5 +147,19 @@
   "name": "名称",
   "createdAt": "创建时间",
   "other": "其他",
-  "view": "查看"
+  "view": "查看",
+  "providerModelPicker": {
+    "provider": "提供商",
+    "model": "模型",
+    "selectProvider": "选择已配置的提供商…",
+    "selectProviderFirst": "请先选择提供商",
+    "noModelsForProvider": "此提供商未配置模型",
+    "selectModel": "选择模型…"
+  },
+  "charts": {
+    "totalLatency": "总延迟"
+  },
+  "hookConfig": {
+    "redactExamplePlaceholder": "[REDACTED_<RULE_ID>]"
+  }
 }

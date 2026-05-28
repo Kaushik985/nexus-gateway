@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { providerApi } from '@/api/services';
+import { providerApi, credentialApi, systemApi } from '@/api/services';
 import { useToast } from '@/context/ToastContext';
 import { useSyncFeedback } from '@/hooks/useSyncFeedback';
 import { useApi } from '@/hooks/useApi';
@@ -119,6 +119,45 @@ export function useProviderWizard() {
   const [apiKey, setApiKey] = useState('');
   const [skipCredential, setSkipCredential] = useState(false);
 
+  // Credential.name is globally unique (Credential_name_key). Pre-check it as
+  // the user types so the conflict surfaces on Step 2 rather than at submit on
+  // Step 5 — mirrors the provider-name check above. The check is debounced and
+  // uses credentialApi.list({q}); an exact case-insensitive match sets
+  // credNameError, which canNext blocks. Skipped entirely when skipCredential.
+  const [credNameError, setCredNameError] = useState<string | null>(null);
+  const [credNameChecking, setCredNameChecking] = useState(false);
+  const credNameCheckSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (skipCredential) {
+      setCredNameError(null);
+      setCredNameChecking(false);
+      return;
+    }
+    const trimmed = credName.trim();
+    if (!trimmed) {
+      setCredNameError(null);
+      setCredNameChecking(false);
+      return;
+    }
+    const seq = ++credNameCheckSeqRef.current;
+    setCredNameChecking(true);
+    const handle = setTimeout(async () => {
+      try {
+        const res = await credentialApi.list({ q: trimmed, limit: '50' });
+        if (seq !== credNameCheckSeqRef.current) return; // stale
+        const hit = (res.data ?? []).some((cr) => cr.name.toLowerCase() === trimmed.toLowerCase());
+        setCredNameError(hit ? t('pages:providers.credNameAlreadyExists', 'A credential with this name already exists — credential names are globally unique') : null);
+      } catch {
+        // On lookup failure, don't block submit — backend is the final guard.
+        if (seq === credNameCheckSeqRef.current) setCredNameError(null);
+      } finally {
+        if (seq === credNameCheckSeqRef.current) setCredNameChecking(false);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [credName, skipCredential, t]);
+
   /* ── Step 3: models ─────────────────────────────────────────────────── */
 
   const [models, setModels] = useState<WizardModel[]>([]);
@@ -134,6 +173,39 @@ export function useProviderWizard() {
   const [newModelMaxContext, setNewModelMaxContext] = useState('');
   const [newModelMaxOutput, setNewModelMaxOutput] = useState('');
   const [newModelFeatures, setNewModelFeatures] = useState<string[]>([]);
+
+  // Existing global model codes, fetched once. Model.code is globally unique
+  // (Model_code_key), so a wizard model whose code (its modelId) collides with
+  // an already-registered model would 409 at submit. We flag it on this step
+  // and block Next instead — the conflict surfaces before "Add provider".
+  const [existingModelCodes, setExistingModelCodes] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await systemApi.listModelsFlat({ limit: '1000' });
+        if (cancelled) return;
+        setExistingModelCodes(new Set((res.data ?? []).map((m) => m.code.toLowerCase())));
+      } catch {
+        // Non-fatal — backend stays the final guard.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const modelCodeConflicts = useMemo(
+    () => models
+      .filter((m) => m.selected && existingModelCodes.has(m.modelId.trim().toLowerCase()))
+      .map((m) => m.modelId),
+    [models, existingModelCodes],
+  );
+
+  // Inline-edit a wizard model's id (= its code) so a collision can be renamed
+  // in place rather than only deselected — closes the dead-end where template
+  // models were selection-only.
+  const updateModelId = useCallback((idx: number, value: string) => {
+    setModels((prev) => prev.map((m, i) => (i === idx ? { ...m, modelId: value } : m)));
+  }, []);
 
   const resetManualModelForm = useCallback(() => {
     setNewModelId(''); setNewModelName(''); setNewModelDescription('');
@@ -208,8 +280,8 @@ export function useProviderWizard() {
     switch (step) {
       case 0: return selectedTemplate !== null || isCustom;
       case 1: return !!name?.trim() && !!baseUrl?.trim() && !nameError && !nameChecking;
-      case 2: return skipCredential || (!!credName?.trim() && !!apiKey);
-      case 3: return true;
+      case 2: return skipCredential || (!!credName?.trim() && !!apiKey && !credNameError && !credNameChecking);
+      case 3: return modelCodeConflicts.length === 0;
       case 4: return true;
       default: return false;
     }
@@ -346,6 +418,7 @@ export function useProviderWizard() {
 
     /* step 2 */
     credName, setCredName,
+    credNameError, credNameChecking,
     apiKey, setApiKey,
     skipCredential, setSkipCredential,
 
@@ -367,6 +440,9 @@ export function useProviderWizard() {
     addManualModel,
     toggleModel,
     removeModel,
+    existingModelCodes,
+    modelCodeConflicts,
+    updateModelId,
 
     /* navigation */
     canNext,

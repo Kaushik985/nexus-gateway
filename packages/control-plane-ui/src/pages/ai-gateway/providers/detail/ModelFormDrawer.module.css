@@ -1,0 +1,78 @@
+.form {
+  padding-bottom: var(--g-space-4);
+}
+
+.section {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--g-space-3);
+}
+
+.section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.sectionHeader {
+  font-size: var(--g-font-size-sm);
+  font-weight: var(--g-font-weight-semibold);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--g-space-2);
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--g-space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-1);
+  flex: 1 1 var(--g-size-input-md);
+  min-width: var(--g-size-input-sm);
+}
+
+.fieldFull {
+  flex: 1 1 100%;
+}
+
+.label {
+  font-size: var(--g-font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.collapseSummary {
+  display: flex;
+  align-items: center;
+  gap: var(--g-space-1);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-size: var(--g-font-size-sm);
+  font-weight: var(--g-font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.collapseCaret {
+  color: var(--color-text-muted);
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: var(--g-space-2);
+  justify-content: flex-end;
+  padding-top: var(--g-space-3);
+  margin-top: var(--g-space-2);
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-border);
+}
+
+.fieldError {
+  font-size: var(--g-font-size-xs);
+  color: var(--color-danger);
+}

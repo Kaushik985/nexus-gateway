@@ -138,7 +138,7 @@ function MatchModelSelector({
         {selected.map(modelId => (
           <span key={modelId} className={styles.tag}>
             {labelMap.get(modelId) ?? modelId}
-            <IconButton size="sm" aria-label="Remove" onClick={() => handleRemove(modelId)}>×</IconButton>
+            <IconButton size="sm" aria-label={t('pages:routing.removeAria')} onClick={() => handleRemove(modelId)}>×</IconButton>
           </span>
         ))}
       </div>
@@ -201,7 +201,7 @@ function CreatePolicyModelSelect({
           {selected.map(id => (
             <span key={id} className={styles.tag}>
               {labelMap.get(id) ?? id}
-              <IconButton size="sm" aria-label="Remove" onClick={() => handleRemove(id)}>×</IconButton>
+              <IconButton size="sm" aria-label={t('pages:routing.removeAria')} onClick={() => handleRemove(id)}>×</IconButton>
             </span>
           ))}
         </div>

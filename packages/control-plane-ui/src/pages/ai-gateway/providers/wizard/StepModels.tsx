@@ -31,6 +31,9 @@ export function StepModels({ wizard }: { wizard: ProviderWizardHook }) {
     addManualModel,
     toggleModel,
     removeModel,
+    existingModelCodes,
+    modelCodeConflicts,
+    updateModelId,
   } = wizard;
 
   return (
@@ -132,6 +135,13 @@ export function StepModels({ wizard }: { wizard: ProviderWizardHook }) {
         </div>
       )}
 
+      {modelCodeConflicts.length > 0 && (
+        <div role="alert" className={styles.conflictBanner}>
+          {t('pages:providers.modelCodeConflictBanner', 'Some selected models use a code that already exists (model codes are globally unique). Rename or deselect them to continue: ')}
+          {modelCodeConflicts.join(', ')}
+        </div>
+      )}
+
       {models.length > 0 && (
         <>
           <div className={styles.modelTableWrapper}>
@@ -156,7 +166,18 @@ export function StepModels({ wizard }: { wizard: ProviderWizardHook }) {
                     <td className={styles.wizTd}>
                       <input type="checkbox" checked={m.selected} onChange={() => toggleModel(i)} aria-label={`Enable ${m.name}`} className={styles.modelCheckbox} />
                     </td>
-                    <td className={styles.wizTdMono}>{m.modelId}</td>
+                    <td className={styles.wizTdMono}>
+                      <Input
+                        value={m.modelId}
+                        onChange={(e) => updateModelId(i, e.target.value)}
+                        aria-label={t('pages:providers.modelId')}
+                      />
+                      {existingModelCodes.has(m.modelId.trim().toLowerCase()) && (
+                        <div className={styles.modelCodeConflictMsg}>
+                          {t('pages:providers.modelCodeConflict', 'Code already exists — rename to continue')}
+                        </div>
+                      )}
+                    </td>
                     <td className={styles.wizTd}>
                       <div style={{ fontWeight: 'var(--g-font-weight-medium)' }}>{m.name}</div>
                       {m.description && (

@@ -13,6 +13,7 @@ export function StepCredential({ wizard }: { wizard: ProviderWizardHook }) {
     adapterType,
     baseUrl,
     credName, setCredName,
+    credNameError, credNameChecking,
     apiKey, setApiKey,
     skipCredential, setSkipCredential,
   } = wizard;
@@ -33,7 +34,18 @@ export function StepCredential({ wizard }: { wizard: ProviderWizardHook }) {
         </div>
       ) : (
         <Stack gap="md" className={styles.credFormStack}>
-          <FormField label={t('pages:providers.credentialName')} required>
+          <FormField
+            label={t('pages:providers.credentialName')}
+            required
+            error={credNameError ?? undefined}
+            helpText={
+              credNameChecking
+                ? t('pages:providers.nameChecking', 'Checking availability…')
+                : credNameError
+                  ? undefined
+                  : t('pages:providers.credNameHelp', 'Credential names are globally unique.')
+            }
+          >
             <Input value={credName} onChange={e => setCredName(e.target.value)} placeholder={t('pages:providers.placeholderCredName')} />
           </FormField>
           <FormField label={t('pages:providers.apiKeyLabel')} required>

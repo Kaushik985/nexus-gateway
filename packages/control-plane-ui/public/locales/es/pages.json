@@ -142,6 +142,16 @@
     "adapterOption_minimax": "MiniMax",
     "adapterOption_bedrock": "AWS Bedrock",
     "adapterOption_vertex": "Google Vertex AI",
+    "adapterOption_cohere": "Cohere",
+    "adapterOption_huggingface": "Hugging Face",
+    "adapterOption_replicate": "Replicate",
+    "adapterOption_mistral": "Mistral AI",
+    "adapterOption_xai": "xAI",
+    "adapterOption_groq": "Groq",
+    "adapterOption_perplexity": "Perplexity",
+    "adapterOption_together": "Together AI",
+    "adapterOption_fireworks": "Fireworks AI",
+    "adapterOption_moonshot": "Moonshot AI",
     "status": "Estado",
     "created": "Creado",
     "saving": "Guardando...",
@@ -149,6 +159,16 @@
     "addCredential": "Agregar credencial",
     "noCredentials": "No hay credenciales vinculadas a este proveedor.",
     "addModel": "Agregar modelo",
+    "editModel": "Editar modelo",
+    "modelCodeAlreadyExists": "Ya existe un modelo con este código: los códigos de modelo son únicos globalmente.",
+    "modelCodeConflict": "El código ya existe: renómbrelo para continuar",
+    "modelCodeConflictBanner": "Algunos modelos seleccionados usan un código que ya existe (los códigos de modelo son únicos globalmente). Renómbrelos o deselecciónelos para continuar: ",
+    "sectionIdentity": "Identidad",
+    "sectionPricing": "Precios (por 1M de tokens)",
+    "sectionLimits": "Límites",
+    "sectionFeatures": "Funciones",
+    "sectionCapabilities": "Capacidades",
+    "sectionLifecycle": "Ciclo de vida",
     "noModels": "No hay modelos configurados para este proveedor.",
     "usageByVirtualKey": "Uso por clave virtual",
     "usageByModel": "Uso por modelo",
@@ -364,6 +384,8 @@
     "nameAlreadyExists": "Este nombre ya está en uso.",
     "nameChecking": "Verificando disponibilidad…",
     "nameHelp": "Se utiliza como ruta de enrutamiento del gateway (/<nombre>/...). Debe ser único.",
+    "credNameAlreadyExists": "Ya existe una credencial con este nombre: los nombres de credenciales son únicos globalmente.",
+    "credNameHelp": "Los nombres de credenciales son únicos globalmente.",
     "providerCreateFailed": "No se pudo crear el proveedor.",
     "providerCreatedSuccess": "Proveedor creado correctamente.",
     "tableHeaderContext": "Contexto / Salida",
@@ -410,7 +432,9 @@
         "dimensionsRange": "La dimensión debe ser un entero entre 1 y 65536.",
         "batchSizeRange": "El tamaño del lote debe ser un entero entre 1 y 65536."
       }
-    }
+    },
+    "capKeyPlaceholder": "clave",
+    "capValuePlaceholder": "valor"
   },
   "routing": {
     "retryPolicy": {
@@ -631,7 +655,8 @@
       "policyDesc": "Solo stage-0. Fusiona listas de permitir/denegar para IDs de Model y Provider del gateway antes de que se ejecute cualquier regla de ruta stage-1. Las listas de permitir se intersectan; las listas de denegar se unen."
     },
     "systemPromptTooltip": "Instrucciones para el LLM del router. Use {modelCatalog} como marcador de posición — se reemplazará en tiempo de ejecución con la lista de modelos disponibles y sus capacidades.",
-    "weightTooltip": "Mayor peso = más tráfico"
+    "weightTooltip": "Mayor peso = más tráfico",
+    "removeAria": "Eliminar"
   },
   "hooks": {
     "title": "Hooks",
@@ -2178,7 +2203,11 @@
       "iam": "Identidad y acceso"
     },
     "browseCatalog": "Explorar catálogo",
-    "hideCatalogBrowser": "Ocultar el explorador"
+    "hideCatalogBrowser": "Ocultar el explorador",
+    "attachPermanent": "Permanente",
+    "attach1h": "Caduca en 1 h",
+    "attach4h": "Caduca en 4 h",
+    "attach24h": "Caduca en 24 h"
   },
   "traffic": {
     "title": "Tráfico y analítica",
@@ -2584,7 +2613,8 @@
           "vsBaseline": "vs línea base sin pasarela"
         },
         "internalOpsNoteCounted": "Embedding de caché semántica + AI-Guard son costes reales de operaciones internas. Actualmente SÍ se cuentan contra la cuota de esta VK (el operador paga las facturas de upstream independientemente de quién las dispare). Cambiar con excludeInternalOpsFromBilledCost en nexus-hub.yaml.",
-        "internalOpsNoteExcluded": "Embedding de caché semántica + AI-Guard son costes operativos internos. Actualmente NO se cuentan contra la cuota de esta VK; el operador absorbe esos costes. Cambiar con excludeInternalOpsFromBilledCost en nexus-hub.yaml."
+        "internalOpsNoteExcluded": "Embedding de caché semántica + AI-Guard son costes operativos internos. Actualmente NO se cuentan contra la cuota de esta VK; el operador absorbe esos costes. Cambiar con excludeInternalOpsFromBilledCost en nexus-hub.yaml.",
+        "priceUnknown": "precio desconocido"
       },
       "agent": {
         "title": "Agent de escritorio",
@@ -4276,10 +4306,10 @@
     "reason": "Razón",
     "killSwitchHistory": "Historial del Interruptor",
     "killSwitchToggled": "Interruptor de emergencia cambiado",
-    "confirmEnableTitle": "¿Activar Interruptor de Emergencia?",
-    "confirmDisableTitle": "¿Desactivar Interruptor de Emergencia?",
-    "confirmEnableDesc": "Esto detendrá inmediatamente la interceptación de tráfico en todos los proxies de cumplimiento. Úselo solo en emergencias.",
-    "confirmDisableDesc": "Esto reanudará la interceptación de tráfico normal para todos los proxies de cumplimiento.",
+    "confirmEngageTitle": "¿Activar Interruptor de Emergencia?",
+    "confirmDisengageTitle": "¿Desactivar Interruptor de Emergencia?",
+    "confirmEngageDesc": "Esto detendrá inmediatamente la interceptación de tráfico en todos los proxies de cumplimiento. Úselo solo en emergencias.",
+    "confirmDisengageDesc": "Esto reanudará la interceptación de tráfico normal para todos los proxies de cumplimiento.",
     "cancel": "Cancelar",
     "typeAiGateway": "AI Gateway",
     "typeComplianceProxy": "Compliance Proxy",
@@ -4461,7 +4491,6 @@
       "title": "Cola de mensajes muertos",
       "description": "Eventos de tráfico cuyo umbral de re-entrega del consumidor de Hub se agotó. Inspeccione el último error y vuelva a publicarlo en el sujeto MQ original.",
       "subjectPlaceholder": "Filtrar por sujeto (p. ej. nexus.event.compliance)",
-      "search": "Buscar",
       "colInsertedAt": "Insertado",
       "colSubject": "Sujeto",
       "colMsgId": "ID de mensaje",
@@ -4470,10 +4499,8 @@
       "colLastError": "Último error",
       "colActions": "Acciones",
       "retry": "Reintentar",
-      "retrying": "Reintentando…",
+      "retried": "Mensaje vuelto a publicar en su sujeto original.",
       "retryConfirm": "¿Volver a publicar el mensaje {{msgId}} en su sujeto original y eliminar la fila DLQ?",
-      "prev": "Anterior",
-      "next": "Siguiente",
       "empty": "No hay mensajes muertos — la canalización de auditoría está limpia."
     },
     "recentErrors": {
@@ -5467,7 +5494,9 @@
         "routingKeyLabel": "Routing key",
         "routingKeyHelp": "Clave de integración Events API v2 del servicio PagerDuty destino"
       }
-    }
+    },
+    "customHeaderPlaceholder": "X-Custom-Header",
+    "slackTokenPlaceholder": "xoxb-…"
   },
   "aiGatewaySimulator": {
     "title": "Simulador Cliente de AI Gateway",
@@ -5989,5 +6018,31 @@
         "saved": "Configuración de caché exacta guardada."
       }
     }
+  },
+  "cache": {
+    "embeddingDetailsAria": "Detalles de embedding",
+    "moreInfoAria": "Más información",
+    "freshnessKeywordsPlaceholder": "trending,viral,breaking",
+    "freshnessLangsPlaceholder": "en,zh"
+  },
+  "interception": {
+    "endpointExamplePlaceholder": "OpenAI (chat)"
+  },
+  "rulePacks": {
+    "slugPlaceholder": "acme/rules",
+    "versionPlaceholder": "v1.0.0",
+    "sourcePlaceholder": "customer"
+  },
+  "idp": {
+    "clientIdPlaceholder": "0oa1abc2def3ghi4j5k6"
+  },
+  "agentSetup": {
+    "filterByCategoryAria": "Filtrar por categoría"
+  },
+  "proxySetup": {
+    "orgExamplePlaceholder": "Acme Corp"
+  },
+  "simulator": {
+    "vkPlaceholder": "nvk_xxx"
   }
 }

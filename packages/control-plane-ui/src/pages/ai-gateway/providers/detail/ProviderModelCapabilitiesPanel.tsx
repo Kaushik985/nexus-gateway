@@ -10,7 +10,7 @@
  * onChange callback. Validation errors are surfaced inline next to each
  * field — the parent still owns the final save decision.
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ModelCapabilityJson, ModelEmbeddingsCapability } from '@/api/types';
 import { Input, Button, Stack } from '@/components/ui';
@@ -119,31 +119,53 @@ interface KVEditorProps {
 }
 
 function KVEditor({ entries, onChange, disabled, addLabel }: KVEditorProps) {
+  const { t } = useTranslation('pages');
+  // Local row state so a freshly-added blank row survives. The parent serialises
+  // required_extensions and drops empty entries for the persisted value, which
+  // would otherwise strip a new blank row on the round-trip and make "Add"
+  // appear to do nothing. We propagate a row upstream only once it has content.
+  const [rows, setRows] = useState<KVEntry[]>(entries);
+
+  // Re-seed when the upstream (persisted) value genuinely changes — e.g. a
+  // different model — but not from the echo of our own propagation, so a blank
+  // row being filled in isn't clobbered. Compare the JSON of upstream entries
+  // against the JSON of our non-empty local projection (what we propagate);
+  // JSON.stringify is collision-free, so no magic separator is needed.
+  const upstreamKey = JSON.stringify(entries);
+  const localNonEmptyKey = JSON.stringify(rows.filter((r) => r.key.trim() !== ''));
+  useEffect(() => {
+    if (upstreamKey !== localNonEmptyKey) setRows(entries);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upstreamKey]);
+
+  const propagate = useCallback((next: KVEntry[]) => {
+    setRows(next);
+    onChange(next);
+  }, [onChange]);
   const handleChange = useCallback(
     (idx: number, field: 'key' | 'value', v: string) => {
-      const next = entries.map((e, i) => (i === idx ? { ...e, [field]: v } : e));
-      onChange(next);
+      propagate(rows.map((e, i) => (i === idx ? { ...e, [field]: v } : e)));
     },
-    [entries, onChange],
+    [rows, propagate],
   );
   const handleAdd = useCallback(() => {
-    onChange([...entries, { key: '', value: '' }]);
-  }, [entries, onChange]);
+    setRows((prev) => [...prev, { key: '', value: '' }]);
+  }, []);
   const handleRemove = useCallback(
     (idx: number) => {
-      onChange(entries.filter((_, i) => i !== idx));
+      propagate(rows.filter((_, i) => i !== idx));
     },
-    [entries, onChange],
+    [rows, propagate],
   );
 
   return (
     <div className={capStyles.kvEditorRoot}>
-      {entries.map((e, i) => (
+      {rows.map((e, i) => (
         <div key={i} className={capStyles.kvEditorRow}>
           <Input
             value={e.key}
             onChange={(ev) => handleChange(i, 'key', ev.target.value)}
-            placeholder="key"
+            placeholder={t('pages:providers.capKeyPlaceholder')}
             disabled={disabled}
             className={capStyles.kvInput}
           />
@@ -151,7 +173,7 @@ function KVEditor({ entries, onChange, disabled, addLabel }: KVEditorProps) {
           <Input
             value={e.value}
             onChange={(ev) => handleChange(i, 'value', ev.target.value)}
-            placeholder="value"
+            placeholder={t('pages:providers.capValuePlaceholder')}
             disabled={disabled}
             className={capStyles.kvInput}
           />

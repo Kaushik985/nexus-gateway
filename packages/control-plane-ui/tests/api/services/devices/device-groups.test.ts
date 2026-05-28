@@ -1,0 +1,35 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { api } from '../../../../src/api/client';
+import { deviceGroupsApi } from '../../../../src/api/services/devices/device-groups';
+vi.mock('../../../../src/api/client', () => ({ api: { get: vi.fn().mockResolvedValue({}), post: vi.fn().mockResolvedValue({}), put: vi.fn().mockResolvedValue({}), patch: vi.fn().mockResolvedValue({}), delete: vi.fn().mockResolvedValue(undefined) } }));
+const m = api as unknown as Record<'get' | 'post' | 'put' | 'patch' | 'delete', ReturnType<typeof vi.fn>>;
+beforeEach(() => Object.values(m).forEach((f) => f.mockClear()));
+const B = '/api/admin/device-groups';
+describe('deviceGroupsApi', () => {
+  it('CRUD + membership + bulk ops hit /api/admin/device-groups', () => {
+    deviceGroupsApi.list({ q: 'a' });
+    deviceGroupsApi.get('g1');
+    deviceGroupsApi.create({} as never);
+    deviceGroupsApi.update('g1', {} as never);
+    deviceGroupsApi.delete('g1');
+    deviceGroupsApi.addMember('g1', 'd1');
+    deviceGroupsApi.addMember('g1', 'd2', '2026-12-31');
+    deviceGroupsApi.removeMember('g1', 'd1');
+    deviceGroupsApi.previewMembership({ tag: 'x' });
+    deviceGroupsApi.setMembershipQuery('g1', null);
+    deviceGroupsApi.bulkForceRefresh('g1');
+    deviceGroupsApi.bulkRotateCert('g1');
+    expect(m.get).toHaveBeenCalledWith(B, { q: 'a' });
+    expect(m.get).toHaveBeenCalledWith(`${B}/g1`);
+    expect(m.post).toHaveBeenCalledWith(B, {});
+    expect(m.put).toHaveBeenCalledWith(`${B}/g1`, {});
+    expect(m.delete).toHaveBeenCalledWith(`${B}/g1`);
+    expect(m.post).toHaveBeenCalledWith(`${B}/g1/members`, { deviceId: 'd1' });
+    expect(m.post).toHaveBeenCalledWith(`${B}/g1/members`, { deviceId: 'd2', expiresAt: '2026-12-31' });
+    expect(m.delete).toHaveBeenCalledWith(`${B}/g1/members/d1`);
+    expect(m.post).toHaveBeenCalledWith(`${B}/preview-membership`, { membershipQuery: { tag: 'x' } });
+    expect(m.put).toHaveBeenCalledWith(`${B}/g1/membership-query`, { membershipQuery: null });
+    expect(m.post).toHaveBeenCalledWith(`${B}/g1/force-refresh`);
+    expect(m.post).toHaveBeenCalledWith(`${B}/g1/rotate-cert`);
+  });
+});

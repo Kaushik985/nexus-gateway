@@ -142,6 +142,16 @@
     "adapterOption_minimax": "MiniMax",
     "adapterOption_bedrock": "AWS Bedrock",
     "adapterOption_vertex": "Google Vertex AI",
+    "adapterOption_cohere": "Cohere",
+    "adapterOption_huggingface": "Hugging Face",
+    "adapterOption_replicate": "Replicate",
+    "adapterOption_mistral": "Mistral AI",
+    "adapterOption_xai": "xAI",
+    "adapterOption_groq": "Groq",
+    "adapterOption_perplexity": "Perplexity",
+    "adapterOption_together": "Together AI",
+    "adapterOption_fireworks": "Fireworks AI",
+    "adapterOption_moonshot": "Moonshot AI",
     "status": "状态",
     "created": "创建时间",
     "saving": "保存中...",
@@ -149,6 +159,16 @@
     "addCredential": "添加凭证",
     "noCredentials": "此供应商未关联凭证。",
     "addModel": "添加模型",
+    "editModel": "编辑模型",
+    "modelCodeAlreadyExists": "已存在相同代码的模型 —— 模型代码全局唯一。",
+    "modelCodeConflict": "代码已存在 —— 请重命名后继续",
+    "modelCodeConflictBanner": "部分已选模型使用了已存在的代码（模型代码全局唯一）。请重命名或取消选择后继续：",
+    "sectionIdentity": "标识",
+    "sectionPricing": "定价（每百万 token）",
+    "sectionLimits": "限制",
+    "sectionFeatures": "功能",
+    "sectionCapabilities": "能力",
+    "sectionLifecycle": "生命周期",
     "noModels": "此供应商未配置模型。",
     "usageByVirtualKey": "按虚拟密钥使用量",
     "usageByModel": "按模型使用量",
@@ -364,6 +384,8 @@
     "nameAlreadyExists": "该名称已被使用。",
     "nameChecking": "正在检查可用性…",
     "nameHelp": "用作网关路由路径（/<name>/...），必须唯一。",
+    "credNameAlreadyExists": "已存在同名凭据 —— 凭据名称全局唯一。",
+    "credNameHelp": "凭据名称全局唯一。",
     "providerCreateFailed": "创建提供商失败。",
     "providerCreatedSuccess": "提供商创建成功。",
     "tableHeaderContext": "上下文 / 输出",
@@ -410,7 +432,9 @@
         "dimensionsRange": "维度必须为 1 至 65536 之间的整数。",
         "batchSizeRange": "批处理大小必须为 1 至 65536 之间的整数。"
       }
-    }
+    },
+    "capKeyPlaceholder": "键",
+    "capValuePlaceholder": "值"
   },
   "routing": {
     "retryPolicy": {
@@ -631,7 +655,8 @@
       "policyDesc": "仅限 stage-0。在任何 stage-1 路由规则运行之前，合并网关 Model ID 和 Provider ID 的允许/拒绝列表。允许列表取交集；拒绝列表取并集。"
     },
     "systemPromptTooltip": "路由器 LLM 的指令。使用 {modelCatalog} 作为占位符 — 它将在运行时被替换为可用 Model 及其功能的列表。",
-    "weightTooltip": "权重越高，流量越多"
+    "weightTooltip": "权重越高，流量越多",
+    "removeAria": "移除"
   },
   "hooks": {
     "title": "钩子",
@@ -2178,7 +2203,11 @@
       "iam": "身份与访问"
     },
     "browseCatalog": "浏览目录",
-    "hideCatalogBrowser": "关闭目录浏览器"
+    "hideCatalogBrowser": "关闭目录浏览器",
+    "attachPermanent": "永久",
+    "attach1h": "1 小时后过期",
+    "attach4h": "4 小时后过期",
+    "attach24h": "24 小时后过期"
   },
   "traffic": {
     "title": "流量与分析",
@@ -2584,7 +2613,8 @@
           "vsBaseline": "与无网关基准对比"
         },
         "internalOpsNoteCounted": "语义缓存向量 + AI-Guard 都是真金白银的运营成本。当前已计入此 VK 的配额(都是钱,不管是谁触发的,运营商都得付上游账单)。如需排除,在 nexus-hub.yaml 设置 excludeInternalOpsFromBilledCost: true。",
-        "internalOpsNoteExcluded": "语义缓存向量 + AI-Guard 是网关内部运营成本。当前未计入此 VK 的配额;由运营商单独承担。如需计入,在 nexus-hub.yaml 设置 excludeInternalOpsFromBilledCost: false。"
+        "internalOpsNoteExcluded": "语义缓存向量 + AI-Guard 是网关内部运营成本。当前未计入此 VK 的配额;由运营商单独承担。如需计入,在 nexus-hub.yaml 设置 excludeInternalOpsFromBilledCost: false。",
+        "priceUnknown": "价格未知"
       },
       "agent": {
         "title": "桌面 Agent",
@@ -4461,7 +4491,6 @@
       "title": "死信队列",
       "description": "Hub 消费者重投递阈值耗尽后落到死信队列的流量事件。查看最近错误，并可手动重投到原始 MQ 主题。",
       "subjectPlaceholder": "按主题过滤（例如 nexus.event.compliance）",
-      "search": "搜索",
       "colInsertedAt": "入队时间",
       "colSubject": "主题",
       "colMsgId": "消息 ID",
@@ -4470,10 +4499,8 @@
       "colLastError": "最后错误",
       "colActions": "操作",
       "retry": "重试",
-      "retrying": "重试中…",
+      "retried": "消息已重新发布到其原始主题。",
       "retryConfirm": "将消息 {{msgId}} 重新发布到原主题并删除死信行？",
-      "prev": "上一页",
-      "next": "下一页",
       "empty": "暂无死信消息——审计管道运行正常。"
     },
     "recentErrors": {
@@ -5467,7 +5494,9 @@
         "routingKeyLabel": "Routing key",
         "routingKeyHelp": "目标 PagerDuty 服务的 Events API v2 集成密钥"
       }
-    }
+    },
+    "customHeaderPlaceholder": "X-Custom-Header",
+    "slackTokenPlaceholder": "xoxb-…"
   },
   "aiGatewaySimulator": {
     "title": "AI Gateway Client Simulator",
@@ -5989,5 +6018,31 @@
         "saved": "精确匹配缓存设置已保存。"
       }
     }
+  },
+  "cache": {
+    "embeddingDetailsAria": "嵌入详情",
+    "moreInfoAria": "更多信息",
+    "freshnessKeywordsPlaceholder": "trending,viral,breaking",
+    "freshnessLangsPlaceholder": "en,zh"
+  },
+  "interception": {
+    "endpointExamplePlaceholder": "OpenAI (chat)"
+  },
+  "rulePacks": {
+    "slugPlaceholder": "acme/rules",
+    "versionPlaceholder": "v1.0.0",
+    "sourcePlaceholder": "customer"
+  },
+  "idp": {
+    "clientIdPlaceholder": "0oa1abc2def3ghi4j5k6"
+  },
+  "agentSetup": {
+    "filterByCategoryAria": "按类别筛选"
+  },
+  "proxySetup": {
+    "orgExamplePlaceholder": "Acme Corp"
+  },
+  "simulator": {
+    "vkPlaceholder": "nvk_xxx"
   }
 }

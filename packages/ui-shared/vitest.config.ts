@@ -13,5 +13,23 @@ export default defineConfig({
     globals: true,
     css: { modules: { classNameStrategy: 'non-scoped' } },
     setupFiles: ['./src/test/setup.ts'],
+    // Coverage gate — see docs/developers/workflow/coverage-allowlist-methodology.md
+    // (frontend section). Target core 100% / overall 95% (same as Go). This
+    // package is fully backfilled: theme engine (themeLoader/chartColors/
+    // completeness/ThemeContext), shared components, and barrels all covered.
+    // Floors are pinned at the achieved 100% (1 defensive InputStaging branch
+    // is the lone exception) — never lower.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'json-summary'],
+      include: ['src/**'],
+      exclude: ['src/test/**', 'src/**/*.d.ts', 'src/**/*.stories.{ts,tsx}', '**/*.test.{ts,tsx}'],
+      thresholds: {
+        statements: 100,
+        branches: 99,
+        functions: 100,
+        lines: 100,
+      },
+    },
   },
 });

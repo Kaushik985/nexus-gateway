@@ -147,5 +147,19 @@
   "name": "Name",
   "createdAt": "Created",
   "other": "Other",
-  "view": "View"
+  "view": "View",
+  "providerModelPicker": {
+    "provider": "Provider",
+    "model": "Model",
+    "selectProvider": "Select a configured provider…",
+    "selectProviderFirst": "Select a provider first",
+    "noModelsForProvider": "No models configured for this provider",
+    "selectModel": "Select a model…"
+  },
+  "charts": {
+    "totalLatency": "Total latency"
+  },
+  "hookConfig": {
+    "redactExamplePlaceholder": "[REDACTED_<RULE_ID>]"
+  }
 }

@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ShadcnButton } from '@nexus-gateway/ui-shared';
 import { useApi } from '@/hooks/useApi';
 import { useAuth } from '@/auth/context/AuthContext';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -11,7 +10,7 @@ import type { AgentDevice } from '@/api/types';
 import type { DataTableColumn, AdminListPageSize } from '@/components/ui';
 import {
   PageHeader, DataTable, ListFilterToolbar, Badge,
-  Stack, Card, Skeleton, ErrorBanner, ListPagination,
+  Stack, Card, Skeleton, ErrorBanner, ListPagination, Button,
   DEFAULT_ADMIN_LIST_PAGE_SIZE,
 } from '@/components/ui';
 import { EnrollTokenDialog } from './EnrollTokenDialog';
@@ -102,7 +101,7 @@ export function DeviceListPage() {
       <PageHeader
         title={t('pages:devices.title')}
         subtitle={t('pages:devices.subtitle')}
-        action={canCreate ? <ShadcnButton type="button" onClick={() => setEnrollOpen(true)}>{t('pages:devices.enrollDevice')}</ShadcnButton> : undefined}
+        action={canCreate ? <Button type="button" onClick={() => setEnrollOpen(true)}>{t('pages:devices.enrollDevice')}</Button> : undefined}
       />
       {isScopedRole && (
         <div

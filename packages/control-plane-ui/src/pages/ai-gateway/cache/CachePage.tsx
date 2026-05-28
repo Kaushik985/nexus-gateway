@@ -623,7 +623,7 @@ export function CachePage() {
                     )
                   }
                 >
-                  <span className={styles.helpIcon} aria-label="Embedding details">i</span>
+                  <span className={styles.helpIcon} aria-label={t('pages:cache.embeddingDetailsAria')}>i</span>
                 </Tooltip>
               </div>
             </>
@@ -681,7 +681,7 @@ export function CachePage() {
           <label className={styles.settingLabel}>
             {t('pages:aiGateway.cache.semantic.thresholdLabel')}
             <Tooltip content={t('pages:aiGateway.cache.semantic.thresholdHelp')}>
-              <span className={styles.helpIcon} aria-label="More info">?</span>
+              <span className={styles.helpIcon} aria-label={t('pages:cache.moreInfoAria')}>?</span>
             </Tooltip>
           </label>
           <div className={styles.settingControl}>
@@ -704,7 +704,7 @@ export function CachePage() {
           <label className={styles.settingLabel}>
             {t('pages:aiGateway.cache.semantic.allowCrossModelLabel')}
             <Tooltip content={t('pages:aiGateway.cache.semantic.allowCrossModelHelp')}>
-              <span className={styles.helpIcon} aria-label="More info">?</span>
+              <span className={styles.helpIcon} aria-label={t('pages:cache.moreInfoAria')}>?</span>
             </Tooltip>
           </label>
           <div className={styles.settingControl}>
@@ -719,7 +719,7 @@ export function CachePage() {
           <label className={styles.settingLabel}>
             {t('pages:aiGateway.cache.semantic.varyByLabel')}
             <Tooltip content={t('pages:aiGateway.cache.semantic.varyByHelp')}>
-              <span className={styles.helpIcon} aria-label="More info">?</span>
+              <span className={styles.helpIcon} aria-label={t('pages:cache.moreInfoAria')}>?</span>
             </Tooltip>
           </label>
           <div className={styles.settingControl}>
@@ -740,7 +740,7 @@ export function CachePage() {
           <label className={styles.settingLabel}>
             {t('pages:aiGateway.cache.semantic.embedStrategyLabel')}
             <Tooltip content={t('pages:aiGateway.cache.semantic.embedStrategyHelp')}>
-              <span className={styles.helpIcon} aria-label="More info">?</span>
+              <span className={styles.helpIcon} aria-label={t('pages:cache.moreInfoAria')}>?</span>
             </Tooltip>
           </label>
           <div className={styles.settingControl}>

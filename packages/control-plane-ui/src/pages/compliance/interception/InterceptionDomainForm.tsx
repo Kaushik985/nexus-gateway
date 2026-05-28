@@ -226,7 +226,7 @@ export function InterceptionDomainForm({
           <Input
             value={values.name}
             onChange={(e) => update('name', e.target.value)}
-            placeholder="OpenAI (chat)"
+            placeholder={t('pages:interception.endpointExamplePlaceholder')}
           />
         </FormField>
 

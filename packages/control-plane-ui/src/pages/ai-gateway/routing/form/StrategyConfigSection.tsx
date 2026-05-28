@@ -153,7 +153,7 @@ function PolicyModelSelect({
           {selected.map(id => (
             <span key={id} className={styles.tag}>
               {labelMap.get(id) ?? id}
-              <IconButton size="sm" aria-label="Remove" onClick={() => handleRemove(id)}>×</IconButton>
+              <IconButton size="sm" aria-label={t('pages:routing.removeAria')} onClick={() => handleRemove(id)}>×</IconButton>
             </span>
           ))}
         </div>

@@ -1,7 +1,9 @@
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Badge, statusToVariant, Button, Stack, Card,
 } from '@/components/ui';
+import { providerApi } from '@/api/services';
 import { FormInput, FormSelect, FormSwitch } from '@/lib/forms';
 import { ProviderConnectivityTestButton } from '../list/ProviderConnectivityTestButton';
 import { PROVIDER_ADAPTER_TYPES } from '../_shared/adapterTypes';
@@ -26,6 +28,38 @@ export function ProviderInfoTab({ detail }: ProviderInfoTabProps) {
   const editName = providerForm.watch('name');
   const editBaseUrl = providerForm.watch('baseUrl');
 
+  // Pre-check the provider name for uniqueness while editing (excluding this
+  // provider's own current name), so a rename collision surfaces inline rather
+  // than as a PROVIDER_NAME_EXISTS 409 on Save. Mirrors the create wizard's
+  // debounced check; backend stays the final guard.
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [nameChecking, setNameChecking] = useState(false);
+  const nameSeqRef = useRef(0);
+  useEffect(() => {
+    if (!isEditing || !provider) { setNameError(null); setNameChecking(false); return; }
+    const trimmed = (editName ?? '').trim();
+    if (!trimmed || trimmed.toLowerCase() === provider.name.toLowerCase()) {
+      setNameError(null); setNameChecking(false); return;
+    }
+    const seq = ++nameSeqRef.current;
+    setNameChecking(true);
+    const handle = setTimeout(async () => {
+      try {
+        const res = await providerApi.list({ q: trimmed, limit: 50 });
+        if (seq !== nameSeqRef.current) return; // stale
+        const hit = (res.data ?? []).some(
+          (p) => p.name.toLowerCase() === trimmed.toLowerCase() && p.id !== provider.id,
+        );
+        setNameError(hit ? t('pages:providers.nameAlreadyExists') : null);
+      } catch {
+        if (seq === nameSeqRef.current) setNameError(null); // backend is the final guard
+      } finally {
+        if (seq === nameSeqRef.current) setNameChecking(false);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [isEditing, editName, provider, t]);
+
   if (!provider) return null;
 
   return (
@@ -33,6 +67,9 @@ export function ProviderInfoTab({ detail }: ProviderInfoTabProps) {
       {isEditing ? (
         <Stack gap="md">
           <FormInput form={providerForm} name="name" label={t('pages:providers.name')} required />
+          {nameError && (
+            <div style={{ color: 'var(--color-danger)', fontSize: 'var(--g-font-size-xs)' }}>{nameError}</div>
+          )}
           <FormInput form={providerForm} name="displayName" label={t('pages:providers.displayName')} />
           <FormInput form={providerForm} name="description" label={t('pages:providers.description')} />
           <FormInput form={providerForm} name="baseUrl" label={t('pages:providers.baseUrl')} required type="url" placeholder={t('pages:providers.placeholderBaseUrl')} />
@@ -64,7 +101,7 @@ export function ProviderInfoTab({ detail }: ProviderInfoTabProps) {
           <FormSwitch form={providerForm} name="enabled" label={t('common:enabled')} />
           <Stack direction="horizontal" gap="sm" className={styles.justifyEnd}>
             <Button variant="secondary" onClick={() => setIsEditing(false)}>{t('common:cancel')}</Button>
-            <Button onClick={handleSave} disabled={saveLoading || !editName || !editBaseUrl}>
+            <Button onClick={handleSave} disabled={saveLoading || !editName || !editBaseUrl || !!nameError || nameChecking}>
               {saveLoading ? t('pages:providers.saving') : t('common:save')}
             </Button>
           </Stack>

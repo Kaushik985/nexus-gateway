@@ -621,7 +621,7 @@ export function AIGatewaySimulatorPage() {
               type="password"
               value={vk}
               onChange={(e) => setVk(e.target.value)}
-              placeholder="nvk_xxx"
+              placeholder={t('pages:simulator.vkPlaceholder')}
             />
           </FormField>
 

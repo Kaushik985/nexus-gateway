@@ -29,6 +29,7 @@
  */
 import { useMemo, useState, useRef, useCallback, useLayoutEffect, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/theme/useTheme';
 import { getPhaseColors } from '@nexus-gateway/ui-shared';
 
@@ -218,6 +219,7 @@ function HoverPopup({ segs, p, position }: { segs: ResolvedSegments; p: LatencyM
   // text colours automatically. Chart phase colours come from
   // theme/chartColors.ts so the swatch matches the bar.
   const { resolvedMode } = useTheme();
+  const { t } = useTranslation();
   const phase = getPhaseColors(resolvedMode);
 
   const rows: Array<{ key: keyof typeof phase; ms: number; label: string; desc: string; present: boolean }> = [
@@ -258,7 +260,7 @@ function HoverPopup({ segs, p, position }: { segs: ResolvedSegments; p: LatencyM
         paddingBottom: 'var(--g-space-1-5)',
         borderBottom: '1px solid var(--color-border-light)',
       }}>
-        <span style={{ color: 'var(--color-text-muted)' }}>Total latency</span>
+        <span style={{ color: 'var(--color-text-muted)' }}>{t('common:charts.totalLatency')}</span>
         <span style={{ fontWeight: 'var(--g-font-weight-semibold)', fontVariantNumeric: 'tabular-nums' }}>{fmtMs(segs.total)}</span>
       </div>
       {rows.map(r => (

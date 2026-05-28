@@ -241,7 +241,7 @@ export function IdentityProviderForm({ mode, initial, submitting, submitError, o
                 <Input value={oidc.issuer} onChange={(e) => setOidc({ ...oidc, issuer: e.target.value })} placeholder="https://acme.okta.com" />
               </FormField>
               <FormField label={t('pages:identityProvider.wizard.fieldClientId', 'Client ID')}>
-                <Input value={oidc.clientId} onChange={(e) => setOidc({ ...oidc, clientId: e.target.value })} placeholder="0oa1abc2def3ghi4j5k6" />
+                <Input value={oidc.clientId} onChange={(e) => setOidc({ ...oidc, clientId: e.target.value })} placeholder={t('pages:idp.clientIdPlaceholder')} />
               </FormField>
               <FormField label={t('pages:identityProvider.wizard.fieldClientSecret', 'Client Secret')} helpText={mode === 'edit' ? t('pages:identityProvider.wizard.editSecretHelp', 'Leave as "********" to keep the saved value; type a new secret to replace it.') : undefined}>
                 <Input

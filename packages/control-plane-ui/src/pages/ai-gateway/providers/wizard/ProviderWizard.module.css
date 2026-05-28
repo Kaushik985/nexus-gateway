@@ -763,3 +763,19 @@
   color: var(--color-text-muted);
   white-space: nowrap;
 }
+
+/* Model-code collision flagging on the model step (early validation). */
+.conflictBanner {
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+  border-radius: var(--g-radius-md);
+  padding: var(--g-space-2) var(--g-space-3);
+  font-size: var(--g-font-size-sm);
+  margin-bottom: var(--g-space-3);
+}
+
+.modelCodeConflictMsg {
+  color: var(--color-danger);
+  font-size: var(--g-font-size-xs);
+  margin-top: var(--g-space-1);
+}

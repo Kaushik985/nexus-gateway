@@ -159,14 +159,14 @@ export function RulePackCreatePage() {
           <Stack gap="md">
           <div className={styles.row}>
             <FormField label={t('pages:hooks.rulePacks.colName', 'Name')} required>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="acme/rules" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('pages:rulePacks.slugPlaceholder')} />
             </FormField>
             <FormField label={t('pages:hooks.rulePacks.colVersion', 'Version')} required>
-              <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="v1.0.0" />
+              <Input value={version} onChange={(e) => setVersion(e.target.value)} placeholder={t('pages:rulePacks.versionPlaceholder')} />
             </FormField>
           </div>
           <FormField label={t('pages:hooks.rulePacks.colMaintainer', 'Maintainer')} required>
-            <Input value={maintainer} onChange={(e) => setMaintainer(e.target.value)} placeholder="customer" />
+            <Input value={maintainer} onChange={(e) => setMaintainer(e.target.value)} placeholder={t('pages:rulePacks.sourcePlaceholder')} />
           </FormField>
           <FormField
             label={t('pages:hooks.rulePacks.colDescription', 'Description')}

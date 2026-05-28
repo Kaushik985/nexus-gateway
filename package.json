@@ -26,7 +26,8 @@
     "check:terminology": "bash scripts/check-terminology.sh",
     "check:json-dupkeys": "node scripts/check-json-dupkeys.mjs",
     "check:arch-doc-triggers": "node scripts/check-arch-doc-triggers.mjs",
-    "check:e86-matrix": "node scripts/check-e86-matrix-refs.mjs",
+    "check:e2e-matrix": "node scripts/check-e2e-matrix-refs.mjs",
+    "check:iam-routes": "node scripts/check-iam-route-coverage.mjs",
     "check:doc-lockstep": "node scripts/check-doc-lockstep.mjs",
     "check:doc-lockstep:staged": "node scripts/check-doc-lockstep.mjs --staged",
     "check:migration-timestamps": "bash scripts/check-migration-timestamps.sh",
@@ -46,7 +47,8 @@
     "check:no-yaml-secrets:strict": "node scripts/check-no-yaml-secrets.mjs --strict",
     "check:coverage": "bash scripts/check-go-coverage.sh",
     "check:coverage:strict": "bash scripts/check-go-coverage.sh --strict-allowlist",
-    "check:all": "npm-run-all -p check:i18n check:design-tokens check:theme-completeness check:brand-strings check:effect-tokens check:tz check:terminology check:json-dupkeys check:arch-doc-triggers check:e86-matrix check:doc-lockstep check:migration-timestamps check:useapi-querykey check:no-redis-pubsub check:ui-shared-boundary check:sidebar-icon-mapping check:workspace-replace check:jobs-catalogue check:no-prod-todos check:no-yaml-secrets check:coverage || node -e \"console.log('Some checks failed; install npm-run-all or run individually')\""
+    "check:coverage:ui": "bash scripts/check-ui-coverage.sh",
+    "check:all": "npm-run-all -p check:i18n check:design-tokens check:theme-completeness check:brand-strings check:effect-tokens check:tz check:terminology check:json-dupkeys check:arch-doc-triggers check:e2e-matrix check:iam-routes check:doc-lockstep check:migration-timestamps check:useapi-querykey check:no-redis-pubsub check:ui-shared-boundary check:sidebar-icon-mapping check:workspace-replace check:jobs-catalogue check:no-prod-todos check:no-yaml-secrets check:coverage check:coverage:ui || node -e \"console.log('Some checks failed; install npm-run-all or run individually')\""
   },
   "engines": {
     "node": ">=20.0.0"

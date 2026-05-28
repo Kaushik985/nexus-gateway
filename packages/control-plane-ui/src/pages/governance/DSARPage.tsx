@@ -137,7 +137,7 @@ export function DSARPage() {
       setFulfillResult(result);
       addToast(
         fulfilling.type === 'ACCESS'
-          ? t('pages:security.dsar.exportedRows', { vk: result.export?.vk.length ?? 0, proxy: result.export?.proxy.length ?? 0 })
+          ? t('pages:security.dsar.exportedRows', { vk: result.export?.vk?.length ?? 0, proxy: result.export?.proxy?.length ?? 0 })
           : t('pages:security.dsar.anonymisedRows', { vk: result.outcome?.vkRowsAnonymised ?? 0, proxy: result.outcome?.proxyRowsAnonymised ?? 0 }),
         'success',
       );
@@ -378,7 +378,7 @@ export function DSARPage() {
             {fulfilling?.type === 'ACCESS' && fulfillResult.export && (
               <>
                 <div style={{ fontSize: 'var(--g-font-size-base)' }}>
-                  {t('pages:security.dsar.exportedSummary', { vk: fulfillResult.export.vk.length, proxy: fulfillResult.export.proxy.length })}
+                  {t('pages:security.dsar.exportedSummary', { vk: fulfillResult.export.vk?.length ?? 0, proxy: fulfillResult.export.proxy?.length ?? 0 })}
                 </div>
                 <Button variant="primary" onClick={handleDownloadExport}>
                   {t('pages:security.dsar.downloadJson', 'Download JSON')}

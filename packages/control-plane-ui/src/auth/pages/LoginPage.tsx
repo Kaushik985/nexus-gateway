@@ -112,7 +112,7 @@ export function LoginPage() {
   }, [authctxRecoveryTriggered, loadErrorKey, login, postAuthPath, status]);
 
   const handleExternal = (provider: IdpEntry) => {
-    const url = new URL(`/idp/${encodeURIComponent(provider.id)}/start`, window.location.origin);
+    const url = new URL(`/authserver/idp/${encodeURIComponent(provider.id)}/start`, window.location.origin);
     url.searchParams.set('authctx', authctx);
     window.location.assign(url.toString());
   };

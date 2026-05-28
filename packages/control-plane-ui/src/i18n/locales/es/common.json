@@ -147,5 +147,19 @@
   "name": "Nombre",
   "createdAt": "Creado",
   "other": "Otros",
-  "view": "Ver"
+  "view": "Ver",
+  "providerModelPicker": {
+    "provider": "Proveedor",
+    "model": "Modelo",
+    "selectProvider": "Seleccione un proveedor configurado…",
+    "selectProviderFirst": "Seleccione primero un proveedor",
+    "noModelsForProvider": "No hay modelos configurados para este proveedor",
+    "selectModel": "Seleccione un modelo…"
+  },
+  "charts": {
+    "totalLatency": "Latencia total"
+  },
+  "hookConfig": {
+    "redactExamplePlaceholder": "[REDACTED_<RULE_ID>]"
+  }
 }

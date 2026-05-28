@@ -29,16 +29,17 @@ export interface DlqRow {
 
 export interface DlqListResponse {
   rows: DlqRow[];
-  /** Opaque cursor — pass back as `cursor` to fetch the next page.
-   *  Empty when the page returned every remaining row. */
-  nextCursor?: string;
+  /** Total rows matching the subject filter — drives the offset
+   *  pagination footer (row range, page count, First/Prev/Next/Last). */
+  total: number;
 }
 
 export interface DlqListQuery {
   subject?: string;
   /** 1..200, default 50. */
   limit?: number;
-  cursor?: string;
+  /** Rows to skip for the current page (offset pagination). */
+  offset?: number;
 }
 
 export interface DlqRetryResponse {
@@ -55,12 +56,12 @@ function buildQuery(q?: DlqListQuery): string {
   const parts: string[] = [];
   if (q.subject) parts.push(`subject=${encodeURIComponent(q.subject)}`);
   if (q.limit) parts.push(`limit=${q.limit}`);
-  if (q.cursor) parts.push(`cursor=${encodeURIComponent(q.cursor)}`);
+  if (q.offset) parts.push(`offset=${q.offset}`);
   return parts.length === 0 ? '' : '?' + parts.join('&');
 }
 
 export const dlqApi = {
-  /** GET /api/admin/observability/dlq?subject=&limit=&cursor= */
+  /** GET /api/admin/observability/dlq?subject=&limit=&offset= */
   list: (q?: DlqListQuery) =>
     api.get<DlqListResponse>(`/api/admin/observability/dlq${buildQuery(q)}`),
 

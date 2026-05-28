@@ -7,23 +7,31 @@
  * /api/admin/observability/dlq/:id/retry. Retry republishes the original
  * payload to its MQ subject + deletes the DLQ row on success.
  *
- * Pagination: opaque cursor returned by Hub (newest-first). The next
- * button is enabled while nextCursor is non-empty.
+ * Pagination: offset-based via the shared ListPagination (rows-per-page,
+ * page numbers, row range + total, First/Prev/Next/Last) — identical to
+ * every other admin list page (jobs, nodes, audit). The Hub list endpoint
+ * returns {rows,total} for the current subject filter; DataTable renders
+ * the page slice with serverPaginated so it neither re-slices nor draws
+ * its own footer.
  *
  * IAM: page-load requires admin:observability-dlq.read; retry button is
  * hidden when the user lacks admin:observability-dlq.manage (the
  * shellRouteConfig allowedActions also gates the route mount).
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useApi } from '@/hooks/useApi';
+import { useMutation } from '@/hooks/useMutation';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { dlqApi } from '@/api/services/infrastructure/dlq/dlq';
-import type { DlqListResponse, DlqRow } from '@/api/services/infrastructure/dlq/dlq';
+import type { DlqRow } from '@/api/services/infrastructure/dlq/dlq';
 import { usePermission } from '@/hooks/usePermission';
 import {
-  PageHeader, Stack, Card, Button, Badge, Input, LoadingSpinner, ErrorBanner,
+  PageHeader, Stack, Button, Badge, DataTable, ListFilterToolbar,
+  LoadingSpinner, ErrorBanner,
+  ListPagination, DEFAULT_ADMIN_LIST_PAGE_SIZE,
 } from '@/components/ui';
-
-const DEFAULT_LIMIT = 50;
+import type { AdminListPageSize, DataTableColumn } from '@/components/ui';
 
 function fmtTime(iso: string): string {
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
@@ -40,156 +48,100 @@ export default function InfraDlqPage() {
   const canRetry = usePermission('observability-dlq:manage');
 
   const [subject, setSubject] = useState('');
-  const [data, setData] = useState<DlqListResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [retrying, setRetrying] = useState<string | null>(null);
-  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const debouncedSubject = useDebouncedValue(subject, 300);
+  const [offset, setOffset] = useState(0);
+  const [pageLimit, setPageLimit] = useState<AdminListPageSize>(DEFAULT_ADMIN_LIST_PAGE_SIZE);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  const load = useCallback(async (cursor?: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await dlqApi.list({
-        subject: subject.trim() || undefined,
-        limit: DEFAULT_LIMIT,
-        cursor,
-      });
-      setData(resp);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [subject]);
+  const { data, loading, error, refetch } = useApi(
+    () => dlqApi.list({
+      subject: debouncedSubject.trim() || undefined,
+      limit: pageLimit,
+      offset,
+    }),
+    ['admin', 'dlq', 'list', offset, pageLimit, debouncedSubject],
+  );
 
-  useEffect(() => { void load(undefined); }, [load]);
+  // Retry republishes raw bytes to MQ + deletes the row; a success toast
+  // plus list invalidation matches the rest of the admin mutation surface.
+  const retry = useMutation(
+    (id: string) => dlqApi.retry(id),
+    {
+      successMessage: t('infrastructure.dlq.retried'),
+      invalidateQueries: [['admin', 'dlq', 'list']],
+      onSuccess: () => setRetryingId(null),
+    },
+  );
 
-  const onSearch = () => {
-    setCursorStack([]);
-    void load(undefined);
-  };
-
-  const onNext = () => {
-    if (!data?.nextCursor) return;
-    setCursorStack((s) => [...s, data.nextCursor!]);
-    void load(data.nextCursor);
-  };
-
-  const onPrev = () => {
-    if (cursorStack.length === 0) {
-      void load(undefined);
-      return;
-    }
-    const newStack = cursorStack.slice(0, -1);
-    setCursorStack(newStack);
-    const prevCursor = newStack[newStack.length - 1];
-    void load(prevCursor);
-  };
-
-  const onRetry = async (row: DlqRow) => {
+  const onRetry = (row: DlqRow) => {
     if (!confirm(t('infrastructure.dlq.retryConfirm', { msgId: row.msgId }))) return;
-    setRetrying(row.id);
-    try {
-      await dlqApi.retry(row.id);
-      // Reload current page after retry — the retried row is now gone,
-      // but newer rows may have arrived. Reset cursor to current top of
-      // stack so the operator sees a fresh slice.
-      const currentCursor = cursorStack[cursorStack.length - 1];
-      await load(currentCursor);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRetrying(null);
-    }
+    setRetryingId(row.id);
+    retry.mutate(row.id).catch(() => setRetryingId(null));
   };
+
+  const columns: DataTableColumn<DlqRow>[] = [
+    { key: 'dlqInsertedAt', label: t('infrastructure.dlq.colInsertedAt'), render: (r) => fmtTime(r.dlqInsertedAt) },
+    { key: 'subject', label: t('infrastructure.dlq.colSubject'), render: (r) => <code>{r.subject}</code> },
+    { key: 'msgId', label: t('infrastructure.dlq.colMsgId'), render: (r) => <code>{r.msgId}</code> },
+    { key: 'deliveryCount', label: t('infrastructure.dlq.colDeliveries'), render: (r) => <Badge variant="warning">{r.deliveryCount}</Badge> },
+    { key: 'payloadSize', label: t('infrastructure.dlq.colSize'), render: (r) => fmtSize(r.payloadSize) },
+    {
+      key: 'lastError',
+      label: t('infrastructure.dlq.colLastError'),
+      sortable: false,
+      cellStyle: { maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+      render: (r) => <span title={r.lastError ?? ''}>{r.lastError ?? '—'}</span>,
+    },
+    ...(canRetry
+      ? [{
+          key: 'actions',
+          label: t('infrastructure.dlq.colActions'),
+          sortable: false,
+          render: (r: DlqRow) => (
+            <Button
+              size="sm"
+              variant="danger"
+              loading={retryingId === r.id}
+              onClick={() => onRetry(r)}
+            >
+              {t('infrastructure.dlq.retry')}
+            </Button>
+          ),
+        } as DataTableColumn<DlqRow>]
+      : []),
+  ];
+
+  if (loading && !data) return <LoadingSpinner />;
+  if (error) return <ErrorBanner message={error.message} onRetry={refetch} />;
 
   return (
-    <Stack gap="md">
+    <Stack gap="lg">
       <PageHeader
         title={t('infrastructure.dlq.title')}
         subtitle={t('infrastructure.dlq.description')}
       />
 
-      <Card>
-        <Stack direction="horizontal" gap="sm" align="center">
-          <Input
-            placeholder={t('infrastructure.dlq.subjectPlaceholder')}
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') onSearch(); }}
-            style={{ flex: 1 }}
-          />
-          <Button onClick={onSearch} variant="primary" disabled={loading}>
-            {t('infrastructure.dlq.search')}
-          </Button>
-        </Stack>
-      </Card>
+      <ListFilterToolbar
+        searchPlaceholder={t('infrastructure.dlq.subjectPlaceholder')}
+        searchValue={subject}
+        onSearchChange={(v) => { setSubject(v); setOffset(0); }}
+      />
 
-      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
-
-      {loading && !data ? (
-        <LoadingSpinner />
-      ) : (
-        <Card>
-          <table className="cp-table" style={{ width: '100%' }}>
-            <thead>
-              <tr>
-                <th>{t('infrastructure.dlq.colInsertedAt')}</th>
-                <th>{t('infrastructure.dlq.colSubject')}</th>
-                <th>{t('infrastructure.dlq.colMsgId')}</th>
-                <th>{t('infrastructure.dlq.colDeliveries')}</th>
-                <th>{t('infrastructure.dlq.colSize')}</th>
-                <th>{t('infrastructure.dlq.colLastError')}</th>
-                <th>{t('infrastructure.dlq.colActions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.rows ?? []).map((r) => (
-                <tr key={r.id}>
-                  <td>{fmtTime(r.dlqInsertedAt)}</td>
-                  <td><code>{r.subject}</code></td>
-                  <td><code>{r.msgId}</code></td>
-                  <td><Badge variant="warning">{r.deliveryCount}</Badge></td>
-                  <td>{fmtSize(r.payloadSize)}</td>
-                  <td title={r.lastError ?? ''} style={{ maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {r.lastError ?? '—'}
-                  </td>
-                  <td>
-                    {canRetry && (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        disabled={retrying === r.id}
-                        onClick={() => onRetry(r)}
-                      >
-                        {retrying === r.id ? t('infrastructure.dlq.retrying') : t('infrastructure.dlq.retry')}
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {(data?.rows ?? []).length === 0 && !loading && (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: 'var(--spacing-lg)' }}>
-                    {t('infrastructure.dlq.empty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <Stack direction="horizontal" gap="sm" align="center" style={{ marginTop: 'var(--spacing-sm)' }}>
-            <Button variant="secondary" onClick={onPrev} disabled={cursorStack.length === 0 || loading}>
-              {t('infrastructure.dlq.prev')}
-            </Button>
-            <Button variant="secondary" onClick={onNext} disabled={!data?.nextCursor || loading}>
-              {t('infrastructure.dlq.next')}
-            </Button>
-          </Stack>
-        </Card>
-      )}
+      <DataTable
+        columns={columns}
+        data={data?.rows ?? []}
+        emptyMessage={t('infrastructure.dlq.empty')}
+        loading={loading}
+        serverPaginated
+        hideSearch
+      />
+      <ListPagination
+        offset={offset}
+        limit={pageLimit}
+        total={data?.total ?? 0}
+        onOffsetChange={(v) => setOffset(v)}
+        onLimitChange={(v) => { setPageLimit(v); setOffset(0); }}
+      />
     </Stack>
   );
 }

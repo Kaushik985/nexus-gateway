@@ -273,6 +273,9 @@ export interface CreateModelInput {
   maxOutputTokens?: number;
   features?: string[];
   aliases?: string[];
+  /** Per-endpoint capability overrides (e.g. embeddings dimensions / required
+   *  extensions), structured per ModelCapabilityJson. */
+  capabilityJson?: ModelCapabilityJson | null;
 }
 
 /** PUT /api/admin/models/:id */

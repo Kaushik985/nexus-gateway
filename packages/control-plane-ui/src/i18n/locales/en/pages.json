@@ -115,6 +115,16 @@
     "adapterOption_minimax": "MiniMax",
     "adapterOption_bedrock": "AWS Bedrock",
     "adapterOption_vertex": "Google Vertex AI",
+    "adapterOption_cohere": "Cohere",
+    "adapterOption_huggingface": "Hugging Face",
+    "adapterOption_replicate": "Replicate",
+    "adapterOption_mistral": "Mistral AI",
+    "adapterOption_xai": "xAI",
+    "adapterOption_groq": "Groq",
+    "adapterOption_perplexity": "Perplexity",
+    "adapterOption_together": "Together AI",
+    "adapterOption_fireworks": "Fireworks AI",
+    "adapterOption_moonshot": "Moonshot AI",
     "status": "Status",
     "created": "Created",
     "saving": "Saving...",
@@ -122,6 +132,16 @@
     "addCredential": "Add Credential",
     "noCredentials": "No credentials linked to this provider.",
     "addModel": "Add Model",
+    "editModel": "Edit Model",
+    "modelCodeAlreadyExists": "A model with this code already exists — model codes are globally unique.",
+    "modelCodeConflict": "Code already exists — rename to continue",
+    "modelCodeConflictBanner": "Some selected models use a code that already exists (model codes are globally unique). Rename or deselect them to continue: ",
+    "sectionIdentity": "Identity",
+    "sectionPricing": "Pricing (per 1M tokens)",
+    "sectionLimits": "Limits",
+    "sectionFeatures": "Features",
+    "sectionCapabilities": "Capabilities",
+    "sectionLifecycle": "Lifecycle",
     "noModels": "No models configured for this provider.",
     "usageByVirtualKey": "Usage by Virtual Key",
     "usageByModel": "Usage by Model",
@@ -364,6 +384,8 @@
     "nameAlreadyExists": "This name is already taken.",
     "nameChecking": "Checking availability…",
     "nameHelp": "Used as the gateway routing path (/<name>/...). Must be unique.",
+    "credNameAlreadyExists": "A credential with this name already exists — credential names are globally unique.",
+    "credNameHelp": "Credential names are globally unique.",
     "providerCreateFailed": "Failed to create provider.",
     "providerCreatedSuccess": "Provider created successfully.",
     "tableHeaderContext": "Context / Out",
@@ -410,7 +432,9 @@
         "dimensionsRange": "Dimension must be an integer between 1 and 65536.",
         "batchSizeRange": "Batch size must be an integer between 1 and 65536."
       }
-    }
+    },
+    "capKeyPlaceholder": "key",
+    "capValuePlaceholder": "value"
   },
   "routing": {
     "retryPolicy": {
@@ -631,7 +655,8 @@
       "policyDesc": "Stage-0 only. Merges allow/deny lists for gateway model IDs and provider IDs before any stage-1 route rule runs. Allow-lists intersect; deny-lists union."
     },
     "systemPromptTooltip": "Instructions for the router LLM. Use {modelCatalog} as a placeholder — it will be replaced at runtime with the list of available models and their capabilities.",
-    "weightTooltip": "Higher weight = more traffic"
+    "weightTooltip": "Higher weight = more traffic",
+    "removeAria": "Remove"
   },
   "hooks": {
     "title": "Hooks",
@@ -2178,7 +2203,11 @@
       "iam": "Identity & Access"
     },
     "browseCatalog": "Browse catalog",
-    "hideCatalogBrowser": "Hide catalog browser"
+    "hideCatalogBrowser": "Hide catalog browser",
+    "attachPermanent": "Permanent",
+    "attach1h": "Expires in 1h",
+    "attach4h": "Expires in 4h",
+    "attach24h": "Expires in 24h"
   },
   "traffic": {
     "title": "Traffic & Analytics",
@@ -2584,7 +2613,8 @@
           "vsBaseline": "vs no-gateway baseline"
         },
         "internalOpsNoteCounted": "Semantic cache embedding + AI-Guard are real-money internal-ops costs. They are currently COUNTED against this VK's quota (operator pays the upstream bills regardless of who triggered them). To exclude them, set excludeInternalOpsFromBilledCost: true in nexus-hub.yaml.",
-        "internalOpsNoteExcluded": "Semantic cache embedding + AI-Guard are gateway internal-ops costs. They are currently EXCLUDED from this VK's quota; the operator absorbs them separately. To include them, set excludeInternalOpsFromBilledCost: false in nexus-hub.yaml."
+        "internalOpsNoteExcluded": "Semantic cache embedding + AI-Guard are gateway internal-ops costs. They are currently EXCLUDED from this VK's quota; the operator absorbs them separately. To include them, set excludeInternalOpsFromBilledCost: false in nexus-hub.yaml.",
+        "priceUnknown": "price unknown"
       },
       "agent": {
         "title": "Desktop Agent",
@@ -4461,7 +4491,6 @@
       "title": "Dead-letter Queue",
       "description": "Traffic events whose Hub-consumer redelivery threshold was hit. Inspect the last error + retry to republish to the original MQ subject.",
       "subjectPlaceholder": "Filter by subject (e.g. nexus.event.compliance)",
-      "search": "Search",
       "colInsertedAt": "Inserted at",
       "colSubject": "Subject",
       "colMsgId": "Message ID",
@@ -4470,10 +4499,8 @@
       "colLastError": "Last error",
       "colActions": "Actions",
       "retry": "Retry",
-      "retrying": "Retrying…",
+      "retried": "Message re-published to its original subject.",
       "retryConfirm": "Republish message {{msgId}} to its original subject and delete the DLQ row?",
-      "prev": "Previous",
-      "next": "Next",
       "empty": "No dead-letter messages — the audit pipeline is clean."
     },
     "recentErrors": {
@@ -5467,7 +5494,9 @@
         "routingKeyLabel": "Routing key",
         "routingKeyHelp": "Events API v2 integration key for the target PagerDuty service"
       }
-    }
+    },
+    "customHeaderPlaceholder": "X-Custom-Header",
+    "slackTokenPlaceholder": "xoxb-…"
   },
   "aiGatewaySimulator": {
     "title": "AI Gateway Client Simulator",
@@ -5989,5 +6018,31 @@
         "saved": "Extract cache settings saved."
       }
     }
+  },
+  "cache": {
+    "embeddingDetailsAria": "Embedding details",
+    "moreInfoAria": "More info",
+    "freshnessKeywordsPlaceholder": "trending,viral,breaking",
+    "freshnessLangsPlaceholder": "en,zh"
+  },
+  "interception": {
+    "endpointExamplePlaceholder": "OpenAI (chat)"
+  },
+  "rulePacks": {
+    "slugPlaceholder": "acme/rules",
+    "versionPlaceholder": "v1.0.0",
+    "sourcePlaceholder": "customer"
+  },
+  "idp": {
+    "clientIdPlaceholder": "0oa1abc2def3ghi4j5k6"
+  },
+  "agentSetup": {
+    "filterByCategoryAria": "Filter by category"
+  },
+  "proxySetup": {
+    "orgExamplePlaceholder": "Acme Corp"
+  },
+  "simulator": {
+    "vkPlaceholder": "nvk_xxx"
   }
 }

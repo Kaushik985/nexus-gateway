@@ -117,7 +117,7 @@ export function ExtractCacheCard() {
         <label className={styles.settingLabel}>
           {t('pages:aiGateway.cache.extract.ttlLabel')}
           <Tooltip content={t('pages:aiGateway.cache.extract.ttlHelp')}>
-            <span className={styles.helpIcon} aria-label="More info">?</span>
+            <span className={styles.helpIcon} aria-label={t('pages:cache.moreInfoAria')}>?</span>
           </Tooltip>
         </label>
         <div className={styles.settingControl}>

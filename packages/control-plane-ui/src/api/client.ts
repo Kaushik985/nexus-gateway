@@ -78,12 +78,23 @@ let refreshInFlight: Promise<boolean> | null = null;
  */
 async function refreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
+
+  // Resolve the no-refresh-token case BEFORE assigning `refreshInFlight`.
+  // That path returns synchronously (no `await`), so if it ran inside the
+  // IIFE below its `finally { refreshInFlight = null }` would execute *before*
+  // the outer `refreshInFlight = (…)()` assignment completed — the assignment
+  // would then re-latch the resolved-false promise and it would never be
+  // nulled. The result: a single no-refresh-token 401 permanently disables
+  // refresh for the page's lifetime, so even after the user re-authenticates
+  // every later 401 short-circuits at the guard above. Keeping the check out
+  // here means the slot is never latched on the synchronous failure path.
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) {
+    clearTokens();
+    return false;
+  }
+
   refreshInFlight = (async (): Promise<boolean> => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) {
-      clearTokens();
-      return false;
-    }
     try {
       const body = new URLSearchParams();
       body.set('grant_type', 'refresh_token');
@@ -109,7 +120,8 @@ async function refreshAccessToken(): Promise<boolean> {
       clearTokens();
       return false;
     } finally {
-      // Release the serialization slot for subsequent 401s.
+      // Release the serialization slot for subsequent 401s. The `await fetch`
+      // above guarantees this runs after the assignment below, not before it.
       refreshInFlight = null;
     }
   })();

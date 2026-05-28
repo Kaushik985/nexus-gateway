@@ -162,7 +162,7 @@ export function FreshnessRulesCard() {
         <span className={styles.applyToggleLabel}>
           {t('pages:aiGateway.cache.freshness.applyToggleLabel')}
           <Tooltip content={t('pages:aiGateway.cache.freshness.applyToggleTooltip')}>
-            <span className={styles.applyHelpIcon} aria-label="More info">?</span>
+            <span className={styles.applyHelpIcon} aria-label={t('pages:cache.moreInfoAria')}>?</span>
           </Tooltip>
         </span>
         <Switch
@@ -395,7 +395,7 @@ function RuleModal({ initial, onClose, onSaved }: RuleModalProps) {
             label={t('pages:aiGateway.cache.freshness.fieldKeywords')}
             helpText={t('pages:aiGateway.cache.freshness.fieldKeywordsHint')}
           >
-            <Input value={keywordsRaw} onChange={(e) => setKeywordsRaw(e.target.value)} placeholder="trending,viral,breaking" />
+            <Input value={keywordsRaw} onChange={(e) => setKeywordsRaw(e.target.value)} placeholder={t('pages:cache.freshnessKeywordsPlaceholder')} />
           </FormField>
           <FormField label={t('pages:aiGateway.cache.freshness.fieldRequireQuestionMark')}>
             <Switch checked={requireQuestionMark} onCheckedChange={setRequireQuestionMark} />
@@ -407,7 +407,7 @@ function RuleModal({ initial, onClose, onSaved }: RuleModalProps) {
             label={t('pages:aiGateway.cache.freshness.fieldLanguages')}
             helpText={t('pages:aiGateway.cache.freshness.fieldLanguagesHint')}
           >
-            <Input value={languagesRaw} onChange={(e) => setLanguagesRaw(e.target.value)} placeholder="en,zh" />
+            <Input value={languagesRaw} onChange={(e) => setLanguagesRaw(e.target.value)} placeholder={t('pages:cache.freshnessLangsPlaceholder')} />
           </FormField>
           <FormField label={t('pages:aiGateway.cache.freshness.fieldEnabled')}>
             <Switch checked={enabled} onCheckedChange={setEnabled} />

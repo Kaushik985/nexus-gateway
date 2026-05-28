@@ -139,7 +139,7 @@ export function JsonSchemaHookConfigForm({ schema, value, onChange }: JsonSchema
               name={`${key}-replacement`}
               value={replacement}
               onChange={(e) => update('replacement', e.target.value)}
-              placeholder="[REDACTED_<RULE_ID>]"
+              placeholder={t('common:hookConfig.redactExamplePlaceholder')}
             />
           </FormField>
         ) : null}

@@ -380,7 +380,7 @@ export function AlertChannelEditPage() {
                         next[idx] = { ...next[idx], key: e.target.value };
                         setHeaders(next);
                       }}
-                      placeholder="X-Custom-Header"
+                      placeholder={t('pages:alerts.customHeaderPlaceholder')}
                     />
                     <div className={styles.secretRow}>
                       <Input
@@ -461,7 +461,7 @@ export function AlertChannelEditPage() {
                   value={slackBotToken}
                   readOnly={slackBotTokenMasked}
                   onChange={(e) => setSlackBotToken(e.target.value)}
-                  placeholder="xoxb-…"
+                  placeholder={t('pages:alerts.slackTokenPlaceholder')}
                 />
                 {slackBotTokenMasked && (
                   <Button

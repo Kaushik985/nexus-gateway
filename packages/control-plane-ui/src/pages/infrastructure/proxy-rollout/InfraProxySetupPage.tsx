@@ -227,7 +227,7 @@ export default function InfraProxySetupPage() {
             <Input
               value={organization}
               onChange={(e) => setOrganization(e.target.value)}
-              placeholder="Acme Corp"
+              placeholder={t('pages:proxySetup.orgExamplePlaceholder')}
             />
           </FormField>
           {mdmMutation.error && <ErrorBanner message={mdmMutation.error.message} />}

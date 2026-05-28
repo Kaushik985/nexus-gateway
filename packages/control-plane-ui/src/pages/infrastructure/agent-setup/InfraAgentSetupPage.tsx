@@ -322,7 +322,7 @@ export default function InfraAgentSetupPage() {
           />
 
           {/* Category filter chips */}
-          <div className={styles.faqChipRow} role="group" aria-label="Filter by category">
+          <div className={styles.faqChipRow} role="group" aria-label={t('pages:agentSetup.filterByCategoryAria')}>
             {CATEGORIES.map((cat) => {
               const isActive = activeCategories.has(cat);
               return (

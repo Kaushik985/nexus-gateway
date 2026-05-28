@@ -1,0 +1,34 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { api } from '../../../../src/api/client';
+import { devicesApi } from '../../../../src/api/services/devices/devices';
+vi.mock('../../../../src/api/client', () => ({ api: { get: vi.fn().mockResolvedValue({}), post: vi.fn().mockResolvedValue({}), put: vi.fn().mockResolvedValue({}), patch: vi.fn().mockResolvedValue({}), delete: vi.fn().mockResolvedValue(undefined) } }));
+const m = api as unknown as Record<'get' | 'post' | 'put' | 'patch' | 'delete', ReturnType<typeof vi.fn>>;
+beforeEach(() => Object.values(m).forEach((f) => f.mockClear()));
+describe('devicesApi', () => {
+  it('reads + lifecycle actions hit /api/admin/agent-devices', () => {
+    devicesApi.list({ q: 'a' });
+    devicesApi.get('d1');
+    devicesApi.getEvents('d1', { offset: '0' });
+    devicesApi.getAssignments('d1');
+    devicesApi.forceRefresh('d1');
+    devicesApi.rotateCert('d1');
+    devicesApi.setTags('d1', ['x']);
+    devicesApi.generateEnrollToken('host');
+    devicesApi.unenroll('d1');
+    devicesApi.getAgentSettings();
+    devicesApi.updateAgentSettings({} as never);
+    devicesApi.listMine();
+    expect(m.get).toHaveBeenCalledWith('/api/admin/agent-devices', { q: 'a' });
+    expect(m.get).toHaveBeenCalledWith('/api/admin/agent-devices/d1');
+    expect(m.get).toHaveBeenCalledWith('/api/admin/agent-devices/d1/events', { offset: '0' });
+    expect(m.get).toHaveBeenCalledWith('/api/admin/agent-devices/d1/assignments', undefined);
+    expect(m.post).toHaveBeenCalledWith('/api/admin/agent-devices/d1/force-refresh');
+    expect(m.post).toHaveBeenCalledWith('/api/admin/agent-devices/d1/rotate-cert');
+    expect(m.put).toHaveBeenCalledWith('/api/admin/agent-devices/d1/tags', { tags: ['x'] });
+    expect(m.post).toHaveBeenCalledWith('/api/admin/agent-devices/enroll-token', { hostname: 'host' });
+    expect(m.post).toHaveBeenCalledWith('/api/admin/agent-devices/d1/unenroll');
+    expect(m.get).toHaveBeenCalledWith('/api/admin/settings/device-defaults');
+    expect(m.put).toHaveBeenCalledWith('/api/admin/settings/device-defaults', {});
+    expect(m.get).toHaveBeenCalledWith('/api/admin/me/agent-devices');
+  });
+});

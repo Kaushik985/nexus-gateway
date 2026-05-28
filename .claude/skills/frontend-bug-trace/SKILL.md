@@ -130,25 +130,23 @@ Both must pass before proceeding to runtime verification.
 
 Use seed credentials to login and call the API. This verifies the **actual response shape**.
 
+Credentials come from `tests/.env.local` — source it first:
+`cp tests/.env.local.example tests/.env.local && source tests/lib/loadenv.sh local`.
+
 ```bash
 # Login (save cookie)
-curl -s -c /tmp/nexus_cookie -X POST http://localhost:3001/api/admin/auth/login \
+curl -s -c /tmp/nexus_cookie -X POST "$NEXUS_CP_URL/api/admin/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@nexus.ai","password":"admin123"}'
+  -d "{\"email\":\"$NEXUS_ADMIN_EMAIL\",\"password\":\"$NEXUS_ADMIN_PASSWORD\"}"
 
 # Call the endpoint under test
-curl -s -b /tmp/nexus_cookie "http://localhost:3001/api/admin/THE-ENDPOINT" | jq .
+curl -s -b /tmp/nexus_cookie "$NEXUS_CP_URL/api/admin/THE-ENDPOINT" | jq .
 ```
 
-**Seed credentials (from `tools/db-migrate/seed/seed.ts` section 18):**
-
-| Email | Password | Role |
-|-------|----------|------|
-| admin@nexus.ai | admin123 | super_admin |
-| alice@nexus.ai | admin123 | admin |
-| carol@nexus.ai | compliance123 | compliance |
-| bob@nexus.ai | provider123 | provider_ops |
-| diana@nexus.ai | viewer123 | viewer |
+The super-admin credentials are `NEXUS_ADMIN_EMAIL` / `NEXUS_ADMIN_PASSWORD` in
+`tests/.env.local`. To exercise a specific role (viewer, compliance, provider-ops,
+…), look up that seeded account in `tools/db-migrate/seed/seed.ts` — it is the
+source of truth for the local accounts and their roles.
 
 **Check the response:**
 - Are all expected fields present?

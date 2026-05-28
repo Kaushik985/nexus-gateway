@@ -1,0 +1,14 @@
+# Keep Docker build contexts lean — none of the Go service images need these.
+.git
+worktrees
+node_modules
+**/node_modules
+dist
+**/dist
+*.log
+.env
+.env.*
+packages/control-plane-ui/dist
+packages/agent/platform/darwin/NexusAgent/build
+tests/e2e-ui/node_modules
+tests/e2e-python/.venv

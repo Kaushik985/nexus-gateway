@@ -5,7 +5,7 @@ description: >
   normalizer (E46-S12 + Tier 2 batchexecute detector). Sends a hand-rolled
   Google batchexecute POST (`f.req=` form-urlencoded JSON envelope) to
   gemini.google.com's StreamGenerate endpoint through the prod compliance
-  proxy at `compliance.nexus.ai:3128`, then verifies the resulting
+  proxy on `:3128` (the `--proxy` flag), then verifies the resulting
   traffic_event_normalized row shows `kind=ai-chat`,
   `detectedSpec=gemini-web`, the extracted user prompt, and confidence
   around 0.85. Use when validating gemini-web adapter end-to-end without
@@ -39,7 +39,7 @@ Companion to `test-cursor-adapter` (cursor protobuf synthetic).
 python3 tests/manual/geminiweb_synthetic_chat.py
 ```
 
-Flags: `--proxy` (default `compliance.nexus.ai:3128`), `--target`
+Flags: `--proxy` (default: the deployment's compliance proxy on `:3128`), `--target`
 (default StreamGenerate URL), `--prompt`, `--locale`, `--secure`
 (default insecure — Nexus CA may not be in certifi).
 
@@ -47,7 +47,7 @@ Flags: `--proxy` (default `compliance.nexus.ai:3128`), `--target`
 
 ### A. Control Plane UI
 
-`https://cp.nexus.ai/traffic` → filter
+the Control Plane Traffic page (`https://cp.<your-domain>/traffic`) → filter
 `target_host=gemini.google.com:443`. Open the row. Expected:
 - Tier-1 badge (green): `Tier 1 · gemini-web · 0.85`
 - Kind: `ai-chat`
@@ -58,7 +58,7 @@ Flags: `--proxy` (default `compliance.nexus.ai:3128`), `--target`
 
 ```bash
 ssh -o StrictHostKeyChecking=no ${NEXUS_SSH_HOST} "
-  PGPASSWORD=VclwRVYAAadpVPJfY9hzd0cM psql -h localhost -U nexus -d nexus_gateway -c \
+  PGPASSWORD=$NEXUS_SSH_PGPASSWORD psql -h localhost -U $NEXUS_SSH_PGUSER -d $NEXUS_SSH_PGDB -c \
   \"SELECT ten.request_normalized->>'kind' AS kind,
            ten.request_normalized->>'detectedSpec' AS spec,
            ten.request_normalized->>'confidence' AS conf,

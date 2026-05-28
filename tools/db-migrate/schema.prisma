@@ -322,10 +322,11 @@ model Organization {
   contactEmail    String?
   contactPhone    String?
   enabled         Boolean        @default(true)
-  /// IANA timezone name. Drives business-rule semantics like
-  /// daily-quota reset boundaries, "yesterday" analytics windows,
-  /// and business-hours rules. Default UTC = no special handling.
-  /// Distinct from User.preferredTimezone (display only). E32-S1.
+  /// IANA timezone name. Drives org-local analytics calendar windows
+  /// ("yesterday" / "this month" attribution, carried onto traffic_event
+  /// as origin_tz) and business-hours rules. Quota-enforcement period keys
+  /// are computed in UTC, not org-local. Distinct from
+  /// User.preferredTimezone (display only). E32-S1.
   timezone        String         @default("UTC")
   /// Provisioning source: 'local' (manual) or 'idp' (synced from IdP via SCIM/manual mapping).
   source          String         @default("local")
@@ -1248,6 +1249,14 @@ model traffic_event {
   /// For compliance proxy + agent: same as the captured upstream call.
   method                    String?
   path                      String?
+  /// E87: canonical request modality, one of the typology.EndpointKind
+  /// strings ("chat", "embeddings", "stt", "tts", "image_generation",
+  /// "batch", ...). Stamped by the producing service onto the audit
+  /// Record and persisted here so the audit trail / analytics can group
+  /// traffic by endpoint kind without re-deriving it from `path`.
+  /// Empty string for non-AI traffic (compliance-proxy / agent forwards)
+  /// that does not classify a modality.
+  endpoint_type             String                    @default("") @map("endpoint_type")
   /// E58-S1/E41: HTTP method actually sent to the upstream provider.
   /// For AI gateway: may differ from `method` (e.g. E57 routes a chat-
   /// completions request to OpenAI Responses API via POST /v1/responses).

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Lockstep check: every `S-NNN` reference in `docs/developers/specs/e86-e2e-coverage-matrix.md`
+ * Lockstep check: every `S-NNN` reference in `docs/developers/specs/e2e-coverage-matrix.md`
  * must correspond to a real `func TestS<NNN>_*` in `tests/scenarios/*_test.go`, and vice versa
  * (orphan test functions are reported as warnings).
  *
@@ -24,7 +24,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const REPO_ROOT = process.cwd();
-const MATRIX_DOC = 'docs/developers/specs/e86-e2e-coverage-matrix.md';
+const MATRIX_DOC = 'docs/developers/specs/e2e-coverage-matrix.md';
 const SCENARIOS_DIR = 'tests/scenarios';
 
 function extractMatrixIds(text) {
@@ -93,7 +93,7 @@ function main() {
 
   // Reporting
   if (warnings.length > 0) {
-    console.warn(`[check:e86-matrix] WARN: ${warnings.length} orphan scenario function(s) without matrix reference:`);
+    console.warn(`[check:e2e-matrix] WARN: ${warnings.length} orphan scenario function(s) without matrix reference:`);
     for (const w of warnings) console.warn('  - ' + w);
     console.warn(
       '  Fix: add a row (or extend an existing row) in ' +
@@ -103,7 +103,7 @@ function main() {
   }
 
   if (failures.length > 0) {
-    console.error(`[check:e86-matrix] FAILED: ${failures.length} matrix reference(s) without backing test function:`);
+    console.error(`[check:e2e-matrix] FAILED: ${failures.length} matrix reference(s) without backing test function:`);
     for (const f of failures) console.error('  - ' + f);
     console.error(
       '  Fix: either add `func TestS<NNN>_<Name>(t *testing.T)` in ' +
@@ -114,7 +114,7 @@ function main() {
   }
 
   console.log(
-    `[check:e86-matrix] OK -- ${matrixIds.size} matrix S-NNN reference(s) all backed by a TestSNNN_ function ` +
+    `[check:e2e-matrix] OK -- ${matrixIds.size} matrix S-NNN reference(s) all backed by a TestSNNN_ function ` +
       `(${scenarioFns.size} total TestSNNN_ functions in ${SCENARIOS_DIR}; ${warnings.length} orphan-warn).`,
   );
 }

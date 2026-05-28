@@ -32,12 +32,12 @@ Run **before** completing any adapter-touching PR. The audit-time gaps (G1–G9 
 # logic allowed is endpoint dispatch + PassthroughRewrite callback +
 # applyStreamUsageOption (purely OpenAI-shape, no per-vendor knowledge).
 grep -nE "FormatAnthropic|FormatGemini|FormatMoonshot|FormatBedrock|FormatCohere|FormatReplicate|FormatVertex|FormatDeepSeek|FormatGLM|FormatMinimax|FormatMistral|FormatXai|FormatGroq|FormatPerplexity|FormatTogether|FormatFireworks|FormatHuggingFace|FormatAzureOpenAI" \
-  packages/ai-gateway/internal/providers/spec_adapter.go
+  packages/ai-gateway/internal/providers/dispatch/spec_adapter.go
 # Expected: empty. Any hit = per-adapter case-statement leaked here.
 
 # Per-model identifiers in spec_adapter.go are also forbidden.
 grep -nE 'claude-|gpt-[345]|kimi-|deepseek-|gemini-|o[1-9]|"thinking"' \
-  packages/ai-gateway/internal/providers/spec_adapter.go
+  packages/ai-gateway/internal/providers/dispatch/spec_adapter.go
 # Expected: empty.
 ```
 
@@ -59,9 +59,9 @@ If anything matches, move the logic into the adapter's own package and wire it v
 #   spec_groq, spec_perplexity, spec_together, spec_fireworks,
 #   spec_huggingface, spec_vertex)
 grep -L "PassthroughRewrite" \
-  packages/ai-gateway/internal/providers/spec_openai/spec.go \
-  packages/ai-gateway/internal/providers/spec_azure_openai/spec.go \
-  packages/ai-gateway/internal/providers/spec_moonshot/spec.go
+  packages/ai-gateway/internal/providers/specs/openai/spec.go \
+  packages/ai-gateway/internal/providers/specs/azure/spec.go \
+  packages/ai-gateway/internal/providers/specs/compat/moonshot/spec.go
 # Expected: empty (the field IS wired in all three).
 ```
 
@@ -74,8 +74,8 @@ When you add an adapter (or a new per-model quirk to an existing one), add `Pass
 # or synthesizeSSEErrorFrame. Hand-rolling them in proxy.go / proxy_cache.go
 # silently breaks cross-format clients.
 grep -rnE '"error"[[:space:]]*:[[:space:]]*map\[string\]any' \
-  packages/ai-gateway/internal/handler/proxy.go \
-  packages/ai-gateway/internal/handler/proxy_cache.go \
+  packages/ai-gateway/internal/ingress/proxy/proxy.go \
+  packages/ai-gateway/internal/ingress/proxy/proxy_cache.go \
   | grep -vE "encodeErrorEnvelopeForIngress|synthesizeSSEErrorFrame|encode(OpenAI|Anthropic|Gemini)ErrorEnvelope"
 # Expected: empty. Any hit is a candidate replacement target.
 ```

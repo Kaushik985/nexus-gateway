@@ -47,8 +47,9 @@ ALLOWLIST_PATTERNS=(
 DEFAULT_MANIFEST="$REPO_ROOT/scripts/check-rename.manifest.tsv"
 
 # Prod EC2 host for layers 9 + 10 (read-only psql + cat env).
-PROD_HOST="${PROD_HOST:-${NEXUS_SSH_HOST}}"
-PROD_PG_PASSWORD="${PROD_PG_PASSWORD:-VclwRVYAAadpVPJfY9hzd0cM}"
+# Credentials come from the env (source tests/lib/loadenv.sh prod) — never hardcoded.
+PROD_HOST="${PROD_HOST:-${NEXUS_SSH_HOST:-}}"
+PROD_PG_PASSWORD="${PROD_PG_PASSWORD:-${NEXUS_SSH_PGPASSWORD:-}}"
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 

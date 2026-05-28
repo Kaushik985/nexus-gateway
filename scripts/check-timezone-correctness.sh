@@ -43,10 +43,10 @@ echo "[tz-lint] scanning Go persistence paths for bare time.Now()…"
 hits=$(grep -rnE 'time\.Now\(\)[^.]' "${search_dirs[@]}" 2>/dev/null \
   | grep -vE "$allow_re" \
   | grep -v '_test\.go:' \
-  | grep -v '// timeutil-skip' \
+  | grep -v '// tz-skip' \
   || true)
 if [ -n "$hits" ]; then
-  echo "FAIL: bare time.Now() in persistence path. Use timeutil.Now()."
+  echo "FAIL: bare time.Now() in persistence path. Use time.Now().UTC()."
   echo "$hits"
   echo
   fail=1

@@ -167,7 +167,7 @@ The structural projection (Format → adapter's native chat/embeddings WireShape
 |---|---|
 | **AI Gateway** (`packages/ai-gateway/`) | Cache `OriginWireShape` tagging; `CanonicalBridge.ResponseAcrossFormats` cross-shape reshape; `RoutingContext.EndpointType` + capability pre-filter; matcher's `resolveField("endpointType")`; audit emit's `EndpointTypeFromPath` (canonical kind verbatim); cost-formula registry key |
 | **Compliance Proxy** (`packages/compliance-proxy/`) | `ClassifyPath` inside the TLS-bump forward handler (`shared/transport/tlsbump/forward_handler.go`) to derive `EndpointKind` for hook-pipeline filtering on intercepted traffic |
-| **Agent** (`packages/agent/`) | `ClassifyPath` inside the intercept handler (`internal/network/intercept/handler.go`) for the same hook-pipeline filtering on locally-intercepted traffic |
+| **Agent** (`packages/agent/`) | `ClassifyPath` runs inside the shared bump pipeline — `packages/shared/transport/tlsbump/forward_handler.go` calls `typology.ClassifyPath` — for the same hook-pipeline filtering on locally-intercepted traffic |
 | **Nexus Hub** (`packages/nexus-hub/`) | Persists `TrafficEventMessage.EndpointType` into `traffic_event.endpoint_type` byte-for-byte; the wire field carries the canonical kind string already, no translation needed |
 | **Control Plane** (`packages/control-plane/`) | Reads the canonical kind strings from `traffic_event` for admin UI display and routing-rule conditions |
 
@@ -182,6 +182,6 @@ To add a new `EndpointKind` value (e.g. a hypothetical `EndpointKindFineTune`):
 3. **`packages/shared/transport/typology/defaults.go`** — register the `(method, path) → (Kind, Shape)` rule. Place it in priority order; if it could subset an existing pattern, place it first.
 4. **`packages/shared/transport/typology/path_segment.go`** — if the AI Gateway uses a distinct path-segment form for the endpoint (e.g. multiple URL suffixes collapsing to the same kind), add the case to `KindFromPathSegment`.
 5. **`packages/shared/policy/hooks/core/types.go`** — add the matching `EndpointType*` re-export constant if hooks need to filter on the new kind.
-6. **Tests** — `packages/shared/transport/typology/*_test.go` covers the new rule + legacy mapping. `packages/shared/policy/hooks/core/endpoint_classify_test.go` covers the hook-side filtering.
+6. **Tests** — `packages/shared/transport/typology/*_test.go` (e.g. `classify_test.go`) covers the new rule, the legacy mapping, and the hook-side filtering.
 
 The 95% package coverage gate (per CLAUDE.md binding) enforces that every new rule and every new legacy mapping carries test assertions.

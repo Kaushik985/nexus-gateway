@@ -48,7 +48,7 @@ Document the decision in the PR description: "_Kept on `admin:settings.read`_" o
 If you carved out a new resource:
 
 1. **`tools/db-migrate/seed/seed.ts`** — add the new action to canonical managed policies (`NexusSuperAdmin`, `NexusAdmin`, `NexusViewer`, etc.).
-2. **`packages/control-plane/internal/iam/managed.go`** — add to the `NexusViewer` fixture so unit tests catch viewer-side regressions.
+2. **`packages/control-plane/internal/identity/iam/managed.go`** — add to the `NexusViewer` fixture so unit tests catch viewer-side regressions.
 
 Missing either side means **non-super-admin users silently lose visibility**.
 
@@ -73,8 +73,8 @@ cp_login                                  # tests/lib/auth.sh
 cp_curl /api/admin/<new-or-renamed-path>
 
 # Negative: a role without the action gets 403
-# Switch to a viewer-level user (e.g., diana@nexus.ai / viewer123)
-# Confirm 403 on the same path.
+# Switch to a viewer-level seed account (see tools/db-migrate/seed/seed.ts
+# for the local accounts + roles) and confirm 403 on the same path.
 ```
 
 If either fails, **stop and fix before merging**.

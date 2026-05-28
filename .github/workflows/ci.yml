@@ -35,6 +35,12 @@ jobs:
       - name: Arch-doc triggers lockstep
         run: node scripts/check-arch-doc-triggers.mjs
 
+      # NOTE: the e2e release-gate checks (npm run check:e2e-matrix,
+      # check:iam-routes) and the e2e RUNS (tests/run-all.sh --blocking /
+      # --nightly, the L5 scenarios) are deliberately NOT wired here. The e2e
+      # gate is run MANUALLY, post-release, under human control — not as an
+      # automatic CI/CD gate. Invoke it on demand via tests/run-all.sh.
+
       # Migration timestamp uniqueness (2026-05-14 audit-gap scar).
       - name: Migration timestamp uniqueness
         run: bash scripts/check-migration-timestamps.sh

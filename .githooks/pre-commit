@@ -62,7 +62,7 @@ if echo "$staged" | grep -qE '^tools/db-migrate/prisma/migrations/'; then
 fi
 
 # 2. Arch-doc trigger-map lockstep (binding; every -architecture.md must be in the map).
-if echo "$staged" | grep -qE '^docs/developers/architecture/.*-architecture\.md|^docs/developers/architecture/README\.md|^docs/developers/architecture/core/thing-model\.md|^docs/developers/architecture/observability/admin-audit-log-coverage\.md'; then
+if echo "$staged" | grep -qE '^docs/developers/architecture/.*-architecture\.md|^docs/developers/architecture/README\.md|^docs/developers/architecture/cross-cutting/foundation/thing-model\.md|^docs/developers/architecture/cross-cutting/observability/admin-audit-log-coverage\.md'; then
   run_hard "arch-doc-triggers lockstep" node scripts/check-arch-doc-triggers.mjs
 fi
 

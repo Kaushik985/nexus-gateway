@@ -30,6 +30,6 @@ Adapter authors writing 200-line OpenAI-shape canonicalizers for `claude-web` ju
 
 ## Tier-2 NonJSONDetector
 
-For non-JSON wire formats (binary protocols, multipart, gRPC-Web, raw audio): add a `NonJSONDetector` in `packages/shared/traffic/extract/detector.go`. Tier-1 adapters delegate to the detector. Do **NOT** write a fresh per-host adapter for a new non-JSON format. Canonical memory: `feedback_tier2_nonjson_detector_framework`.
+For non-JSON wire formats (binary protocols, multipart, gRPC-Web, raw audio): add a `NonJSONDetector` in `packages/shared/transport/normalize/extract/detector.go`. Tier-1 adapters delegate to the detector. Do **NOT** write a fresh per-host adapter for a new non-JSON format. Canonical memory: `feedback_tier2_nonjson_detector_framework`.
 
 Skipping this rule requires **explicit user approval** in chat.

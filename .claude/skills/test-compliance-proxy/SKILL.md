@@ -121,8 +121,8 @@ Run it via `docker exec ... psql -A -F$'\t' -t -c "..."`. If a row has no
 This is the only place the skill needs to "decrypt" something. The
 encryption format used by the running CP/AI Gateway is **AES-256-GCM**
 with hex-encoded ciphertext, IV, and tag (see
-`packages/control-plane/internal/crypto/aes_gcm.go` and
-`packages/ai-gateway/internal/credentials/decrypt.go` for the
+`packages/control-plane/internal/platform/crypto/aes_gcm.go` and
+`packages/ai-gateway/internal/credentials/decrypt/decrypt.go` for the
 authoritative format).
 
 You have two strategies; pick whichever the local environment supports
@@ -142,7 +142,7 @@ Read the master key from the same env vars the running services use:
 `CREDENTIAL_KEY_MAP` (multi-key, comma-separated `id:hex,id:hex`) wins
 over `CREDENTIAL_ENCRYPTION_KEY` (single 64-hex-char). Both formats are
 defined in
-`packages/control-plane/internal/crypto/aes_gcm.go` —
+`packages/control-plane/internal/platform/crypto/aes_gcm.go` —
 match that exactly.
 
 A single-line decrypt invocation looks like:
@@ -290,7 +290,7 @@ For each call, you must find a matching row. Flag:
 - `api_key_fingerprint` empty → caller-key fingerprinting regression
   (this column is the SHA256[:8] of the **caller's real provider key**
   on this `source`; see `traffic_event` schema comments at
-  `tools/db-migrate/schema.prisma:1004-1007`).
+  `tools/db-migrate/schema.prisma`).
 - `usage_extraction_status` ∉ `{ok, streaming_reported,
   streaming_estimated}` → token-extraction regression in the proxy.
 - `target_host` empty / wrong → CONNECT/SNI parsing regression.

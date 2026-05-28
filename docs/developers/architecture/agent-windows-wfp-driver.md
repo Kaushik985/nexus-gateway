@@ -44,7 +44,7 @@ Code changes in `packages/agent/platform/windows/nexus-wfp-driver/`,
 Per CLAUDE.md → Pre-edit reading (3-doc rule), any change touching the
 Windows interception layer or the agent platform shim **must** open and
 follow this document. The WinDivert paragraph in
-`packages/agent/platform/windows/installer/NexusAgent.wxs:226-259`
+`packages/agent/platform/windows/installer/NexusAgent.wxs`
 references the "first-packet gap" requirement; that requirement is
 preserved here (see §5.3).
 

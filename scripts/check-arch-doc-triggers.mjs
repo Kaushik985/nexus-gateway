@@ -42,14 +42,11 @@ function walkArchitectureDocs(dir) {
 }
 
 function main() {
-  // Doc-rewrite escape hatch (2026-05-22 archive sweep removed the
-  // trigger map and most of the docs it referenced; rewrite is queued).
-  // When the trigger map is absent we silently skip — lockstep
-  // enforcement resumes the moment the new README.md lands at the
-  // expected path. Re-enable strict mode by deleting this block.
+  // The trigger map is mandatory: every architecture doc must be reachable
+  // from it. A missing map is a hard failure, not a skip.
   if (!existsSync(TRIGGER_MAP)) {
-    console.log('⊘ arch-doc-triggers lockstep skipped — trigger map absent (post 2026-05-22 archive sweep, awaiting rewrite)');
-    return;
+    console.error(`[check:arch-doc-triggers] FAILED: trigger map missing at ${TRIGGER_MAP}`);
+    process.exit(1);
   }
 
   const errors = [];

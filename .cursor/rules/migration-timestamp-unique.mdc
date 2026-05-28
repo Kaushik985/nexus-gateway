@@ -2,7 +2,7 @@
 description: Prisma migration folders must have unique YYYYMMDDHHMMSS prefixes
 globs:
   - tools/db-migrate/prisma/migrations/**
-  - tools/db-migrate/prisma/schema.prisma
+  - tools/db-migrate/schema.prisma
 ---
 
 # Migration timestamp uniqueness (binding)

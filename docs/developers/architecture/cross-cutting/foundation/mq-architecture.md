@@ -89,7 +89,7 @@ Seven active subjects. The first six are JetStream queues; `nexus.hub.signal` is
 | `nexus.event.compliance` | `NEXUS_EVENTS` | `packages/compliance-proxy/internal/audit/mq_writer.go` (per CONNECT) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.TrafficEventMessage` |
 | `nexus.event.agent` | `NEXUS_EVENTS` | Hub re-enqueue from agent HTTP upload (`packages/nexus-hub/internal/fleet/handler/hubapi/internal_things.go` `AuditUpload`) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.TrafficEventMessage` |
 | `nexus.event.admin-audit` | `NEXUS_EVENTS` | `packages/control-plane/internal/platform/audit/writer.go` (per admin mutation) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.AdminAuditMessage` |
-| `nexus.event.exemption` | `NEXUS_EVENTS` | Hub re-enqueue from agent HTTP upload (`internal_things.go` `ExemptionUpload`) | `hub-db-writer` only | `{kind, thingId, host, reason, expiresAt}` inline (`packages/nexus-hub/internal/jobs/consumer/exemption.go`) |
+| `nexus.event.exemption` | `NEXUS_EVENTS` | Hub re-enqueue from agent HTTP upload (`internal_things.go` `ExemptionUpload`) | `hub-db-writer` only | `{kind, thingId, host, reason, expiresAt}` inline (`packages/nexus-hub/internal/observability/consumer/exemption.go`) |
 | `nexus.auth.revocation` | `NEXUS_AUTH` | `packages/control-plane/internal/identity/authserver/revocation/publisher.go` | per-instance (one group per CP / AI-gateway / proxy instance) | `revocation.Event` (`scope`, `targetJti` / `targetUserId` / `targetDeviceId` / `targetSessionId`, `reason`, `issuedAt`) |
 | `nexus.hub.signal` | (Core NATS — no JS) | Hub fleet manager (`packages/nexus-hub/internal/fleet/manager/config.go`, `drift.go`) | each Hub instance's WS bridge (`packages/nexus-hub/internal/ws/signal.go`) | `{action, sourceHub, thingType, configKey, state, version, thingId?, desired?, force?}` |
 
@@ -99,7 +99,7 @@ Agents do not hold NATS credentials and do not have direct MQ network reach (see
 
 ### The wire shapes are stable contracts
 
-`packages/shared/transport/mq/messages.go` is the single source of truth for `TrafficEventMessage` and `AdminAuditMessage`. New fields must be `omitempty` so older producers stay wire-compatible; renaming a JSON tag is a breaking change. The hash-chained admin audit (`previousHash` / `integrityHash`) is computed **Hub-side** by the `AdminAuditWriter` (`packages/nexus-hub/internal/jobs/consumer/admin_audit.go` invoking `chain.NextHash` from `packages/nexus-hub/internal/traffic/chain/chain.go`) — the wire format intentionally carries no hash so a CP replica cannot fork the chain.
+`packages/shared/transport/mq/messages.go` is the single source of truth for `TrafficEventMessage` and `AdminAuditMessage`. New fields must be `omitempty` so older producers stay wire-compatible; renaming a JSON tag is a breaking change. The hash-chained admin audit (`previousHash` / `integrityHash`) is computed **Hub-side** by the `AdminAuditWriter` (`packages/nexus-hub/internal/observability/consumer/admin_audit.go` invoking `chain.NextHash` from `packages/nexus-hub/internal/traffic/chain/chain.go`) — the wire format intentionally carries no hash so a CP replica cannot fork the chain.
 
 ## 5. Three consumer-group patterns
 
@@ -109,7 +109,7 @@ Pick the pattern by asking: *who needs to see each message, and how many physica
 
 One group string, many worker instances inside the group. JetStream distributes messages across the group; each message goes to exactly one worker. Adding a worker scales throughput without duplicating work.
 
-**Live example: `dbWriterGroup = "hub-db-writer"`** (`packages/nexus-hub/internal/jobs/consumer/traffic.go`). All three Hub-side DB writers — `TrafficEventWriter` (three traffic subjects), `AdminAuditWriter` (admin-audit), `ExemptionConsumer` (exemption) — share this group string. If we ran two Hub instances, each subject would still be processed by exactly one Hub at a time per subject; the other Hub's writer for that subject is a hot spare.
+**Live example: `dbWriterGroup = "hub-db-writer"`** (`packages/nexus-hub/internal/observability/consumer/traffic.go`). All three Hub-side DB writers — `TrafficEventWriter` (three traffic subjects), `AdminAuditWriter` (admin-audit), `ExemptionConsumer` (exemption) — share this group string. If we ran two Hub instances, each subject would still be processed by exactly one Hub at a time per subject; the other Hub's writer for that subject is a hot spare.
 
 Why a shared group across different writers is safe here: each writer uses a distinct `FilterSubject`, and `jetstreamDurableName(group, queue)` (`consumer.go`) builds the JetStream durable as `"hub-db-writer__nexus_event_admin-audit"` etc. — one durable per (group, subject) pair. Sharing `group` without per-subject sanitisation would clobber `FilterSubject` and silently route admin-audit messages into the traffic writer. This was discovered the hard way; the sanitiser is the load-bearing line.
 
@@ -188,4 +188,4 @@ Stream re-sizing (raising `MaxBytes`, adjusting `MaxAge`) is a Hub-restart opera
 
 ### Reading the stream during incidents
 
-NATS CLI on the Hub box: `nats stream info NEXUS_EVENTS` for current message count, byte size, and consumer ack lag; `nats consumer report NEXUS_EVENTS` for per-group `Pending` (un-acked count, the lag signal) and `Redelivered` (poison-pill signal). A `Pending` value that grows without bound usually means the DB writer is stalled (check `packages/nexus-hub/internal/jobs/consumer/traffic.go` flush metrics); a `Redelivered` value that grows usually means a structurally-bad message that needs to be located in writer ERROR logs.
+NATS CLI on the Hub box: `nats stream info NEXUS_EVENTS` for current message count, byte size, and consumer ack lag; `nats consumer report NEXUS_EVENTS` for per-group `Pending` (un-acked count, the lag signal) and `Redelivered` (poison-pill signal). A `Pending` value that grows without bound usually means the DB writer is stalled (check `packages/nexus-hub/internal/observability/consumer/traffic.go` flush metrics); a `Redelivered` value that grows usually means a structurally-bad message that needs to be located in writer ERROR logs.

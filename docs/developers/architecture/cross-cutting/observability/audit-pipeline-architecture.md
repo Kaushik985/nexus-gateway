@@ -141,15 +141,15 @@ A fourth subject `nexus.event.admin-audit` rides the same stream for admin-mutat
 The per-message handler `handleMessage`:
 
 1. Increments `nexus_mq_processed_total{queue}`.
-2. JSON-unmarshals into the consumer-side `TrafficEventMessage`. **Deserialize failure → `Ack()` immediately and drop**, on the principle that a malformed message will fail forever and would otherwise block the consumer. The error is logged and `nexus_mq_errors_total{error_type="deserialize"}` increments — the log is the audit trail.
+2. JSON-unmarshals into the consumer-side `TrafficEventMessage`. **Deserialize failure → `Ack()` immediately and drop**, on the principle that a malformed message will fail forever and would otherwise block the consumer. The error is logged and `nexus_mq_traffic_errors_total{error_type="deserialize"}` increments — the log is the audit trail.
 3. On successful unmarshal, calls `batch.Add(...)` and returns `mq.ErrDeferAck`, handing ack/nak responsibility to the batch-flush path. The batch flushes on size (100) **or** interval (5s), whichever comes first.
 
 The `flush` path runs a single Postgres transaction per batch:
 
-1. `pool.Begin(ctx)`. Failure → `nakOrDLQ`, `nexus_mq_batch_flush_total{result="error"}`, `nexus_mq_errors_total{error_type="db_begin"}`.
+1. `pool.Begin(ctx)`. Failure → `nakOrDLQ`, `nexus_mq_batch_flush_total{result="error"}`, `nexus_mq_traffic_errors_total{error_type="db_begin"}`.
 2. `insertTrafficEvents` — one `pgx.Batch` of parameterized INSERTs against `traffic_event` with `ON CONFLICT (id) DO NOTHING`. The wide INSERT covers the full column list; every text and JSON field is passed through `stripNul` / `stripNulPtr` / `stripNulJSON` first because providers like ChatGPT can include null bytes in SSE responses, and PostgreSQL UTF-8 columns reject `\x00` with `SQLSTATE 22021`. `compliance_tags` (a `NOT NULL` `text[]` column) is coerced to an empty slice when absent.
 3. `insertPayloads` — same batch shape against `traffic_event_payload`. Demuxes the discriminated `Body` container onto either `inline_*_body` (the full marshalled `Body` envelope as JSONB, so non-JSON streaming SSE bytes can ride base64-encoded inside `inlineBytes`) **or** `*_spill_ref`. Skips events where both directions are `absent`.
-4. `insertNormalizedPayloads` — same batch shape against `traffic_event_normalized`. **Failure here does NOT roll the batch** — raw bytes are already on `traffic_event_payload`, so a normalize-sidecar failure is logged + counted (`nexus_mq_errors_total{error_type="db_insert_normalized"}`) but the transaction proceeds.
+4. `insertNormalizedPayloads` — same batch shape against `traffic_event_normalized`. **Failure here does NOT roll the batch** — raw bytes are already on `traffic_event_payload`, so a normalize-sidecar failure is logged + counted (`nexus_mq_traffic_errors_total{error_type="db_insert_normalized"}`) but the transaction proceeds.
 5. `tx.Commit`. Failure → `nakOrDLQ`, error counters.
 6. `ackAll`. Success counters fire.
 
@@ -199,7 +199,7 @@ If the DLQ insert itself fails the consumer falls back to Nak so the broker keep
 
 Admin surface for inspection + retry:
 
-- Hub: `GET /api/hub/dlq` (paginated list, newest first, optional `subject` / `limit` / `cursor` filters) + `POST /api/hub/dlq/:id/retry` (republish + delete on success). Handler: `packages/nexus-hub/internal/fleet/handler/hubapi/hub_api_dlq.go`.
+- Hub: `GET /api/hub/dlq` (offset-paginated list, newest first, optional `subject` filter + `limit` / `offset`; returns `{rows,total}`) + `POST /api/hub/dlq/:id/retry` (republish + delete on success). Handler: `packages/nexus-hub/internal/fleet/handler/hubapi/hub_api_dlq.go`.
 - Control Plane: `GET /api/admin/observability/dlq` + `POST /api/admin/observability/dlq/:id/retry`, proxying to Hub with JWT + IAM check + AdminAuditLog stamp. Handler: `packages/control-plane/internal/observability/dlq/handler/dlq.go`. IAM: `admin:observability-dlq.read` (list) / `admin:observability-dlq.manage` (retry).
 - UI: `/infrastructure/dlq` page at `packages/control-plane-ui/src/pages/infrastructure/dlq/InfraDlqPage.tsx`.
 
@@ -236,7 +236,7 @@ Consumer side (Hub `/metrics`):
 | `nexus_mq_processed_total` | `queue` | Messages received from each queue |
 | `nexus_mq_batch_flush_total` | `result` (`success` \| `error`) | Per-batch DB commit outcome |
 | `nexus_mq_batch_size` | — | Histogram of batch sizes at flush |
-| `nexus_mq_errors_total` | `error_type` (`deserialize` \| `db_begin` \| `db_insert` \| `db_insert_payload` \| `db_insert_normalized` \| `db_commit` \| `dlq_insert`) | Per-failure-class breakdown |
+| `nexus_mq_traffic_errors_total` | `error_type` (`deserialize` \| `db_begin` \| `db_insert` \| `db_insert_payload` \| `db_insert_normalized` \| `db_commit` \| `dlq_insert`) | Per-failure-class breakdown |
 | `nexus_mq_dlq_inserted_total` | `subject` | Messages moved to `traffic_event_dlq` after exhausting redelivery |
 | `nexus_consumer_healthy` | `consumer` | 1 while the named consumer goroutine is running, 0 on exit |
 
@@ -244,7 +244,7 @@ Counter names carry the `nexus_` namespace because the Hub-side opsmetrics regis
 
 The SIEM forwarder adds its own `nexus_siem_consumed_total{queue}`, `nexus_siem_sent_total{result}`, and `nexus_siem_errors_total{error_type}` — see `siem-bridge-architecture.md`.
 
-The cardinality on `nexus_mq_processed_total{queue}` is exactly three (the traffic queues); pair it with `nexus_mq_errors_total{error_type="deserialize"}` to detect a producer-side schema bug, and with `nexus_consumer_healthy{consumer="traffic-event-writer"}` to detect a writer outage.
+The cardinality on `nexus_mq_processed_total{queue}` is exactly three (the traffic queues); pair it with `nexus_mq_traffic_errors_total{error_type="deserialize"}` to detect a producer-side schema bug, and with `nexus_consumer_healthy{consumer="traffic-event-writer"}` to detect a writer outage.
 
 ## 13. Failure modes and where they surface
 
@@ -253,9 +253,9 @@ The cardinality on `nexus_mq_processed_total{queue}` is exactly three (the traff
 | Producer-side burst overload | `nexus_audit_mq_dropped_total` climbs on the source service | None — drops are accepted to preserve the request path; investigate the back-pressure source (MQ outage? consumer wedge?) |
 | Sustained MQ outage | `nexus_audit_mq_enqueue_errors_total` climbs; eventually `nexus_audit_mq_dropped_total` rises | Restart NATS; flush will retry on next tick. `Close()` deadline drops whatever is in-memory at shutdown |
 | Consumer wedge | `nexus_mq_processed_total{queue}` flat while producer counters rise; eventually JetStream `MaxAge` / `MaxBytes` discards messages | Investigate `nexus_consumer_healthy{consumer="traffic-event-writer"}`; restart Hub; backfilled rows are lost past the discard window |
-| DB write failure (transient) | `nexus_mq_batch_flush_total{result="error"}` + `nexus_mq_errors_total{error_type=db_*}`; messages naked → redelivered (or DLQ after `redeliveryThresholdAttempts`) | Self-heals once the DB recovers; investigate `nexus_mq_dlq_inserted_total{subject}` for repeat offenders |
+| DB write failure (transient) | `nexus_mq_batch_flush_total{result="error"}` + `nexus_mq_traffic_errors_total{error_type=db_*}`; messages naked → redelivered (or DLQ after `redeliveryThresholdAttempts`) | Self-heals once the DB recovers; investigate `nexus_mq_dlq_inserted_total{subject}` for repeat offenders |
 | DB write failure (poison-pill, null bytes) | `nexus_mq_batch_flush_total{result="error"}` once per affected batch; warn-level "permanent encoding error, acking to skip poison batch" log | None needed — the batch is dropped and the next batch proceeds. The producer-side `stripNul` plumbing prevents this almost everywhere; a leak is a producer-side bug |
-| Normalize sidecar regression | `nexus_mq_errors_total{error_type="db_insert_normalized"}` climbs; raw rows still land on `traffic_event` and `traffic_event_payload`; the normalize-backfill job heals them on its next tick | Investigate `traffic_event_normalized` schema drift; `nexus_normalize_backfill_filled_total` confirms recovery |
+| Normalize sidecar regression | `nexus_mq_traffic_errors_total{error_type="db_insert_normalized"}` climbs; raw rows still land on `traffic_event` and `traffic_event_payload`; the normalize-backfill job heals them on its next tick | Investigate `traffic_event_normalized` schema drift; `nexus_normalize_backfill_filled_total` confirms recovery |
 
 ## References
 

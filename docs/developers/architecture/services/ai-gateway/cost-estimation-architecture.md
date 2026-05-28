@@ -2,13 +2,18 @@
 
 > Full cost-estimation architecture write-up is queued in the docs-backfill program. This page currently captures (1) the endpoint-type vocabulary the cost layer consumes and (2) the streaming mode × cost stamping interaction. Full cost-formula registry / metering / pricing pipeline follows in a later commit.
 >
-> Source-of-truth code: [`packages/ai-gateway/internal/cache/layer/pricing.go`](../../../../../packages/ai-gateway/internal/cache/layer/pricing.go), [`packages/ai-gateway/internal/observability/metrics/cost.go`](../../../../../packages/ai-gateway/internal/observability/metrics/cost.go), [`packages/ai-gateway/internal/execution/estimator/`](../../../../../packages/ai-gateway/internal/execution/estimator/).
+> Source-of-truth code: [`packages/ai-gateway/internal/cache/layer/pricing.go`](../../../../../packages/ai-gateway/internal/cache/layer/pricing.go), [`packages/ai-gateway/internal/execution/estimator/`](../../../../../packages/ai-gateway/internal/execution/estimator/).
 
 ## Endpoint-type vocabulary
 
 Cost formulas are keyed by the canonical `typology.EndpointKind` string (`chat`, `embeddings`, `stt`, `tts`, `image_generation`, `batch`). The `audit.Record.EndpointType` field on a finalised traffic event carries this string verbatim, and the cost estimator looks it up against the registered formula registry by exact match.
 
 The string is derived once per request at handler-dispatch time via `string(typology.KindFromWireShape(resolved.WireShape))` and flows unchanged into `audit.Record.EndpointType`, `TrafficEventMessage.EndpointType`, `traffic_event.endpoint_type`, and the AI Gateway Prometheus `endpoint` label — no translation hop, no per-consumer vocabulary. See [endpoint-typology-architecture.md §7](../../cross-cutting/foundation/endpoint-typology-architecture.md) for the shared path-segment helper that hooks + audit both delegate to.
+
+**Empty `endpoint_type` — non-AI forwards (binding for readers).** Only the AI Gateway route-classifies, so only AI-Gateway rows carry a kind. The compliance-proxy and agent are transparent forwarders that do not classify the request; they leave `EndpointType` unset, which the Hub consumer persists as the empty string. `traffic_event.endpoint_type` is `TEXT NOT NULL DEFAULT ''`, so empty — never `NULL` — is the canonical "unclassified" value (the consumer field is a value-type `string` and the INSERT binds it verbatim via `stripNul`, so empty cannot raise a `NOT NULL` violation). Two consequences:
+
+- The estimator's `Lookup` treats an unknown/empty kind as `chat` (`return chatCostFormula`), so it never nil-derefs on an unclassified row — though compliance-proxy/agent rows do not run the estimator at all.
+- Any analytics, rollup, or UI that groups / filters / displays `traffic_event.endpoint_type` MUST treat `''` as "unclassified / non-AI", not assume every row has a kind. In particular `WHERE endpoint_type = 'chat'` silently excludes **all** compliance-proxy and agent traffic; a group-by yields an `''` bucket that should render as "Other / unclassified", not blank-or-error.
 
 **Adding a new cost formula for a new endpoint kind.** Three coordinated changes: (1) add the `EndpointKind*` constant in `packages/shared/transport/typology/endpointkind.go`; (2) register the cost formula keyed by the canonical kind string in `packages/ai-gateway/internal/execution/estimator/cost_formula_registry.go`; (3) add the rule to `packages/shared/transport/typology/defaults.go` so `ClassifyPath` recognises the request path.
 

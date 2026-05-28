@@ -328,13 +328,15 @@ Developer Portal → Profiles → + → **Developer ID** → select App ID → s
 
 ## Prod URLs the .pkg bakes into agent.yaml
 
+Domains below are placeholders — substitute the deployment's real domain.
+
 | Key | Value | Source service |
 |-----|-------|---------------|
-| `hubURL` | `wss://hub.nexus.ai/ws` | Hub WebSocket (thingclient) |
-| `hubHTTPURL` | `https://hub.nexus.ai` | Hub REST (audit upload, enrollment, /api/internal/things/*) |
-| `cpURL` | `https://cp.nexus.ai` | Control Plane (SSO sign-in OAuth callback, agent-bootstrap, IdP) |
+| `hubURL` | `wss://hub.<your-domain>/ws` | Hub WebSocket (thingclient) |
+| `hubHTTPURL` | `https://hub.<your-domain>` | Hub REST (audit upload, enrollment, /api/internal/things/*) |
+| `cpURL` | `https://cp.<your-domain>` | Control Plane (SSO sign-in OAuth callback, agent-bootstrap, IdP) |
 
-`api.nexus.ai` (the AI Gateway) is NOT in agent config — the agent's hooks (content-safety / pii-detector / rulepack-engine / …) all run locally in-process via `packages/shared/policy/hooks`; there is no agent → ai-gateway HTTP callout. The AI Gateway is a destination for END-USER LLM traffic that the agent's transparent proxy intercepts like any other host.
+The AI Gateway (`api.<your-domain>`) is NOT in agent config — the agent's hooks (content-safety / pii-detector / rulepack-engine / …) all run locally in-process via `packages/shared/policy/hooks`; there is no agent → ai-gateway HTTP callout. The AI Gateway is a destination for END-USER LLM traffic that the agent's transparent proxy intercepts like any other host.
 
 ## Post-Install: Enroll Device
 
@@ -342,14 +344,14 @@ After installing the .pkg, enroll the device to connect it to the Hub:
 
 ```bash
 sudo /Applications/NexusAgent.app/Contents/MacOS/nexus-agent enroll \
-  --hub-url https://hub.nexus.ai \
+  --hub-url https://hub.<your-domain> \
   --token <enrollment-token>
 
 # OR — SSO self-enrollment (preferred, picks up hubHTTPURL from agent.yaml):
 sudo /Applications/NexusAgent.app/Contents/MacOS/nexus-agent enroll-sso
 ```
 
-Get `<enrollment-token>` from the Control Plane admin UI at https://cp.nexus.ai (Nodes → Add Device).
+Get `<enrollment-token>` from the Control Plane admin UI at https://cp.<your-domain> (Nodes → Add Device).
 
 ---
 
@@ -379,7 +381,7 @@ sudo bash packages/agent/platform/darwin/Scripts/uninstall.sh
 | `darwin/Package.swift` | SPM root — builds NexusAgentUI + NexusAgentExtension |
 | `darwin/NexusAgent/NexusAgent.entitlements` | Host app: app-proxy-provider-systemextension + system-extension.install + application-identifier + team-identifier |
 | `darwin/NexusAgent/NexusAgentDaemon.entitlements` | Go binary: network only (no NE) |
-| `darwin/NexusAgent/NexusAgentExtension/NexusAgentExtension.entitlements` | Extension: app-proxy-provider + `com.apple.developer.networking.networkextension` |
+| `darwin/NexusAgent/NexusAgentExtension/NexusAgentExtension.entitlements` | Extension: `com.apple.developer.networking.networkextension` = app-proxy-provider-systemextension (+ network.client) |
 | `darwin/NexusAgent/NexusAgentExtension/Info.plist` | Extension bundle: EXExtensionPointIdentifier = com.apple.networkextension.app-proxy |
 | `darwin/Scripts/build-prod.sh` | Full prod pipeline |
 | `darwin/Scripts/build.sh` | .app bundle builder |
@@ -440,7 +442,7 @@ macOS 26 enforces stricter launch constraints for apps with embedded provisionin
 1. Every entitlement in the code signature must be authorized by the embedded provisioning profile.
 2. `com.apple.application-identifier` (`TEAMID.BUNDLE_ID`) **must** be present in the code signature — it is not auto-injected when using `codesign --entitlements` directly (unlike Xcode builds).
 3. `com.apple.developer.team-identifier` **must** also be present.
-4. The NE networkextension values must use the `-systemextension` suffix form (e.g. `app-proxy-provider-systemextension`) for host apps — the non-suffixed form (`app-proxy-provider`) is only valid in the extension bundle itself.
+4. The `com.apple.developer.networking.networkextension` entitlement value must use the `-systemextension` suffix form (`app-proxy-provider-systemextension`) in BOTH the host app and the system extension — the non-suffixed `app-proxy-provider` is the legacy app-extension (appex) form and is not used by a system extension. (The unsuffixed `com.apple.networkextension.app-proxy` in the extension's `Info.plist` is the `NEProviderClasses` extension-point key — a different field, not an entitlement value.)
 5. The host app must **not** carry entitlements that are absent from its provisioning profile. If `system-extension.install` is not in the profile, remove it from the entitlements file (and disable `activateNetworkExtension()` until the profile is regenerated).
 
 **Verify before shipping:**

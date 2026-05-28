@@ -45,6 +45,8 @@ This is the contract `core.ExtractUsage` in the AI Gateway depends on — see [p
 
 Beyond usage, a normalizer reconstructs the conversation into `Messages[]`, each a `core.Message` with a role and a `[]ContentBlock`. Content blocks carry typed payloads — `text`, `tool_use`, `tool_result`, and `reasoning` — so the audit pipeline stores readable normalized text and preserves tool and chain-of-thought content rather than dropping it. Embedding wires populate `Inputs[]` and `Usage` instead of messages. Streamed responses are folded frame by frame (`normalize/extract/accumulator.go`) into a single final payload.
 
+A Tier-1 codec whose surface is captured as a self-contained SSE stream folds that stream itself before decoding. `codecs/openai_responses.go` is the case in point: a streamed `/v1/responses` egress is stored as the raw Responses-API event stream the client received (`event: response.output_text.delta` … terminated by `response.completed`, which carries the complete response object). The codec collapses that stream to the terminal response object — falling back to the accumulated `output_text` deltas when the capture is truncated before the terminal event — so a streamed row normalizes to the same `Messages[]` + `Usage` as a non-streamed one instead of failing the JSON decode on the leading `event:` framing and emitting an empty payload.
+
 ## 5. Reuse across services
 
 `BuildRegistry` wires all three tiers — `codecs.RegisterDefaultAIBuiltins`, `adapters.RegisterTier1AdapterNormalizers`, `extract.WireTier2` — and freezes the registry. Each service builds it once at startup and calls `Registry.Normalize`:

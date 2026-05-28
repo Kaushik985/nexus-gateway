@@ -77,6 +77,20 @@ The caller's wire shape is preserved end-to-end: whatever ingress a client calls
 
 The cross-format decision is driven by `typology.KindFromWireShape` (chat / embeddings) plus the responses-native rule rather than a hardcoded ingress list, so a new chat or embeddings ingress is covered without changing the dispatch gates.
 
+### Round-trip equivalence standard (the shape-conversion test of record)
+
+A shape conversion is correct **iff it is lossless through the canonical hub in both directions**. The standard test — and the bar every shape-conversion change must clear — is the double round-trip:
+
+```
+shape A  →  canonical(OpenAI)  →  shape B  →  canonical(OpenAI)  →  shape A′
+```
+
+If `A′` is semantically equal to the original `A`, the whole `A ↔ canonical ↔ B` chain is proven: the A→canonical decode, the canonical→B encode, the B→canonical decode, AND the canonical→A encode all agree. Any field the chain drops, renames, or corrupts surfaces as a divergence between `A` and `A′` — you do not need a per-direction golden file for every field, the identity is self-checking.
+
+Equivalence is asserted on the **canonical projection** of both ends — re-canonicalize `A` and `A′` and compare the content-bearing signature (ordered message `role` + `text`, tool calls, etc.), not raw bytes. Field ordering and protocol-default backfill (§4, e.g. `max_tokens`) and the per-hop model-alias rewrite are expected to differ and are not failures.
+
+This is implemented as the table-driven `TestShapeRoundTripIdentity` in `canonicalbridge`, run over every routable `(A, B)` chat pair. It is the request-side companion to the §3 response reshape and the Rule 6 streaming parity. **A new ingress or target adapter is not "done" until it passes the double round-trip against every existing shape** — add the new format to the standard's shape list in the same PR.
+
 ## 3a. The eight binding rules
 
 These rules are binding. Any change under `packages/ai-gateway/internal/providers/specs/<name>/` (codec, stream session, error normalizer, hub ingress) must conform before shipping. Run `/adapter-conformance-check` to audit an adapter against them.
@@ -222,6 +236,7 @@ Run `/adapter-conformance-check` before completion to verify the adapter against
 A new or changed adapter is validated at four levels:
 
 - **Unit tests** — table-driven codec tests for `EncodeRequest` / `DecodeResponse`: canonical↔wire round-trips, each prefix-list rule, the backstop fill (§4), and usage extraction (§5). Each Go package holds ≥95% statement coverage.
+- **Round-trip equivalence** — the shape-conversion test of record (§3): the double round-trip `A → canonical → B → canonical → A` must return a semantically-equal `A` for every routable shape pair (`TestShapeRoundTripIdentity`). A new ingress/target adapter adds itself to the standard's shape list in the same PR.
 - **Conformance** — `/adapter-conformance-check` audits the codec against §3a Rules 1-8 (per-adapter logic that leaked into the dispatcher, missing canonicalize-before-encode, error envelopes that bypass the helper, prefix-lists without observed-400 evidence, missing `PassthroughRewrite` wiring).
 - **Full-surface smoke** — `tests/scripts/smoke-gateway.py --all-ingress` exercises every model across all ingresses (chat / responses / messages / gemini), non-stream + SSE + a two-turn cache arm. It cross-checks each `traffic_event` row (cost, tokens, cache classification, normalized text) and diffs Prometheus counters. The prompt-cache arm is mandatory on every ingress (§6).
 - **Usage / cost cross-check** — the smoke compares the parsed canonical usage against the persisted `traffic_event` row, catching a codec that parses usage but fails to stamp it.

@@ -34,7 +34,7 @@ The full workflow is in CLAUDE.md → "Mandatory Development Workflow". The comp
 cd packages/nexus-hub        && go run ./cmd/nexus-hub/             # port 3060
 cd packages/control-plane    && go run ./cmd/control-plane/         # port 3001
 cd packages/ai-gateway       && go run ./cmd/ai-gateway/            # port 3050
-cd packages/compliance-proxy && go run ./cmd/compliance-proxy/      # port 3040
+cd packages/compliance-proxy && go run ./cmd/compliance-proxy/      # port 3128
 npm run dev:control-plane-ui                                        # port 3000
 ```
 

@@ -1,38 +1,28 @@
-// Package bridge implements the macOS NE → Go MITM bridge.
+// Package bridge implements the macOS NE → Go loopback listener that feeds
+// the agent's TLS-bump inspect path.
 //
-// Background: the macOS NETransparentProxyProvider in
-// TransparentProxyProvider.swift could observe outbound flows but could not
-// terminate TLS — Swift just byte-relayed packets to the real upstream. The
-// Linux/Windows agents do TLS bump via proxy.go::MITMRelay (mints a leaf
-// cert per-host signed by the device CA, terminates client TLS, runs the
-// hook chain on the decrypted HTTP, then re-encrypts upstream). On macOS
-// none of that happened, so every "inspect" event in the audit log had
-// empty METHOD / PATH / HOOK DECISION / Request body / Response body —
-// the agent on macOS was effectively a metadata-only collector despite the
-// rich pipeline being one hop away.
-//
-// This package bridges the gap. The agent daemon listens on a
-// loopback TCP port (default 127.0.0.1:9443). Swift NE redirects
-// every flow it decides to inspect to that port instead of the real
-// upstream, prefixing the connection with a single-line text header
+// The macOS NETransparentProxyProvider in TransparentProxyProvider.swift
+// observes outbound flows but does not terminate TLS itself. For flows it
+// decides to inspect, Swift NE redirects the connection to the daemon's
+// loopback TCP port (default 127.0.0.1:9443) instead of the real upstream,
+// prefixing it with a single-line text header
 //
 //	BRIDGE <host>:<port> <flowId>\n
 //
-// The Go side parses the header, then calls proxy.MITMRelay with the
-// remaining stream as the client connection — the same code path
-// Linux/Windows have used since launch. Result on macOS: full TLS
-// termination, HTTP request/response parse, hook execution, body
-// capture, audit row populated with method/path/provider/model.
+// The Go side parses the header, then hands the remaining stream to
+// proxy.BumpFlow (shared/tlsbump.BumpConnection) — the same TLS-bump engine
+// the Linux and Windows inspect paths, the compliance proxy, and the AI
+// gateway use. Result: full TLS termination, HTTP request/response parse,
+// hook execution, body capture, and per-HTTP-request audit rows.
 //
-// Failure mode is fail-open: if the bridge listener can't accept
-// (port busy, OOM, panic), Swift NE's redirect connect() fails and
-// Swift falls back to the original raw-relay path with the audit row
-// stamped BUMP_FAILED_PASSTHROUGH. The flow still reaches the user's
-// destination — the agent just loses inspection visibility for that
-// flow rather than losing the flow itself.
+// Failure mode is fail-open: if the bridge listener can't accept (port busy,
+// OOM, panic), Swift NE's redirect connect() fails and Swift falls back to
+// its raw-relay path with the audit row stamped BUMP_FAILED_PASSTHROUGH. The
+// flow still reaches the user's destination — the agent just loses
+// inspection visibility for that flow rather than losing the flow itself.
 //
-// Loopback-only is enforced at bind time (Listen on 127.0.0.1, not
-// 0.0.0.0) to keep the bridge invisible to anything off the host.
+// Loopback-only is enforced at bind time (Listen on 127.0.0.1, not 0.0.0.0)
+// to keep the bridge invisible to anything off the host.
 package bridge
 
 import (
@@ -52,7 +42,7 @@ import (
 // HandleFunc is the callback invoked once the bridge has parsed the
 // BRIDGE header. peeked carries any bytes the bufio reader pulled in
 // past the header (the start of the client's TLS ClientHello). The
-// caller (typically wired to proxy.MITMRelay) is responsible for the
+// caller (typically wired to proxy.BumpFlow) is responsible for the
 // full client lifecycle including Close.
 type HandleFunc func(ctx context.Context, clientConn net.Conn, peekedHello []byte, dstHost string, dstPort int, flowID string)
 
@@ -80,7 +70,7 @@ type Config struct {
 }
 
 // Listener is a loopback TCP listener that demultiplexes Swift NE
-// flows into proxy.MITMRelay calls.
+// flows into proxy.BumpFlow calls.
 type Listener struct {
 	cfg      Config
 	logger   *slog.Logger
@@ -178,8 +168,8 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
-	// Clear the read deadline before handing off to MITMRelay; the
-	// MITM pipeline manages its own per-phase timeouts.
+	// Clear the read deadline before handing off to BumpFlow; the
+	// bump pipeline manages its own per-phase timeouts.
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
 		l.logger.Warn("bridge: clear deadline failed", "error", err)
 	}

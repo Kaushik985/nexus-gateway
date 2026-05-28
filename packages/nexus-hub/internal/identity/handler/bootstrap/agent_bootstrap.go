@@ -50,7 +50,7 @@ const bootstrapCacheTTL = 60 * time.Second
 
 // bootstrapResponse is the JSON shape returned to agents. Field names
 // match the public contract documented in
-// docs/developers/architecture/services/agent/agent-internals-sibling-pairs-architecture.md (TBD).
+// docs/developers/architecture/services/hub/nexus-hub-enrollment-architecture.md.
 type bootstrapResponse struct {
 	ControlPlaneURL string `json:"controlPlaneURL"`
 	DeviceAuthMode  string `json:"deviceAuthMode"`

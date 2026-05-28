@@ -10,7 +10,41 @@ import (
 	provcore "github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/providers/core"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/typology"
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/providers/specs/openai/codec"
+	"github.com/tidwall/gjson"
 )
+
+// TestIdentityCodec_EncodeRequest_responses_rewritesModel covers the round-2
+// follow-up: native /v1/responses passthrough reaches the codec (not the
+// passthrough rewritePassthroughModel path), so the codec must rewrite the
+// body's `model` to the resolved upstream ProviderModelID — otherwise an
+// aliased catalog model ships the alias to the upstream.
+func TestIdentityCodec_EncodeRequest_responses_rewritesModel(t *testing.T) {
+	c := codec.IdentityCodec()
+	input := []byte(`{"model":"my-catalog-alias","input":"hi","max_output_tokens":16}`)
+	target := provcore.CallTarget{ProviderModelID: "gpt-4o"}
+	encRes, err := c.EncodeRequest(typology.WireShapeOpenAIResponses, input, target)
+	if err != nil {
+		t.Fatalf("EncodeRequest: %v", err)
+	}
+	if got := gjson.GetBytes(encRes.Body, "model").String(); got != "gpt-4o" {
+		t.Errorf("responses model must be rewritten to ProviderModelID; got %q body=%s", got, encRes.Body)
+	}
+	if !gjson.GetBytes(encRes.Body, "input").Exists() {
+		t.Errorf("responses body must stay responses-shape (keep input); got %s", encRes.Body)
+	}
+}
+
+func TestIdentityCodec_EncodeRequest_responses_noProviderModelID_noop(t *testing.T) {
+	c := codec.IdentityCodec()
+	input := []byte(`{"model":"gpt-4o","input":"hi"}`)
+	encRes, err := c.EncodeRequest(typology.WireShapeOpenAIResponses, input, provcore.CallTarget{})
+	if err != nil {
+		t.Fatalf("EncodeRequest: %v", err)
+	}
+	if string(encRes.Body) != string(input) {
+		t.Errorf("no ProviderModelID → identity; got %s", encRes.Body)
+	}
+}
 
 func TestIdentityCodec_EncodeRequest_isNoop(t *testing.T) {
 	c := codec.IdentityCodec()

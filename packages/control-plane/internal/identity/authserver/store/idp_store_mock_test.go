@@ -193,60 +193,6 @@ func TestIdPStore_GetByID_GenericError(t *testing.T) {
 	}
 }
 
-// TestIdPStore_GetOIDC_HappyPath asserts the first-enabled-oidc lookup
-// returns the row with type='oidc'.
-func TestIdPStore_GetOIDC_HappyPath(t *testing.T) {
-	mock, s := newIdPMock(t)
-	ctx := context.Background()
-
-	mock.ExpectQuery(`WHERE type = 'oidc' AND enabled = TRUE`).
-		WillReturnRows(pgxmock.NewRows(idpRowCols).
-			AddRow("idp_oidc", "oidc", "Okta", true, []byte(`{}`), []byte(`[]`), "developer", true))
-
-	p, err := s.GetOIDC(ctx)
-	if err != nil {
-		t.Fatalf("GetOIDC: %v", err)
-	}
-	if p.Type != "oidc" {
-		t.Fatalf("expected type=oidc; got %q", p.Type)
-	}
-}
-
-// TestIdPStore_GetOIDC_NotFound asserts no oidc IdP -> ErrIdPNotFound.
-func TestIdPStore_GetOIDC_NotFound(t *testing.T) {
-	mock, s := newIdPMock(t)
-	ctx := context.Background()
-
-	mock.ExpectQuery(`WHERE type = 'oidc' AND enabled = TRUE`).
-		WillReturnError(pgx.ErrNoRows)
-
-	p, err := s.GetOIDC(ctx)
-	if p != nil {
-		t.Fatalf("idp should be nil; got %+v", p)
-	}
-	if !errors.Is(err, store.ErrIdPNotFound) {
-		t.Fatalf("expected ErrIdPNotFound; got %v", err)
-	}
-}
-
-// TestIdPStore_GetOIDC_GenericError asserts non-ErrNoRows surfaces verbatim.
-func TestIdPStore_GetOIDC_GenericError(t *testing.T) {
-	mock, s := newIdPMock(t)
-	ctx := context.Background()
-	boom := errors.New("transport")
-
-	mock.ExpectQuery(`WHERE type = 'oidc' AND enabled = TRUE`).
-		WillReturnError(boom)
-
-	p, err := s.GetOIDC(ctx)
-	if p != nil {
-		t.Fatalf("idp should be nil; got %+v", p)
-	}
-	if !errors.Is(err, boom) {
-		t.Fatalf("expected generic err; got %v", err)
-	}
-}
-
 // TestIdPStore_GetLocal_HappyPath asserts the WHERE type='local' lookup
 // returns the local IdP row.
 func TestIdPStore_GetLocal_HappyPath(t *testing.T) {

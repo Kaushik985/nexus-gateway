@@ -49,6 +49,47 @@ func minimalCanonicalChatResponse() []byte {
 	}`)
 }
 
+// TestIngressChatToWire_StreamIntentReachesNonOpenAITarget is the regression for
+// the gemini-ingress → anthropic-target streaming text-loss bug. Gemini signals
+// streaming via the :streamGenerateContent URL, so its canonical chat body has
+// no `stream` field. The Anthropic codec propagates `stream` from its canonical
+// input; without the stream stamp the upstream /v1/messages request is
+// non-streaming and the client's SSE terminates with EMPTY text. The stamp must
+// flow the resolved stream intent into the target wire body.
+func TestIngressChatToWire_StreamIntentReachesNonOpenAITarget(t *testing.T) {
+	b := testBridge(t)
+	body := minimalNativeChatRequest(t, provcore.FormatGemini)
+	ct := dummyCallTarget(provcore.FormatAnthropic)
+
+	streamed, err := b.IngressChatToWire(provcore.FormatGemini, provcore.FormatAnthropic, body, ct, true)
+	if err != nil {
+		t.Fatalf("IngressChatToWire stream=true: %v", err)
+	}
+	if !gjson.GetBytes(streamed, "stream").Bool() {
+		t.Errorf("stream=true must stamp anthropic body stream:true; got %s", streamed)
+	}
+
+	nonStreamed, err := b.IngressChatToWire(provcore.FormatGemini, provcore.FormatAnthropic, body, ct, false)
+	if err != nil {
+		t.Fatalf("IngressChatToWire stream=false: %v", err)
+	}
+	if gjson.GetBytes(nonStreamed, "stream").Bool() {
+		t.Errorf("stream=false must NOT set anthropic stream:true; got %s", nonStreamed)
+	}
+}
+
+func TestEnsureCanonicalStream(t *testing.T) {
+	// Stamps stream onto an OpenAI-canonical body that lacks it.
+	got := EnsureCanonicalStream([]byte(`{"model":"m","messages":[]}`))
+	if !gjson.GetBytes(got, "stream").Bool() {
+		t.Errorf("stream not stamped: %s", got)
+	}
+	// Empty body is returned unchanged (no panic, no spurious bytes).
+	if out := EnsureCanonicalStream(nil); len(out) != 0 {
+		t.Errorf("empty body must stay empty; got %s", out)
+	}
+}
+
 func TestIngressChatToWire_PassthroughEveryFormat(t *testing.T) {
 	b := testBridge(t)
 	for _, ingress := range provcore.AllFormats() {
@@ -62,7 +103,7 @@ func TestIngressChatToWire_PassthroughEveryFormat(t *testing.T) {
 		t.Run(string(ingress), func(t *testing.T) {
 			body := minimalNativeChatRequest(t, ingress)
 			ct := dummyCallTarget(ingress)
-			out, err := b.IngressChatToWire(ingress, ingress, body, ct)
+			out, err := b.IngressChatToWire(ingress, ingress, body, ct, false)
 			if err != nil {
 				t.Fatalf("passthrough: %v", err)
 			}
@@ -92,7 +133,7 @@ func TestIngressChatToWire_AllChatRoutableCrossPairs(t *testing.T) {
 			t.Run(string(ingress)+"_to_"+string(target), func(t *testing.T) {
 				body := minimalNativeChatRequest(t, ingress)
 				ct := dummyCallTarget(target)
-				wire, err := b.IngressChatToWire(ingress, target, body, ct)
+				wire, err := b.IngressChatToWire(ingress, target, body, ct, false)
 				if err != nil {
 					t.Fatalf("IngressChatToWire: %v", err)
 				}
@@ -408,5 +449,102 @@ func TestChatRoutable_BedrockIngressOnlySelf(t *testing.T) {
 	}
 	if !b.ChatRoutable(provcore.FormatBedrock, provcore.FormatBedrock) {
 		t.Fatal("bedrock→bedrock same-format must be routable")
+	}
+}
+
+// chatKindWireShapesDelegatingToChatRoutable lists the chat-kind WireShapes
+// whose EndpointRoutable result MUST equal ChatRoutable. WireShapeOpenAIResponses
+// and WireShapeOpenAICompletionsLegacy are chat-kind per KindFromWireShape but
+// are intentionally EXCLUDED: they carry dedicated rules (Responses native-
+// passthrough gate; legacy /v1/completions OpenAI-only translation) and have
+// their own matrix tests above.
+var chatKindWireShapesDelegatingToChatRoutable = []typology.WireShape{
+	typology.WireShapeOpenAIChat,
+	typology.WireShapeAnthropicMessages,
+	typology.WireShapeGeminiGenerateContent,
+	typology.WireShapeVertexGenerateContent,
+	typology.WireShapeBedrockConverse,
+	typology.WireShapeBedrockInvoke,
+	typology.WireShapeCohereChat,
+}
+
+// TestEndpointRoutable_ChatMatrix pins the contract that EVERY chat-kind
+// WireShape (not just openai-chat) routes via ChatRoutable. This is the test
+// that was missing: before the fix only WireShapeOpenAIChat was wired to
+// ChatRoutable and the anthropic-messages / gemini-generate-content shapes fell
+// into a same-format-only default — so /v1/messages and /v1beta could only ever
+// reach their own provider's models. Dispatching EndpointRoutable by
+// KindFromWireShape closes that gap, and this matrix guards against a
+// regression where a new chat WireShape silently drops back to same-format.
+func TestEndpointRoutable_ChatMatrix(t *testing.T) {
+	b := testBridge(t)
+	for _, ep := range chatKindWireShapesDelegatingToChatRoutable {
+		if typology.KindFromWireShape(ep) != typology.EndpointKindChat {
+			t.Fatalf("%s must classify as EndpointKindChat", ep)
+		}
+		for _, ingress := range provcore.AllFormats() {
+			for _, target := range provcore.AllFormats() {
+				got := b.EndpointRoutable(ep, ingress, target)
+				want := b.ChatRoutable(ingress, target)
+				if got != want {
+					t.Errorf("EndpointRoutable(%s,%s,%s)=%v want ChatRoutable=%v",
+						ep, ingress, target, got, want)
+				}
+			}
+		}
+	}
+}
+
+// TestEndpointRoutable_CrossProviderIngressUnblocked locks in the exact
+// product intent stated by the maintainer: each ingress endpoint accepts only
+// its own wire format, but may route to ANY model regardless of the model's
+// native provider. It asserts the precise (ingress→target) pairs that the
+// production --all-ingress smoke reported as "cannot be routed ... in this
+// release" on /v1/messages (anthropic) and /v1beta (gemini) are now routable.
+func TestEndpointRoutable_CrossProviderIngressUnblocked(t *testing.T) {
+	b := testBridge(t)
+	cases := []struct {
+		name    string
+		ep      typology.WireShape
+		ingress provcore.Format
+		target  provcore.Format
+	}{
+		// /v1/messages (anthropic) → non-anthropic models.
+		{"messages→openai", typology.WireShapeAnthropicMessages, provcore.FormatAnthropic, provcore.FormatOpenAI},
+		{"messages→gemini", typology.WireShapeAnthropicMessages, provcore.FormatAnthropic, provcore.FormatGemini},
+		// /v1beta (gemini) → non-gemini models.
+		{"gemini→openai", typology.WireShapeGeminiGenerateContent, provcore.FormatGemini, provcore.FormatOpenAI},
+		{"gemini→anthropic", typology.WireShapeGeminiGenerateContent, provcore.FormatGemini, provcore.FormatAnthropic},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !b.EndpointRoutable(tc.ep, tc.ingress, tc.target) {
+				t.Fatalf("EndpointRoutable(%s,%s,%s)=false; cross-provider routing must be allowed",
+					tc.ep, tc.ingress, tc.target)
+			}
+		})
+	}
+
+	// Guard the inverse of the bug: the anthropic-messages / gemini ingresses
+	// must NOT be same-format-only. Count their cross-provider routable targets.
+	for _, ep := range []struct {
+		ws      typology.WireShape
+		ingress provcore.Format
+	}{
+		{typology.WireShapeAnthropicMessages, provcore.FormatAnthropic},
+		{typology.WireShapeGeminiGenerateContent, provcore.FormatGemini},
+	} {
+		var cross int
+		for _, target := range provcore.AllFormats() {
+			if target == ep.ingress {
+				continue
+			}
+			if b.EndpointRoutable(ep.ws, ep.ingress, target) {
+				cross++
+			}
+		}
+		if cross == 0 {
+			t.Errorf("%s ingress is still same-format-only (0 cross-provider targets) — the gate gap is not closed", ep.ws)
+		}
 	}
 }

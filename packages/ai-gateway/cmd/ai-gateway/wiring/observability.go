@@ -17,6 +17,7 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/core/metrics/registry"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/core/telemetry"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillfactory"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillsweep"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/mq"
 	normcore "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/normalize/core"
 	normcodecs "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/normalize/codecs"
@@ -74,6 +75,13 @@ func InitAuditWriter(
 	}
 	if spillStore != nil {
 		auditWriter.WithSpillStore(spillStore)
+		// Process-lifetime sweep so the backend's retention horizon and
+		// total-size cap are enforced. The store is per-process, so each
+		// owner sweeps its own; for a shared S3 bucket the sweeps are
+		// idempotent across services.
+		go spillsweep.Run(context.Background(), spillStore, spillsweep.Options{
+			Retention: spillCfg.RetentionHorizon(),
+		}, logger)
 	}
 
 	normalizeRegistry := normcore.NewRegistry()
@@ -81,7 +89,7 @@ func InitAuditWriter(
 	adapters.RegisterTier1AdapterNormalizers(normalizeRegistry)
 	extract.WireTier2(normalizeRegistry)
 	normalizeRegistry.Freeze()
-	normalizeMetrics := normcore.NewMetrics(prometheus.DefaultRegisterer, "nexus_ai_gateway")
+	normalizeMetrics := normcore.NewMetrics(prometheus.DefaultRegisterer, "nexus")
 	auditWriter.WithNormalizer(audit.NormalizeFn(normcore.BuildAuditFn(normalizeRegistry, normalizeMetrics)))
 	slog.Info("normalize registry wired", "adapters", normalizeRegistry.All())
 

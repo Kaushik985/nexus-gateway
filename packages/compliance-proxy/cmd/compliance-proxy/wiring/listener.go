@@ -2,7 +2,6 @@ package wiring
 
 import (
 	"log/slog"
-	"sync/atomic"
 	"time"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/compliance-proxy/internal/access"
@@ -40,7 +39,6 @@ type ListenerDeps struct {
 	UpstreamTransport     *tlsbump.UpstreamTransport
 	CertCache             *cache.CertCache
 	ComplianceResolver    *compliance.PolicyResolver
-	DomainSnapshot        *atomic.Pointer[traffic.DomainSnapshot]
 	AuditEmitter          *compliance.AuditEmitter
 	StreamingLiveConfig   streaming.LiveConfig
 	PerHookTimeout        time.Duration
@@ -74,7 +72,6 @@ func InitProxyServer(d ListenerDeps) *proxyserver.ProxyServer {
 	}
 	if d.Cfg.Compliance.Enabled && d.ComplianceResolver != nil {
 		proxyCfg.CompliancePipeline = d.ComplianceResolver
-		proxyCfg.DomainSnapshot = d.DomainSnapshot
 		proxyCfg.AuditEmitter = d.AuditEmitter
 		proxyCfg.StreamingConfig = d.StreamingLiveConfig
 		proxyCfg.PerHookTimeout = d.PerHookTimeout

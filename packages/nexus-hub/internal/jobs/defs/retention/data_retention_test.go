@@ -74,15 +74,11 @@ func TestDataRetention_Run_AllConfigured(t *testing.T) {
 	mock.ExpectExec(`DELETE FROM "AdminAuditLog"`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 3))
-	mock.ExpectExec(`DELETE FROM metric_rollup_1h`).
-		WithArgs(pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("DELETE", 7))
 
 	cfg := DataRetentionConfig{
 		TrafficEventDays:        30,
 		TrafficEventPayloadDays: 7,
 		AdminAuditLogDays:       90,
-		MetricRollupDays:        14,
 	}
 	j := &DataRetentionJob{pool: mock, cfg: cfg, logger: testLogger()}
 	if err := j.Run(context.Background()); err != nil {
@@ -127,11 +123,8 @@ func TestDataRetention_Run_PartialError(t *testing.T) {
 	mock.ExpectExec(`DELETE FROM "AdminAuditLog"`).
 		WithArgs(pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("DELETE", 3))
-	mock.ExpectExec(`DELETE FROM metric_rollup_1h`).
-		WithArgs(pgxmock.AnyArg()).
-		WillReturnResult(pgxmock.NewResult("DELETE", 0))
 
-	cfg := DataRetentionConfig{TrafficEventDays: 1, TrafficEventPayloadDays: 1, AdminAuditLogDays: 1, MetricRollupDays: 1}
+	cfg := DataRetentionConfig{TrafficEventDays: 1, TrafficEventPayloadDays: 1, AdminAuditLogDays: 1}
 	j := &DataRetentionJob{pool: mock, cfg: cfg, logger: testLogger()}
 	err = j.Run(context.Background())
 	if !errors.Is(err, sentinel) {

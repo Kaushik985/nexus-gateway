@@ -265,7 +265,9 @@
       "action": "Action",
       "status": "Status",
       "tags": "Tags",
-      "compliance": "Hook"
+      "compliance": "Hook",
+      "method": "Method",
+      "path": "Path"
     },
     "detail": {
       "title": "Event Details",
@@ -288,7 +290,17 @@
       "hooksParseError": "Hook pipeline payload is unparseable.",
       "waterfall": {
         "title": "Phase Breakdown"
-      }
+      },
+      "fieldTime": "Time",
+      "fieldAction": "Action",
+      "fieldHookDecision": "Hook Decision",
+      "fieldLatency": "Latency",
+      "payloadsTitle": "Payloads",
+      "payloadRequest": "Request body",
+      "payloadResponse": "Response body",
+      "payloadSpilled": "Large body stored in spill ({{size}}) — view it in the Control Plane.",
+      "payloadEmpty": "Not captured (payload capture disabled or body spilled to remote store).",
+      "payloadDecodeError": "Failed to decode base64 payload."
     },
     "waterfall": {
       "reqHooks": "Request Hooks",
@@ -435,7 +447,9 @@
       "agentResumed": "Resumed",
       "agentSsoLogin": "Signed in",
       "agentSsoLogout": "Signed out"
-    }
+    },
+    "prevPage": "Previous",
+    "nextPage": "Next"
   },
   "identity": {
     "title": "Identity",
@@ -480,7 +494,9 @@
       "inflight": "Restarting daemon…",
       "success": "Daemon restart requested. It will be back in ~10 seconds.",
       "blocked": "Restart blocked: {{error}}",
-      "failed": "Restart failed: {{error}}"
+      "failed": "Restart failed: {{error}}",
+      "clicked": "Restart daemon clicked — confirm to proceed…",
+      "cancelled": "Restart daemon cancelled"
     },
     "copyBundle": {
       "button": "Copy support bundle",
@@ -613,6 +629,7 @@
   },
   "trafficDetail": {
     "tabRaw": "Raw",
-    "tabNormalized": "Normalized"
+    "tabNormalized": "Normalized",
+    "tabNormalizedDisabled": "No normalized payload for this event (non-AI traffic or non-bumped flow)."
   }
 }

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"sync/atomic"
 	"time"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/compliance-proxy/internal/compliance"
@@ -58,7 +57,6 @@ type Config struct {
 
 	// Compliance kernel
 	CompliancePipeline    *compliance.PolicyResolver
-	DomainSnapshot        *atomic.Pointer[traffic.DomainSnapshot]
 	AuditEmitter          *compliance.AuditEmitter
 	StreamingTuning       StreamingTuning
 	StreamingConfig       streaming.LiveConfig
@@ -187,7 +185,6 @@ func Run(ctx context.Context, conn net.Conn, cfg Config) {
 		st := cfg.StreamingTuning
 		bumpOpts = append(bumpOpts, tlsbump.WithCompliance(
 			cfg.CompliancePipeline,
-			cfg.DomainSnapshot,
 			cfg.AuditEmitter,
 			cfg.StreamingConfig,
 			st.PerHookTimeout,

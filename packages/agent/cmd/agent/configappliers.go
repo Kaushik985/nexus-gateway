@@ -19,6 +19,7 @@ import (
 	streampolicy "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming/policy"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/cmd/agent/platformshim"
+	"github.com/AlphaBitCore/nexus-gateway/packages/agent/cmd/agent/wiring"
 )
 
 // configAppliers holds all the shadow key applier closures and derived objects.
@@ -50,6 +51,12 @@ type buildConfigAppliersArgs struct {
 	agentPipeline        *agentcompliance.AgentPipeline
 	exemptionStore       *exemption.Store
 	payloadCaptureStore  *payloadcapture.Store
+	// localCaptureStore is the always-on local-capture store fed to tlsbump.
+	// The payload_capture applier re-derives it (server params + local flags)
+	// on every Hub push via wiring.SyncLocalCapture. localBodyCapture is the
+	// agent-local capture intent (yaml localBodyCapture, default true).
+	localCaptureStore    *payloadcapture.Store
+	localBodyCapture     bool
 	streamingPolicyStore *streampolicy.Store
 	policiesCache        *policies.SnapshotCache
 	// attestationEnabled is the live boolean read by the agent's
@@ -174,7 +181,17 @@ func buildConfigAppliers(a buildConfigAppliersArgs) configAppliers {
 		diagMode:            diagModeApply,
 		interceptionDomains: applyOf(teeCatB("interception_domains", shadow.AdapterFunc(a.agentPipeline.ApplyDomainsShadowState), a.policiesCache)),
 		hookConfig:          applyOf(teeCatB("hooks", shadow.AdapterFunc(a.agentPipeline.ApplyHooksShadowState), a.policiesCache)),
-		payloadCapture:      applyOf(teeCatB("payload_capture", shadow.AdapterFunc(a.payloadCaptureStore.ApplyShadowState), a.policiesCache)),
+		payloadCapture: applyOf(teeCatB("payload_capture", shadow.AdapterFunc(func(ctx context.Context, raw json.RawMessage) error {
+			// Apply the Hub config to the server store (the upload gate +
+			// size-param source), then re-derive the always-on local capture
+			// store: server params, local flags. A Hub push can change the
+			// inline cutoff but can never disable local capture.
+			if err := a.payloadCaptureStore.ApplyShadowState(ctx, raw); err != nil {
+				return err
+			}
+			wiring.SyncLocalCapture(a.localCaptureStore, a.payloadCaptureStore.Get(), a.localBodyCapture)
+			return nil
+		}), a.policiesCache)),
 		streamingCompliance: applyOf(teeCatB("streaming_compliance", shadow.AdapterFunc(a.streamingPolicyStore.ApplyShadowState), a.policiesCache)),
 		installedRulePacks: applyOf(teeCatB("installed_rule_packs", shadow.AdapterFunc(func(ctx context.Context, raw json.RawMessage) error {
 			return a.agentPipeline.ApplyRulePacksShadowState(ctx, raw)

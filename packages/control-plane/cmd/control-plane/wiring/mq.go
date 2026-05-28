@@ -33,7 +33,7 @@ func InitMQ(cfg *config.Config, logger *slog.Logger) (MQResult, error) {
 
 	mqCfg := mq.Config{
 		Driver:    cfg.MQ.Driver,
-		Namespace: "nexus_control_plane",
+		Namespace: "nexus",
 		NATS:      mq.NATSConfig{URL: cfg.MQ.NATS.URL},
 	}
 

@@ -254,6 +254,7 @@ type Server struct {
 	shutdownFn         ShutdownFn
 	queryEventsFn         QueryEventsFn
 	queryEventsFilteredFn QueryEventsFilteredFn // #88 — when wired, handler prefers this
+	eventByIDFn           EventByIDFn           // detail-by-id (drawer fetches body/normalized/spill on demand)
 	queryLifecycleFn   QueryLifecycleFn
 	getAppliedConfigFn GetAppliedConfigFn
 	quitAllowedFn      QuitAllowedFn
@@ -314,6 +315,17 @@ func NewServer(
 // in a single PR. Idempotent; safe to call multiple times.
 func (s *Server) SetQueryEventsFiltered(fn QueryEventsFilteredFn) {
 	s.queryEventsFilteredFn = fn
+}
+
+// EventByIDFn returns the full detail event for one id (body + normalized +
+// spill refs, with any local-spilled body already read back), or (nil, nil)
+// when no row matches. Backs the EVENT_BY_ID command — the detail drawer
+// fetches the heavy fields on demand instead of through every list page.
+type EventByIDFn func(id string) (*auditevent.Event, error)
+
+// SetEventByID wires the detail-by-id handler. Idempotent.
+func (s *Server) SetEventByID(fn EventByIDFn) {
+	s.eventByIDFn = fn
 }
 
 // Start begins listening. Blocks until Stop is called.
@@ -527,6 +539,9 @@ func (s *Server) dispatch(cmd string) any {
 	case "QUERY_EVENTS":
 		return s.handleQueryEvents(params)
 
+	case "EVENT_BY_ID":
+		return s.handleEventByID(params)
+
 	case "QUERY_LIFECYCLE_EVENTS":
 		return s.handleQueryLifecycle(params)
 
@@ -647,6 +662,14 @@ func (s *Server) dispatch(cmd string) any {
 		return map[string]any{"success": true, "device_id": deviceID}
 
 	case "PAUSE_PROTECTION":
+		// Gated by the same admin policy as SHUTDOWN: pausing disables
+		// compliance enforcement, so when the operator has disabled quit the
+		// user must not be able to pause either — otherwise the no-quit policy
+		// is trivially bypassed over the local IPC socket (world-connectable on
+		// macOS). When quit is allowed (the default) pause works normally.
+		if s.quitAllowedFn != nil && !s.quitAllowedFn() {
+			return map[string]any{"paused": false, "error": "pause is disabled by policy"}
+		}
 		if s.pauseFn == nil {
 			return map[string]any{"paused": false, "error": "pause not configured"}
 		}
@@ -727,6 +750,13 @@ func (s *Server) dispatch(cmd string) any {
 		// The handler typically clears device-token + thing-id from
 		// disk and signals a graceful shutdown; launchd respawns the
 		// agent which re-enters the onboarding flow on next boot.
+		//
+		// Gated by the same admin policy as SHUTDOWN/PAUSE: unenroll stops
+		// compliance (the agent drops into onboarding), so a no-quit policy
+		// must block it too — else the policy is bypassed via local IPC.
+		if s.quitAllowedFn != nil && !s.quitAllowedFn() {
+			return map[string]any{"acknowledged": false, "error": "sign-out is disabled by policy"}
+		}
 		if s.signOutFn == nil {
 			return map[string]any{"acknowledged": false, "error": "sign-out not configured"}
 		}
@@ -839,6 +869,30 @@ func (s *Server) handleQueryLifecycle(params string) any {
 		return map[string]any{"events": []any{}, "total": 0, "error": err.Error()}
 	}
 	return map[string]any{"events": events, "total": total}
+}
+
+// handleEventByID serves the detail drawer's on-demand fetch of one event's
+// heavy fields (body + normalized + spill). Returns {event: null} for an
+// unknown id so the UI can render an empty drawer rather than erroring.
+func (s *Server) handleEventByID(params string) any {
+	if s.eventByIDFn == nil {
+		return map[string]any{"event": nil, "error": "not configured"}
+	}
+	id := ""
+	for _, kv := range strings.Split(params, "&") {
+		p := strings.SplitN(kv, "=", 2)
+		if len(p) == 2 && p[0] == "id" {
+			id = p[1]
+		}
+	}
+	if id == "" {
+		return map[string]any{"event": nil, "error": "missing id"}
+	}
+	ev, err := s.eventByIDFn(id)
+	if err != nil {
+		return map[string]any{"event": nil, "error": err.Error()}
+	}
+	return map[string]any{"event": ev}
 }
 
 func (s *Server) handleQueryEvents(params string) any {

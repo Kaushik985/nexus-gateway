@@ -10,8 +10,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/authserver/revocation"
+	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/identity/iam"
 )
@@ -72,7 +72,7 @@ func (h *Handler) RegisterAuthSessionRoutes(g *echo.Group, iamMW func(string) ec
 // The caller's group MUST already be gated by rstokenauth.Middleware; this
 // method does not add its own auth.
 func (h *Handler) RegisterInternalAuthRoutes(g *echo.Group) {
-	g.POST("/auth/revoke-device", h.RevokeDeviceInternal)
+	g.POST("/auth/revoke-device", h.RevokeDeviceInternal) // iam-exempt: internal Hub->CP route, gated by rstokenauth not iamMW
 }
 
 // sessionRow is the JSON wire shape returned by ListAuthSessions. CreatedAt

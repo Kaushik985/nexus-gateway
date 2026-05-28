@@ -25,7 +25,8 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
+	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/clienttls"
+	sharedaudit "github.com/AlphaBitCore/nexus-gateway/packages/shared/audit"
 	nexushttp "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/http"
 )
 
@@ -121,6 +122,13 @@ type AuditEvent struct {
 	// disabled.
 	PayloadRequest  []byte `json:"payloadRequest,omitempty"`
 	PayloadResponse []byte `json:"payloadResponse,omitempty"`
+
+	// RequestSpillRef / ResponseSpillRef point at an oversize body the
+	// drain step uploaded to S3 via the Hub presign flow. When set, the
+	// inline Payload* field for that direction is empty — Hub demuxes
+	// inline-vs-spill on receipt. JSON tags match Hub's AgentAuditEvent.
+	RequestSpillRef  *sharedaudit.SpillRef `json:"requestSpillRef,omitempty"`
+	ResponseSpillRef *sharedaudit.SpillRef `json:"responseSpillRef,omitempty"`
 }
 
 // ExemptionUpload is the body of POST /api/internal/things/exemption. The
@@ -227,13 +235,13 @@ func NewClient(cfg Config) (*Client, error) {
 		H2ReadIdleTimeout:   30 * time.Second,
 		ForceHTTP2:          nexushttp.On(),
 	})
-	if err := relay.WithTLSConfig(httpC, tlsCfg); err != nil {
+	if err := clienttls.WithTLSConfig(httpC, tlsCfg); err != nil {
 		return nil, fmt.Errorf("hubhttp: install TLS config: %w", err)
 	}
 	// Wrap the transport with otelhttp so W3C traceparent is injected on
 	// every outbound call. The inner *http.Transport keeps doing per-host
 	// pooling and HTTP/2 multiplex.
-	innerTransport, err := relay.UnderlyingTransport(httpC)
+	innerTransport, err := clienttls.UnderlyingTransport(httpC)
 	if err != nil {
 		return nil, fmt.Errorf("hubhttp: extract inner transport: %w", err)
 	}

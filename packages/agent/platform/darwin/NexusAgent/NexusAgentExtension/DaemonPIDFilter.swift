@@ -2,9 +2,10 @@
 //
 // Background: the macOS NETransparentProxyProvider intercepts ALL
 // outbound TCP — including the agent daemon's own connections to the
-// real upstream when MITMRelay forwards an inspect flow's decrypted
-// HTTP. Without filtering, those daemon connections re-enter the NE
-// → bridge → MITMRelay loop, blowing up as:
+// real upstream when the Go bump pipeline (tlsbump.BumpConnection)
+// forwards an inspect flow's decrypted HTTP. Without filtering, those
+// daemon connections re-enter the NE → bridge → bump pipeline loop,
+// blowing up as:
 //   - source_process=nexus-agent on every audit row
 //   - method/path/hooks all empty (the loop never completes)
 //   - 12 rapid-fire identical rows then connections stall

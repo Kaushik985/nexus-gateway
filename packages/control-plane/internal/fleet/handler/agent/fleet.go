@@ -33,7 +33,7 @@ func (h *Handler) RegisterFleetRoutes(g *echo.Group, iamMW func(action string) e
 	// without `agent-device:read` can see THEIR OWN install status on
 	// the Agent Setup page (used by the live Verify panel). Matches
 	// the pattern of /me/admin-audit-logs (admin_traffic.go).
-	g.GET("/me/agent-devices", h.ListMyAgentDevices)
+	g.GET("/me/agent-devices", h.ListMyAgentDevices) // iam-exempt: self-service, scoped to the caller's own devices
 }
 
 // ListAgentUsers returns agent users (NexusUser with canAccessControlPlane=false).

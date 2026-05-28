@@ -3,7 +3,6 @@
 package platform
 
 import (
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/windows"
 )
 
@@ -11,6 +10,6 @@ import (
 type WindowsPlatform = windows.WindowsPlatform
 
 // NewPlatform creates the Windows platform shim.
-func NewPlatform(addr string, relayClient *relay.Client) Platform {
-	return windows.NewPlatform(addr, relayClient)
+func NewPlatform(addr string) Platform {
+	return windows.NewPlatform(addr)
 }

@@ -1082,7 +1082,7 @@ func TestStreamSession_ToolCallDeltas(t *testing.T) {
 	}
 	defer sess.Close() //nolint:errcheck
 
-	gotReasoningInDelta := false
+	gotReasoningChannel := false
 	toolCallChunks := 0
 	for {
 		ch, err := sess.Next(context.Background())
@@ -1092,9 +1092,13 @@ func TestStreamSession_ToolCallDeltas(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Next: %v", err)
 		}
-		// reasoning_content is appended to Delta per the codec contract.
+		// reasoning_content routes to the dedicated ReasoningDelta channel
+		// (kept separate from the answer Delta) per the codec contract.
+		if strings.Contains(ch.ReasoningDelta, "thinking...") {
+			gotReasoningChannel = true
+		}
 		if strings.Contains(ch.Delta, "thinking...") {
-			gotReasoningInDelta = true
+			t.Errorf("reasoning_content must NOT leak into Delta; got %q", ch.Delta)
 		}
 		if len(ch.ToolCallDeltas) > 0 {
 			toolCallChunks++
@@ -1103,8 +1107,8 @@ func TestStreamSession_ToolCallDeltas(t *testing.T) {
 			}
 		}
 	}
-	if !gotReasoningInDelta {
-		t.Errorf("reasoning_content must be merged into Delta")
+	if !gotReasoningChannel {
+		t.Errorf("reasoning_content must populate ReasoningDelta")
 	}
 	if toolCallChunks != 2 {
 		t.Errorf("toolCallChunks=%d want 2", toolCallChunks)

@@ -97,11 +97,19 @@ func (s *openaiStreamSession) Next(ctx context.Context) (provcore.Chunk, error) 
 			chunk.Delta = c.String()
 		}
 		// reasoning_content carries chain-of-thought tokens emitted by
-		// thinking models (DeepSeek-R1/V4, Kimi K2, etc.) before the
-		// final answer. Append to Delta so audit logs capture the full
-		// model output and downstream consumers see both fields.
+		// thinking models (DeepSeek-R1/V4, Kimi K2, etc.) before the final
+		// answer. Route it to the dedicated ReasoningDelta channel — NOT
+		// Delta — so it stays separate from the answer through the canonical
+		// hub. Every cross-format stream encoder maps ReasoningDelta to the
+		// target's reasoning channel (Gemini `thought:true`, Anthropic
+		// `thinking_delta`, OpenAI `delta.reasoning_content`); appending to
+		// Delta instead leaked the chain-of-thought into the visible answer on
+		// every cross-format transcode. This matches the openai-responses
+		// stream decoder, which already routes reasoning to ReasoningDelta.
+		// Native openai-family passthrough is unaffected — it forwards the
+		// upstream RawBytes (which still carry reasoning_content), not Delta.
 		if rc := choice0.Get("delta.reasoning_content"); rc.Exists() && rc.String() != "" {
-			chunk.Delta += rc.String()
+			chunk.ReasoningDelta += rc.String()
 		}
 		if tools := choice0.Get("delta.tool_calls"); tools.IsArray() {
 			tools.ForEach(func(_, v gjson.Result) bool {

@@ -1,12 +1,15 @@
 package proxy
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/platform/audit"
 	provcore "github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/providers/core"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/typology"
+	"github.com/tidwall/gjson"
 )
 
 // TestBuildProviderRequest_ForwardsClientHeaders pins the wiring that
@@ -69,16 +72,63 @@ func TestBuildProviderRequest_NilRequest(t *testing.T) {
 	}
 }
 
-func TestWriteJSONError(t *testing.T) {
-	// Basic smoke test — just ensure it doesn't panic.
-	rec := &testResponseWriter{}
-	writeJSONError(rec, 400, "bad request")
-	if rec.status != 400 {
-		t.Errorf("status = %d, want 400", rec.status)
+func TestOpenAIProxyErrorBody(t *testing.T) {
+	// Empty code → numeric status as code (legacy writeJSONError shape).
+	b := openAIProxyErrorBody(400, "", "bad request", "")
+	if gjson.GetBytes(b, "error.message").String() != "bad request" ||
+		gjson.GetBytes(b, "error.type").String() != "proxy_error" ||
+		gjson.GetBytes(b, "error.code").Int() != 400 {
+		t.Errorf("openai proxy error body wrong: %s", b)
 	}
-	if rec.header.Get("Content-Type") != "application/json" {
-		t.Error("Content-Type not set")
+	// String code + hint (legacy writeDetailedError shape).
+	b = openAIProxyErrorBody(429, "rate_limited", "slow down", "retry later")
+	if gjson.GetBytes(b, "error.code").String() != "rate_limited" ||
+		gjson.GetBytes(b, "error.hint").String() != "retry later" {
+		t.Errorf("detailed proxy error body wrong: %s", b)
 	}
+}
+
+// TestWriteIngressError_RecordsBody_AndShapesPerIngress locks the maintainer
+// requirements: (1) a gateway error is ALWAYS stamped to rec.ResponseBody so it
+// lands in traffic_event.payloads.response_body (previously only error_code /
+// error_reason were recorded, body was empty); (2) the error envelope is in the
+// caller's ingress wire shape (anthropic → not the OpenAI proxy_error shape;
+// openai → proxy_error shape).
+func TestWriteIngressError_RecordsBody_AndShapesPerIngress(t *testing.T) {
+	h := NewHandler(&Deps{})
+
+	t.Run("anthropic ingress → ingress-shaped + recorded", func(t *testing.T) {
+		rec := &audit.Record{IngressFormat: string(provcore.FormatAnthropic)}
+		w := &testResponseWriter{}
+		h.writeIngressError(w, rec, http.StatusBadGateway, "upstream_error", "boom", "")
+		if len(rec.ResponseBody) == 0 {
+			t.Fatal("error MUST be recorded to rec.ResponseBody; got empty")
+		}
+		if !bytes.Equal(w.body, rec.ResponseBody) {
+			t.Errorf("written body must match recorded rec.ResponseBody")
+		}
+		if w.status != http.StatusBadGateway {
+			t.Errorf("status = %d", w.status)
+		}
+		if gjson.GetBytes(rec.ResponseBody, "error.type").String() == "proxy_error" {
+			t.Errorf("anthropic ingress must NOT get the OpenAI proxy_error shape; got %s", rec.ResponseBody)
+		}
+	})
+
+	t.Run("openai ingress → proxy_error shape + recorded", func(t *testing.T) {
+		rec := &audit.Record{IngressFormat: string(provcore.FormatOpenAI)}
+		w := &testResponseWriter{}
+		h.writeIngressError(w, rec, http.StatusTooManyRequests, "rate_limited", "slow down", "")
+		if len(rec.ResponseBody) == 0 {
+			t.Fatal("error MUST be recorded to rec.ResponseBody; got empty")
+		}
+		if gjson.GetBytes(rec.ResponseBody, "error.type").String() != "proxy_error" {
+			t.Errorf("openai ingress → proxy_error shape; got %s", rec.ResponseBody)
+		}
+		if rec.ErrorCode != "rate_limited" || rec.ErrorReason != "slow down" {
+			t.Errorf("rec error fields not stamped: code=%q reason=%q", rec.ErrorCode, rec.ErrorReason)
+		}
+	})
 }
 
 type testResponseWriter struct {

@@ -19,17 +19,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	agentTLS "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/tls"
 	agentaudit "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/queue"
 	sharedaudit "github.com/AlphaBitCore/nexus-gateway/packages/shared/audit"
-	opsmetrics "github.com/AlphaBitCore/nexus-gateway/packages/shared/core/metrics/registry"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/domain"
 	hooks "github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/hooks/core"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
@@ -900,7 +895,6 @@ func TestBumpFlow_TLSPort_BumpConnectionTLSHandshakeFails(t *testing.T) {
 	up := newTestUpstream(t)
 	queue := newTestAuditQueue(t)
 	policyResolver := newTestPolicyResolver(t)
-	domainSnapshot := newTestDomainSnapshot()
 	domainEngine := domain.NewEngine()
 	registry := traffic.NewAdapterRegistry("test")
 	captureStore := payloadcapture.NewStore(payloadcapture.DefaultConfig())
@@ -926,7 +920,6 @@ func TestBumpFlow_TLSPort_BumpConnectionTLSHandshakeFails(t *testing.T) {
 		TLSEngine:           eng,
 		Upstream:            up,
 		PolicyResolver:      policyResolver,
-		DomainSnapshot:      domainSnapshot,
 		DomainEngine:        domainEngine,
 		AdapterRegistry:     registry,
 		PayloadCaptureStore: captureStore,
@@ -1191,24 +1184,6 @@ func TestStaticCertGetter(t *testing.T) {
 
 var _ = mrand.Int
 
-// newTestRelayClient returns a relay.Client wired with an isolated
-// prometheus registry. The TLS config uses InsecureSkipVerify so test
-// code can dial httptest servers if needed (kept for symmetry — the
-// MITMRelay tests in this file only exercise error arms, but other
-// tests in the file may grow).
-func newTestRelayClient(t *testing.T) *relay.Client {
-	t.Helper()
-	c, err := relay.New(relay.Config{
-		UserAgent:       "nexus-agent/test",
-		OpsRegistry:     opsmetrics.NewRegistry(prometheus.NewRegistry()),
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	})
-	if err != nil {
-		t.Fatalf("relay.New: %v", err)
-	}
-	return c
-}
-
 // newTestEngine returns an agentTLS.Engine backed by a fresh self-signed
 // CA so the rest of the bridge can mint leaves without filesystem I/O.
 func newTestEngine(t *testing.T) *agentTLS.Engine {
@@ -1253,14 +1228,6 @@ func newTestPolicyResolver(t *testing.T) *compliance.PolicyResolver {
 	return compliance.NewPolicyResolver(nil, hooks.NewHookRegistry(), nil)
 }
 
-// newTestDomainSnapshot returns an atomic.Pointer[traffic.DomainSnapshot]
-// initialized to an empty snapshot. BumpFlow's BridgeDeps.DomainSnapshot
-// type is exactly this pointer.
-func newTestDomainSnapshot() *atomic.Pointer[traffic.DomainSnapshot] {
-	var p atomic.Pointer[traffic.DomainSnapshot]
-	p.Store(&traffic.DomainSnapshot{})
-	return &p
-}
 
 // ensure httptest is referenced to avoid unused-import errors if future
 // edits remove the only caller above; harmless at runtime.

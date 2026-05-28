@@ -179,9 +179,10 @@ func TestMount_LazyDB_NoOptionalDeps(t *testing.T) {
 
 	mustNotRegister(t, e, http.MethodPost, "/oauth/revoke") // Revocation nil → skipped
 	// /authserver/password is gated on local-IdP lookup, which fails against
-	// the unreachable pool. The OIDC routes live in the same gated block.
+	// the unreachable pool. The SSO start + return-leg routes live in the same
+	// gated block.
 	mustNotRegister(t, e, http.MethodPost, "/authserver/password")
-	mustNotRegister(t, e, http.MethodGet, "/authserver/oidc/begin")
+	mustNotRegister(t, e, http.MethodGet, "/authserver/idp/:idpId/start")
 	mustNotRegister(t, e, http.MethodGet, "/authserver/oidc/callback")
 }
 

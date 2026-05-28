@@ -30,7 +30,7 @@ type stubHub struct {
 	listBody   []byte
 	listStatus int
 	listErr    error
-	listCalls  []struct{ Subject, Limit, Cursor string }
+	listCalls  []struct{ Subject, Limit, Offset string }
 
 	retryBody   []byte
 	retryStatus int
@@ -38,8 +38,8 @@ type stubHub struct {
 	retryCalls  []string
 }
 
-func (s *stubHub) ListDLQ(_ context.Context, subject, limit, cursor string) ([]byte, int, error) {
-	s.listCalls = append(s.listCalls, struct{ Subject, Limit, Cursor string }{subject, limit, cursor})
+func (s *stubHub) ListDLQ(_ context.Context, subject, limit, offset string) ([]byte, int, error) {
+	s.listCalls = append(s.listCalls, struct{ Subject, Limit, Offset string }{subject, limit, offset})
 	if s.listErr != nil {
 		return nil, 0, s.listErr
 	}
@@ -67,12 +67,12 @@ func newDLQContext(t *testing.T, method, path string) (echo.Context, *httptest.R
 
 func TestListDLQ_ForwardsQueryAndResponse(t *testing.T) {
 	hub := &stubHub{
-		listBody:   []byte(`{"rows":[{"id":"1"}],"nextCursor":"x"}`),
+		listBody:   []byte(`{"rows":[{"id":"1"}],"total":1}`),
 		listStatus: http.StatusOK,
 	}
 	h := New(Deps{Hub: hub, Logger: silentLogger()})
 	c, w := newDLQContext(t, http.MethodGet,
-		"/api/admin/observability/dlq?subject=nexus.event.compliance&limit=10&cursor=2026-05-26T12:00:00Z")
+		"/api/admin/observability/dlq?subject=nexus.event.compliance&limit=10&offset=20")
 	if err := h.ListDLQ(c); err != nil {
 		t.Fatalf("ListDLQ: %v", err)
 	}
@@ -86,8 +86,8 @@ func TestListDLQ_ForwardsQueryAndResponse(t *testing.T) {
 		t.Fatalf("hub list calls = %d, want 1", len(hub.listCalls))
 	}
 	got := hub.listCalls[0]
-	if got.Subject != "nexus.event.compliance" || got.Limit != "10" || got.Cursor == "" {
-		t.Errorf("query forwarded = %+v, want {compliance, 10, non-empty cursor}", got)
+	if got.Subject != "nexus.event.compliance" || got.Limit != "10" || got.Offset != "20" {
+		t.Errorf("query forwarded = %+v, want {compliance, 10, 20}", got)
 	}
 }
 

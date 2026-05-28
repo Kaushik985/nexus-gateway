@@ -79,6 +79,13 @@ func scanCredential(row pgx.Row) (*Credential, error) {
 	return &c, nil
 }
 
+// ScanCredentialRow binds a full CredMetadataColumns row onto a Credential. It
+// is the single source of truth for the credential column↔field mapping;
+// cross-package callers that run `... RETURNING ` + CredMetadataColumns (e.g.
+// providerstore's atomic create) MUST use it rather than re-listing the Scan
+// destinations, which silently drifts as columns are added.
+func ScanCredentialRow(row pgx.Row) (*Credential, error) { return scanCredential(row) }
+
 // scanCredentialFields binds CredMetadataColumns onto c. Shared by row-at-a-time
 // and rows.Next() callers so the column order stays single-sourced.
 func scanCredentialFields(row pgx.Row, c *Credential) error {

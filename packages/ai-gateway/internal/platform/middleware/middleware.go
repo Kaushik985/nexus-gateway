@@ -13,11 +13,16 @@ import (
 	nexushttp "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/http"
 )
 
-// RequestID assigns a unique X-Nexus-Request-Id to each request and preserves
-// any client-supplied x-request-id for audit correlation.
+// RequestID honors an inbound X-Nexus-Request-Id (set by an upstream Nexus
+// service) and assigns a fresh UUID only when none is present, so trace_id
+// correlation survives the hop instead of being severed at the gateway. Any
+// client-supplied x-request-id is preserved separately for audit correlation.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := uuid.New().String()
+		id := r.Header.Get("X-Nexus-Request-Id")
+		if id == "" {
+			id = uuid.New().String()
+		}
 		w.Header().Set("X-Nexus-Request-Id", id)
 		r.Header.Set("X-Nexus-Request-Id", id)
 		// Preserve client's x-request-id if present (read by handler as ClientRequestID).

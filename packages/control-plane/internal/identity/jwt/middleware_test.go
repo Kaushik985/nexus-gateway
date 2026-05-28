@@ -90,19 +90,19 @@ func (f *middlewareFixture) sign(t *testing.T, claims jwt.MapClaims) string {
 func validClaims() jwt.MapClaims {
 	now := time.Now().Unix()
 	return jwt.MapClaims{
-		"iss":        "test-iss",
-		"aud":        []string{"test-aud"},
-		"sub":        "usr-1",
-		"exp":        now + 3600,
-		"iat":        now,
-		"nbf":        now,
-		"jti":        "jti-1",
-		"client_id":  "foo",
-		"scope":      "s1",
-		"device_id":  "dev-1",
-		"session_id": "sid-1",
-		"email":      "a@b",
-		"idp":        "local",
+		"iss":       "test-iss",
+		"aud":       []string{"test-aud"},
+		"sub":       "usr-1",
+		"exp":       now + 3600,
+		"iat":       now,
+		"nbf":       now,
+		"jti":       "jti-1",
+		"client_id": "foo",
+		"scope":     "s1",
+		"device_id": "dev-1",
+		"sid":       "sid-1",
+		"email":     "a@b",
+		"idp":       "local",
 	}
 }
 

@@ -20,7 +20,7 @@ import (
 // platform/hub.Client. Declared here so the test suite can substitute a
 // stub without dragging in nexushttp and net/http machinery.
 type HubClient interface {
-	ListDLQ(ctx context.Context, subject, limit, cursor string) ([]byte, int, error)
+	ListDLQ(ctx context.Context, subject, limit, offset string) ([]byte, int, error)
 	RetryDLQ(ctx context.Context, id string) ([]byte, int, error)
 }
 
@@ -66,14 +66,14 @@ func (h *Handler) RegisterDLQRoutes(g *echo.Group, iamMW func(action string) ech
 }
 
 // ListDLQ proxies GET /admin/observability/dlq to Hub. Query params
-// (subject / limit / cursor) flow through unchanged; the response body
+// (subject / limit / offset) flow through unchanged; the response body
 // is forwarded verbatim so the UI binds to the same shape Hub emits.
 func (h *Handler) ListDLQ(c echo.Context) error {
 	subject := c.QueryParam("subject")
 	limit := c.QueryParam("limit")
-	cursor := c.QueryParam("cursor")
+	offset := c.QueryParam("offset")
 
-	body, status, err := h.hub.ListDLQ(c.Request().Context(), subject, limit, cursor)
+	body, status, err := h.hub.ListDLQ(c.Request().Context(), subject, limit, offset)
 	if err != nil {
 		h.logger.Error("dlq list: hub call failed", "error", err)
 		return c.JSON(http.StatusBadGateway, errJSON("Hub unreachable", "hub_unavailable", ""))

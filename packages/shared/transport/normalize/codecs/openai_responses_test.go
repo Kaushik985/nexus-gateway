@@ -198,3 +198,113 @@ func TestOpenAIResponses_Registration(t *testing.T) {
 }
 
 // derefIntPtr already defined in anthropic_messages.go; reuse that.
+
+// TestOpenAIResponses_StreamSSE_FoldsToFinalResponse is the regression for the
+// egress-shape Epic finding: a streamed /v1/responses row is captured as the
+// raw Responses-API SSE event stream the client received. Before the fold, the
+// normalizer json-unmarshalled the raw `event: …` bytes and failed with
+// "invalid character 'e'", leaving traffic_event_normalized empty (no content,
+// no usage). The fold must collapse the stream to the terminal response object
+// so text + usage normalize identically to a non-streamed row.
+func TestOpenAIResponses_StreamSSE_FoldsToFinalResponse(t *testing.T) {
+	sse := "event: response.created\n" +
+		"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\",\"output\":[]}}\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Po\"}\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"ng\"}\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"model\":\"gpt-4o-mini\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Pong\"}]}],\"usage\":{\"input_tokens\":14,\"output_tokens\":3,\"total_tokens\":17,\"output_tokens_details\":{\"reasoning_tokens\":2}}}}\n\n"
+
+	p, err := NewOpenAIResponsesNormalizer().Normalize(context.Background(), []byte(sse), core.Meta{
+		AdapterType: "openai",
+		Direction:   core.DirectionResponse,
+		Stream:      true,
+	})
+	if err != nil {
+		t.Fatalf("normalize SSE: %v", err)
+	}
+	if p.Protocol != "openai-responses" {
+		t.Errorf("protocol=%q want openai-responses", p.Protocol)
+	}
+	if len(p.Messages) != 1 || len(p.Messages[0].Content) != 1 {
+		t.Fatalf("want 1 assistant message with 1 content block, got %+v", p.Messages)
+	}
+	if got := p.Messages[0].Content[0].Text; got != "Pong" {
+		t.Errorf("assistant text=%q want Pong (terminal response object wins)", got)
+	}
+	if p.Usage == nil || *p.Usage.PromptTokens != 14 || *p.Usage.CompletionTokens != 3 || *p.Usage.TotalTokens != 17 {
+		t.Fatalf("usage not folded from terminal event: %+v", p.Usage)
+	}
+	if p.Usage.ReasoningTokens == nil || *p.Usage.ReasoningTokens != 2 {
+		t.Errorf("reasoning tokens=%v want 2", derefIntPtr(p.Usage.ReasoningTokens))
+	}
+}
+
+// TestOpenAIResponses_StreamSSE_TruncatedSynthesizesFromDeltas covers a capture
+// cut off before the terminal response.completed event: the accumulated
+// output_text deltas must still surface as assistant text so a truncated row
+// is not silently empty.
+func TestOpenAIResponses_StreamSSE_TruncatedSynthesizesFromDeltas(t *testing.T) {
+	sse := "event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}\n\n" +
+		"event: response.output_text.delta\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"lo\"}\n\n"
+
+	p, err := NewOpenAIResponsesNormalizer().Normalize(context.Background(), []byte(sse), core.Meta{
+		AdapterType: "openai",
+		Direction:   core.DirectionResponse,
+		Stream:      true,
+	})
+	if err != nil {
+		t.Fatalf("normalize truncated SSE: %v", err)
+	}
+	if len(p.Messages) != 1 || len(p.Messages[0].Content) != 1 || p.Messages[0].Content[0].Text != "Hello" {
+		t.Fatalf("want synthesized assistant text 'Hello', got %+v", p.Messages)
+	}
+}
+
+// TestOpenAIResponses_StreamSSE_IgnoresNoise asserts the fold tolerates the
+// non-payload lines a real capture carries — `[DONE]` sentinels, empty data
+// lines, and a partially-written / malformed data line — and still recovers
+// the terminal response object.
+func TestOpenAIResponses_StreamSSE_IgnoresNoise(t *testing.T) {
+	sse := "data: [DONE]\n\n" +
+		"data:\n\n" +
+		"data: {this is not valid json\n\n" +
+		"event: response.completed\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"model\":\"gpt-4o-mini\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"ok\"}]}],\"usage\":{\"input_tokens\":5,\"output_tokens\":1,\"total_tokens\":6}}}\n\n"
+
+	p, err := NewOpenAIResponsesNormalizer().Normalize(context.Background(), []byte(sse), core.Meta{
+		AdapterType: "openai", Direction: core.DirectionResponse, Stream: true,
+	})
+	if err != nil {
+		t.Fatalf("normalize noisy SSE: %v", err)
+	}
+	if len(p.Messages) != 1 || p.Messages[0].Content[0].Text != "ok" {
+		t.Fatalf("terminal response not recovered through noise: %+v", p.Messages)
+	}
+	if p.Usage == nil || *p.Usage.TotalTokens != 6 {
+		t.Fatalf("usage not recovered: %+v", p.Usage)
+	}
+}
+
+func TestLooksLikeResponsesEventStream(t *testing.T) {
+	cases := map[string]struct {
+		in   string
+		want bool
+	}{
+		"event prefix": {"event: response.created\ndata: {}", true},
+		"data prefix":  {"data: {\"type\":\"response.completed\"}", true},
+		"leading ws":   {"\n  event: response.created", true},
+		"plain json":   {"{\"output\":[],\"status\":\"completed\"}", false},
+		"empty":        {"", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := looksLikeResponsesEventStream([]byte(tc.in)); got != tc.want {
+				t.Errorf("looksLikeResponsesEventStream(%q)=%v want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}

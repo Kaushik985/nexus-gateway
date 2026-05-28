@@ -226,12 +226,14 @@ func (w *QueueWriter) buildRow(e sharedaudit.AuditEvent) event.Event {
 	} else if len(e.ResponseHooksPipeline) > 0 {
 		hooksPipeline = json.RawMessage(e.ResponseHooksPipeline)
 	}
-	// Captured body bytes: shared/audit.Body wraps inline bytes (or
-	// SpillRef when oversize). For agent's local UI we only need the
-	// inline bytes — spill-mode large bodies stay on disk and are not
-	// rendered in the Event Details drawer (the inline path covers
-	// the typical < 256 KiB request/response). Empty bytes (capture
-	// disabled) stay nil so SQLite stores NULL.
+	// Captured body bytes: shared/audit.Body wraps either inline bytes
+	// (small body) or a SpillRef (oversize body the engine wrote to the
+	// localfs spill store). Both are persisted: the inline bytes go to the
+	// payload_request/response BLOB columns, and the SpillRef is JSON-encoded
+	// into request_spill_ref/response_spill_ref. The drain step uploads the
+	// localfs-spilled body to S3 and swaps the ref before shipping to Hub;
+	// the agent's own detail view reads the localfs body back from the ref.
+	// Empty (capture disabled) → both nil so SQLite stores NULL.
 	row := event.Event{
 		ID:                    e.ID,
 		TraceID:               e.TraceID,
@@ -257,6 +259,8 @@ func (w *QueueWriter) buildRow(e sharedaudit.AuditEvent) event.Event {
 		UsageExtractionStatus: e.UsageExtractionStatus,
 		PayloadRequest:        e.RequestBody.InlineBytes,
 		PayloadResponse:       e.ResponseBody.InlineBytes,
+		RequestSpillRef:       e.RequestBody.SpillRef,
+		ResponseSpillRef:      e.ResponseBody.SpillRef,
 		HooksPipeline:         hooksPipeline,
 		ErrorCode:             e.ErrorCode,
 		ErrorReason:           e.ErrorReason,

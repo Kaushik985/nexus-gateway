@@ -76,6 +76,100 @@ func TestStore_PutGetDelete(t *testing.T) {
 	}
 }
 
+func TestStore_EncryptedRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	key := bytes.Repeat([]byte("K"), 32)
+	s, err := localfs.New(localfs.Options{Root: root, TotalSizeCap: 1 << 20, Retention: time.Hour, EncryptionKey: key})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	payload := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"secret prompt 机密"}]}`)
+
+	ref, err := s.Put(ctx, bytes.NewReader(payload), int64(len(payload)), spillstore.PutOptions{
+		EventID: "evt-enc", Direction: "request", ContentType: "application/json",
+	})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	// Ref describes the PLAINTEXT (Hub + uploader hash the plaintext they PUT).
+	if ref.Size != int64(len(payload)) {
+		t.Errorf("size: got %d want plaintext %d", ref.Size, len(payload))
+	}
+	if ref.SHA256 != audit.SHA256Hex(payload) {
+		t.Errorf("sha256 must be of plaintext, got %s", ref.SHA256)
+	}
+
+	// On-disk file must NOT contain the plaintext and must be larger (nonce+tag).
+	onDisk, err := os.ReadFile(filepath.Join(root, ref.Key))
+	if err != nil {
+		t.Fatalf("read on-disk: %v", err)
+	}
+	if bytes.Contains(onDisk, payload) {
+		t.Fatal("on-disk bytes contain plaintext — encryption did not apply")
+	}
+	if int64(len(onDisk)) <= ref.Size {
+		t.Errorf("ciphertext (%d) should exceed plaintext (%d) by nonce+tag", len(onDisk), ref.Size)
+	}
+
+	// Get decrypts back to the exact plaintext.
+	rc, err := s.Get(ctx, ref)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	got, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("decrypted mismatch: got %q want %q", got, payload)
+	}
+}
+
+func TestStore_EncryptedWrongKeyFails(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	writer, _ := localfs.New(localfs.Options{Root: root, EncryptionKey: bytes.Repeat([]byte("A"), 32)})
+	ref, err := writer.Put(ctx, strings.NewReader("sensitive body"), 14, spillstore.PutOptions{EventID: "evt-wrong", Direction: "r"})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	// A reader with a different key must fail GCM authentication, not return garbage.
+	reader, _ := localfs.New(localfs.Options{Root: root, EncryptionKey: bytes.Repeat([]byte("B"), 32)})
+	if _, err := reader.Get(ctx, ref); err == nil {
+		t.Fatal("Get with wrong key should fail GCM auth, got nil error")
+	}
+}
+
+func TestNew_BadKeyLength(t *testing.T) {
+	if _, err := localfs.New(localfs.Options{Root: t.TempDir(), EncryptionKey: bytes.Repeat([]byte("x"), 16)}); err == nil {
+		t.Fatal("New with 16-byte key should error (AES-256 needs 32)")
+	}
+}
+
+func TestStore_EncryptedGet_ShortCiphertext(t *testing.T) {
+	root := t.TempDir()
+	s, _ := localfs.New(localfs.Options{Root: root, EncryptionKey: bytes.Repeat([]byte("C"), 32)})
+	ctx := context.Background()
+	ref, err := s.Put(ctx, strings.NewReader("hello world body"), 16, spillstore.PutOptions{EventID: "evt-short", Direction: "r"})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	// Corrupt the sealed file to be shorter than a GCM nonce → open must reject.
+	if err := os.WriteFile(filepath.Join(root, ref.Key), []byte("xx"), 0o600); err != nil {
+		t.Fatalf("corrupt: %v", err)
+	}
+	if _, err := s.Get(ctx, ref); err == nil {
+		t.Fatal("Get on a too-short sealed file should fail, got nil")
+	}
+}
+
+func TestStore_EncryptedPut_ReadError(t *testing.T) {
+	s, _ := localfs.New(localfs.Options{Root: t.TempDir(), EncryptionKey: bytes.Repeat([]byte("D"), 32)})
+	r := &failingReader{err: errors.New("synthetic stream failure")}
+	if _, err := s.Put(context.Background(), r, 100, spillstore.PutOptions{EventID: "evt-erd", Direction: "r"}); err == nil {
+		t.Fatal("encrypted Put with failing reader: want error, got nil")
+	}
+}
+
 func TestStore_PerObjectCap(t *testing.T) {
 	root := t.TempDir()
 	s, err := localfs.New(localfs.Options{Root: root, PerObjectCap: 16})

@@ -12,10 +12,8 @@ import (
 	agentcompliance "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/compliance"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/lifecycle/killswitch"
 	auditqueue "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/queue"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/spilluploader"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform"
 	policy "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/policy/core"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
 )
 
 // ConnectionBridge implements platform.ConnectionHandler and platform.FlowAuditor.
@@ -40,26 +38,10 @@ type ConnectionBridge struct {
 	// skipped — matching fail-open policy.
 	AgentPipeline *agentcompliance.AgentPipeline
 
-	// PayloadCaptureStore is the payload capture runtime config. The Store
-	// is updated via shadow pushes of the "payload_capture" Cat B key.
-	// InspectRequest / InspectResponse read the current snapshot to decide
-	// whether to stamp pre-hook bytes onto the InspectionResult.
-	// ReadBodyCap returns the per-flow inspection buffer ceiling
-	// (sourced from spill.perObjectCap, NOT MaxInlineBodyBytes) so
-	// MITMRelay can buffer SSE streams up to a generous OOM guard.
-	PayloadCaptureStore *payloadcapture.Store
-
-	// InspectBodyCap is the per-flow buffer ceiling MITMRelay uses for
+	// InspectBodyCap is the per-flow buffer ceiling the bump path uses for
 	// request and response body inspection / capture. <= 0 means
 	// "use default 256 MiB".
 	InspectBodyCap int64
-
-	// SpillUploader is the producer-owned spill uploader. When non-nil
-	// and a captured body exceeds MaxInlineBodyBytes, applyPayloadCapture
-	// asks Hub to mint a one-shot URL, PUTs the body, and stamps the
-	// resulting SpillRef on the audit event. nil = inline-only (oversize
-	// bodies fall back to inline-truncated).
-	SpillUploader *spilluploader.Uploader
 
 	// KillSwitch gates the policy engine. When the operator engages the
 	// switch in CP UI, Hub pushes the "killswitch" config_key to every
@@ -81,7 +63,7 @@ type ConnectionBridge struct {
 
 // ReadBodyCap returns the per-flow inspection buffer ceiling sourced
 // from spill.perObjectCap. Implements platform.BodyReadCapper so
-// Linux/Windows MITMRelay can buffer the decrypted request/response
+// Linux/Windows bump path can buffer the decrypted request/response
 // body up to the generous OOM guard without being clamped to the
 // inline cutoff.
 func (b *ConnectionBridge) ReadBodyCap() int64 {

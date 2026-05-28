@@ -13,7 +13,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -204,12 +203,6 @@ func Probe(ctx context.Context, idpType string, cfg map[string]any) (Result, err
 	}
 }
 
-var errNoClient = errors.New("idptest: no http client configured")
-
 func newClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout}
 }
-
-// ensures errNoClient is referenced so callers can recognize it via errors.Is
-// in future tests that inject a custom client.
-var _ = errNoClient

@@ -154,9 +154,9 @@ type Deps struct {
 	RoutingDefaultPolicy cfgpolicy.RetryPolicy
 	// Allowlist is the YAML-resolved forward-header allowlist.
 	// Read at request time on both the live and cache-hit response
-	// paths to filter upstream → client headers and to stamp
-	// x-nexus-aigw-allowlist-version on every response. Nil falls back
-	// to the embedded defaults; production startup wires
+	// paths to filter upstream → client headers; its Hash() also feeds
+	// the cache key as the allowlist version. Nil falls back to the
+	// embedded defaults; production startup wires
 	// forwardheader.Resolve(...) into this field.
 	Allowlist *forwardheader.Resolved
 	// CachePricing resolves per-model cache cost rates from the
@@ -194,11 +194,11 @@ type Deps struct {
 	// expected phase actually ran. See traffic.PhaseTimer.SnapshotDetail.
 	LatencyDetail bool
 	// FreshnessDetector holds the atomically-updated time-sensitive
-	// pattern detector. When non-nil AND the matched routing rule sets
-	// skip_time_sensitive=true in its response_cache_policy JSONB, the
-	// pre-lookup classifier skips both L1 and L2 caches for messages that
-	// match the detector's compiled rule set. Nil disables the check so
-	// deployments that haven't pushed a freshness pattern config still work.
+	// pattern detector. When non-nil AND the fleet-wide
+	// extract_cache_config.apply_freshness_rules flag is on, the pre-lookup
+	// classifier skips both L1 and L2 caches for messages that match the
+	// detector's compiled rule set. Nil disables the check so deployments
+	// that haven't pushed a freshness pattern config still work.
 	FreshnessDetector *freshness.Detector
 	// SemanticReader executes the L2 semantic cache lookup on every L1
 	// miss. Nil disables L2 lookup entirely. Shared across all handler
@@ -210,11 +210,6 @@ type Deps struct {
 	// response delivery. Nil disables L2 write-back. Production wires
 	// *semantic.Writer; tests may wire a stub.
 	SemanticWriter SemanticWriterAPI
-	// BudgetTracker enforces per-route daily embedding cost ceilings
-	// (embeddingCostCeilingUsdPerDay in response_cache_policy.semantic).
-	// Nil disables budget enforcement. Production wires *budget.Tracker;
-	// tests may wire a stub.
-	BudgetTracker BudgetTrackerAPI
 	// SemanticConfigCache is the fleet-wide singleton snapshot of
 	// semantic_cache_config. L2 lookup/write is gated on
 	// SemanticConfigCache.EffectiveEnabled() — when false (the default),
@@ -290,9 +285,13 @@ func (h *Handler) ServeProxy(in Ingress) http.HandlerFunc {
 		// `x-nexus-aigw-body-format` override on the OpenAI-compat family.
 		resolved, ok := in.applyHeaderOverride(r)
 		if !ok {
+			// Pre-resolution validation (invalid x-nexus-aigw-body-format header):
+			// no rec/ingress yet, so emit the OpenAI proxy-error shape directly.
 			raw := strings.TrimSpace(r.Header.Get("x-nexus-aigw-body-format"))
-			writeJSONError(w, http.StatusBadRequest,
-				fmt.Sprintf("unknown body format %q; supported: openai, anthropic, gemini, azure-openai, minimax, glm, deepseek", raw))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write(openAIProxyErrorBody(http.StatusBadRequest, "",
+				fmt.Sprintf("unknown body format %q; supported: openai, anthropic, gemini, azure-openai, minimax, glm, deepseek", raw), ""))
 			return
 		}
 		endpointType := string(typology.KindFromWireShape(resolved.WireShape))
@@ -900,6 +899,16 @@ func (h *Handler) ServeProxy(in Ingress) http.HandlerFunc {
 					canonBody, canonErr = h.deps.CanonicalBridge.IngressEmbeddingsToCanonical(resolved.BodyFormat, prepReq.Body, prepReq.Target)
 				} else {
 					canonBody, canonErr = h.deps.CanonicalBridge.IngressChatToCanonical(resolved.BodyFormat, prepReq.Body, prepReq.Target)
+					// Stamp the streaming intent onto the canonical body. Gemini
+					// ingress signals streaming via the :streamGenerateContent URL,
+					// not a body field, so the canonical chat body carries no
+					// `stream` — without this the target codec (e.g. Anthropic, which
+					// propagates `stream` from canonical input) sends a non-streaming
+					// upstream request and the client's SSE loses all text. Chat-kind
+					// only; embeddings never stream.
+					if canonErr == nil && isStream {
+						canonBody = canonicalbridge.EnsureCanonicalStream(canonBody)
+					}
 				}
 				if canonErr != nil {
 					h.writeError(w, rec, http.StatusBadRequest, "canonicalize ingress body: "+canonErr.Error())
@@ -2280,6 +2289,54 @@ func minInt64(a, b int64) int64 {
 // the broker registry is not wired. The broker MISS path uses
 // handleNonStreamWithSubscription instead, which shares the cache write
 // with the broker leader.
+// egressReshapeNonStream reshapes a CANONICAL (OpenAI) non-stream response body
+// back to the caller's ingress wire shape — the response leg of the round-trip
+// invariant "request: A→canonical→B; response: B→canonical→A"
+// (provider-adapter-architecture.md §3).
+//
+// The body is canonical on BOTH live response paths: the adapter's
+// SchemaCodec.DecodeResponse decodes the upstream B-shape to canonical OpenAI
+// (specAdapter.Execute returns CanonicalBody), so handleNonStream's result.Body
+// is canonical, and the broker collects/serves the same canonical bytes. The
+// reshape is therefore driven SOLELY by the ingress shape A — never by
+// ingress-vs-target. (The prior per-path gates — direct "ingress != target",
+// broker "WireShape==OpenAIChat" — both returned canonical OpenAI for a native
+// non-OpenAI ingress: anthropic /v1/messages + gemini /v1beta got `choices[]`
+// instead of `content[]`/`candidates[]`.)
+//
+// NOT for the cache HIT path: handleNonStreamHit reads the L1 entry which is
+// stored POST-reshape in the writer's ORIGIN wire shape, so it reshapes via the
+// OriginWireShape gate, not this helper.
+//
+// Two skip cases, both correct because the body is already in shape A:
+//   - OpenAI-family chat/embeddings ingress: canonical IS the ingress shape, so
+//     this is the identity — short-circuit (avoids a no-op call + preserves the
+//     same-format passthrough optimisation).
+//   - /v1/responses NATIVE passthrough (target serves responses-api natively):
+//     the body is already Responses-shape; re-encoding via EncodeResponsesResponse
+//     would double-encode and strip output[].content[].text.
+func (h *Handler) egressReshapeNonStream(ingress Ingress, target routingcore.RoutingTarget, body []byte) ([]byte, error) {
+	if h.deps.CanonicalBridge == nil || len(body) == 0 {
+		return body, nil
+	}
+	if ingress.WireShape == typology.WireShapeOpenAIResponses {
+		// Responses ingress: native passthrough already in shape; cross-format
+		// re-encodes canonical chat → Responses output[] via the bridge.
+		if h.deps.CanonicalBridge.TargetNativelyServesResponsesAPI(provcore.Format(target.AdapterType)) {
+			return body, nil
+		}
+		return h.deps.CanonicalBridge.ResponseCanonicalToIngress(ingress.BodyFormat, body)
+	}
+	if ingress.BodyFormat.IsOpenAIFamily() {
+		// Canonical == OpenAI shape == the caller's shape. Identity.
+		return body, nil
+	}
+	if typology.KindFromWireShape(ingress.WireShape) == typology.EndpointKindEmbeddings {
+		return h.deps.CanonicalBridge.ResponseCanonicalToIngressEmbeddings(ingress.BodyFormat, body)
+	}
+	return h.deps.CanonicalBridge.ResponseCanonicalToIngress(ingress.BodyFormat, body)
+}
+
 func (h *Handler) handleNonStream(r *http.Request, w http.ResponseWriter, rec *audit.Record, result *executor.ExecutionResult, target routingcore.RoutingTarget, quotaInPrice, quotaOutPrice float64, quotaDecision *quota.Decision, endpointType, requestID string, start time.Time, logger *slog.Logger) {
 	respBody := result.Body
 	ingress, _ := IngressFromContext(r.Context())
@@ -2300,53 +2357,15 @@ func (h *Handler) handleNonStream(r *http.Request, w http.ResponseWriter, rec *a
 		}
 		respBody = canonicalBody
 	}
-	// Re-shape the upstream response into the ingress format. This fires
-	// for chat-completions ingress AND for Responses ingress (the bridge's
-	// FormatOpenAIResponses case calls EncodeResponsesResponse to wrap
-	// canonical → output[]).
-	// Without the EndpointResponsesAPI branch, cross-format Responses
-	// responses (e.g. Anthropic upstream) return Anthropic-shape JSON
-	// to the client instead of Responses-shape — breaks every OpenAI
-	// Responses-API SDK consumer.
-	//
-	// CRITICAL: Native Responses passthrough (e.g. /v1/responses ingress
-	// routed to an OpenAI target) MUST skip the reshape. The upstream
-	// body is already in Responses-shape; passing it through
-	// EncodeResponsesResponse — which expects a canonical chat.completion
-	// body and synthesises an output[] from it — would double-encode and
-	// strip the original `output[].content[].text` (the prod symptom
-	// was `output[].text` empty across every native OpenAI Responses
-	// model). Gate the reshape on cross-format only.
-	// Reshape canonical → caller's ingress shape. Driven by the ingress
-	// EndpointKind (not a hardcoded openai-chat/responses list) so every
-	// chat-kind ingress (anthropic /v1/messages, gemini, Azure, GLM) gets its
-	// response converted back to the caller's format — "ingress shape in =
-	// ingress shape out". For openai-like ingress this is an identity reshape;
-	// for same-format native routes it is skipped. The upstream's target-wire
-	// body is decoded to canonical upstream of here (adapter DecodeResponse).
-	reshapeToIngress := false
-	egressEmbeddings := typology.KindFromWireShape(ingress.WireShape) == typology.EndpointKindEmbeddings
-	if h.deps.CanonicalBridge != nil {
-		switch {
-		case ingress.WireShape == typology.WireShapeOpenAIResponses:
-			reshapeToIngress = !h.deps.CanonicalBridge.TargetNativelyServesResponsesAPI(provcore.Format(target.AdapterType))
-		case typology.KindFromWireShape(ingress.WireShape) == typology.EndpointKindChat, egressEmbeddings:
-			reshapeToIngress = ingress.BodyFormat != provcore.Format(target.AdapterType)
-		}
-	}
-	if reshapeToIngress {
-		var shaped []byte
-		var rerr error
-		if egressEmbeddings {
-			shaped, rerr = h.deps.CanonicalBridge.ResponseCanonicalToIngressEmbeddings(ingress.BodyFormat, respBody)
-		} else {
-			shaped, rerr = h.deps.CanonicalBridge.ResponseCanonicalToIngress(ingress.BodyFormat, respBody)
-		}
-		if rerr != nil {
-			logger.Error("response hub reshape failed", "error", rerr)
-			h.writeError(w, rec, http.StatusBadGateway, "upstream response could not be reshaped for ingress format")
-			return
-		}
+	// Re-shape the canonical response into the caller's ingress shape
+	// ("B→canonical→A"). result.Body is canonical here (specAdapter.Execute
+	// returns DecodeResponse's CanonicalBody), so the reshape is keyed on the
+	// ingress shape — see egressReshapeNonStream for the full contract.
+	if shaped, rerr := h.egressReshapeNonStream(ingress, target, respBody); rerr != nil {
+		logger.Error("response hub reshape failed", "error", rerr)
+		h.writeError(w, rec, http.StatusBadGateway, "upstream response could not be reshaped for ingress format")
+		return
+	} else {
 		respBody = shaped
 	}
 
@@ -2673,44 +2692,67 @@ func normMessagesToFreshness(msgs []normcore.Message) []freshness.ChatMessage {
 
 // writeError writes a JSON error response and sets rec.StatusCode and rec.ErrorReason.
 func (h *Handler) writeError(w http.ResponseWriter, rec *audit.Record, status int, message string) {
-	rec.StatusCode = status
-	rec.ErrorReason = message
-	writeJSONError(w, status, message)
-}
-
-func writeJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	resp, _ := json.Marshal(map[string]any{
-		"error": map[string]any{
-			"message": message,
-			"type":    "proxy_error",
-			"code":    status,
-		},
-	})
-	_, _ = w.Write(resp)
-}
-
-func writeDetailedError(w http.ResponseWriter, status int, code, message, hint string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	errBody := map[string]any{
-		"message": message,
-		"type":    "proxy_error",
-		"code":    code,
-	}
-	if hint != "" {
-		errBody["hint"] = hint
-	}
-	resp, _ := json.Marshal(map[string]any{"error": errBody})
-	_, _ = w.Write(resp)
+	h.writeIngressError(w, rec, status, "", message, "")
 }
 
 func (h *Handler) writeDetailedErr(w http.ResponseWriter, rec *audit.Record, status int, code, message, hint string) {
+	h.writeIngressError(w, rec, status, code, message, hint)
+}
+
+// writeIngressError emits a gateway-generated error in the CALLER's ingress wire
+// shape (B→canonical→A applied to the error path: anthropic /v1/messages →
+// {"type":"error",...}, gemini /v1beta → {"error":{code,...}}, /v1/responses →
+// Responses error shape; OpenAI-family + unknown → the OpenAI proxy_error shape)
+// AND ALWAYS stamps the emitted body onto rec.ResponseBody so the error lands in
+// traffic_event.payloads.response_body for Traffic-drawer triage — errors are
+// captured unconditionally, independent of the StoreResponseBody payload gate,
+// because a gateway-generated error envelope carries no user content and is the
+// single most useful thing to see when a request fails.
+func (h *Handler) writeIngressError(w http.ResponseWriter, rec *audit.Record, status int, code, message, hint string) {
 	rec.StatusCode = status
-	rec.ErrorCode = code
+	if code != "" {
+		rec.ErrorCode = code
+	}
 	rec.ErrorReason = message
-	writeDetailedError(w, status, code, message, hint)
+
+	var body []byte
+	ingressFmt := provcore.Format(rec.IngressFormat)
+	if ingressFmt != "" && !ingressFmt.IsOpenAIFamily() {
+		// Non-OpenAI ingress (anthropic / gemini / vertex / openai-responses):
+		// reshape the error to the ingress envelope. Same-ingress synthetic
+		// error (no upstream Raw) falls through to the per-format encoder.
+		msg := message
+		if hint != "" {
+			msg = message + " (" + hint + ")"
+		}
+		body = envelope.EncodeErrorEnvelopeForIngress(ingressFmt, ingressFmt,
+			&provcore.ProviderError{Status: status, Code: code, Message: msg})
+	} else {
+		body = openAIProxyErrorBody(status, code, message, hint)
+	}
+
+	rec.ResponseBody = body
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// openAIProxyErrorBody builds the gateway's OpenAI-shape proxy error envelope.
+// When code is empty the numeric status is used as the code (legacy
+// writeJSONError behaviour); otherwise the string code is used (legacy
+// writeDetailedError behaviour). hint rides along when present.
+func openAIProxyErrorBody(status int, code, message, hint string) []byte {
+	inner := map[string]any{"message": message, "type": "proxy_error"}
+	if code != "" {
+		inner["code"] = code
+	} else {
+		inner["code"] = status
+	}
+	if hint != "" {
+		inner["hint"] = hint
+	}
+	resp, _ := json.Marshal(map[string]any{"error": inner})
+	return resp
 }
 
 // geminicacheStaleRefError reports whether a Gemini 403 response body

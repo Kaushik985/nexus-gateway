@@ -379,23 +379,6 @@ func TestIssueLeafCertByHostname_CacheHit(t *testing.T) {
 	}
 }
 
-// TestIssueLeafCertByHostname_CacheKeyDistinctFromFingerprint pins that
-// hostname-keyed and fingerprint-keyed entries DO NOT collide — a host
-// entry under "host:foo" must coexist alongside upstream fingerprints.
-func TestIssueLeafCertByHostname_CacheKeyDistinctFromFingerprint(t *testing.T) {
-	e, _ := NewEngine(nil, nil, 10, time.Hour)
-	if _, err := e.IssueLeafCertByHostname("api.openai.com"); err != nil {
-		t.Fatalf("hostname issue: %v", err)
-	}
-	upstream := makeUpstreamCert(t, "api.openai.com", []string{"api.openai.com"})
-	if _, err := e.IssueLeafCert(upstream); err != nil {
-		t.Fatalf("fingerprint issue: %v", err)
-	}
-	if e.CacheSize() != 2 {
-		t.Errorf("expected 2 distinct cache entries (host + fingerprint), got %d", e.CacheSize())
-	}
-}
-
 // TestIssueLeafCertByHostname_TTLExpiry pins that an expired cache entry
 // is re-minted (not returned stale). Drives the time.Since > cacheTTL
 // false-branch in the RLock check.
@@ -440,23 +423,6 @@ func TestIssueLeafCertByHostname_EvictsLargeBatch(t *testing.T) {
 	for i := range 9 {
 		host := "host" + string(rune('a'+i)) + ".example.com"
 		if _, err := e.IssueLeafCertByHostname(host); err != nil {
-			t.Fatalf("issue: %v", err)
-		}
-	}
-	if got := e.CacheSize(); got != 7 {
-		t.Errorf("cache size after large-batch eviction: want 7 (8 - 2 + 1), got %d", got)
-	}
-}
-
-// TestIssueLeafCert_EvictsLargeBatch mirrors the IssueLeafCertByHostname
-// large-batch arm on the fingerprint-keyed path so both code paths' eviction
-// helpers are exercised symmetrically.
-func TestIssueLeafCert_EvictsLargeBatch(t *testing.T) {
-	e, _ := NewEngine(nil, nil, 8, time.Hour)
-	for i := range 9 {
-		host := "host" + string(rune('a'+i)) + ".example.com"
-		up := makeUpstreamCert(t, host, []string{host})
-		if _, err := e.IssueLeafCert(up); err != nil {
 			t.Fatalf("issue: %v", err)
 		}
 	}

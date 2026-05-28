@@ -10,6 +10,7 @@ import (
 
 	provcore "github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/providers/core"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/typology"
+	"github.com/tidwall/sjson"
 )
 
 // IdentityCodec returns a SchemaCodec shared with OpenAI-compat
@@ -40,8 +41,25 @@ type identityCodec struct{}
 
 func (identityCodec) EncodeRequest(endpoint typology.WireShape, canonicalBody []byte, target provcore.CallTarget) (provcore.EncodeResult, error) {
 	switch endpoint {
-	case typology.WireShapeOpenAIChat, typology.WireShapeOpenAIResponses:
+	case typology.WireShapeOpenAIChat:
+		// Chat reaches EncodeRequest only on the cross-format path, where the
+		// canonical body's model was already set to the resolved upstream id by
+		// IngressChatToCanonical(ct.ProviderModelID); native chat takes the
+		// passthrough path (rewritePassthroughModel). Identity here.
 		return provcore.EncodeResult{Body: canonicalBody, ContentType: "application/json"}, nil
+	case typology.WireShapeOpenAIResponses:
+		// Native /v1/responses passthrough reaches the codec (FormatOpenAIResponses
+		// is not OpenAI-family, so PrepareBody routes here, NOT through
+		// rewritePassthroughModel). Rewrite the body's `model` to the resolved
+		// upstream id so an aliased catalog model ships the real model — the
+		// Responses-shape counterpart of rewritePassthroughModel for chat.
+		body := canonicalBody
+		if target.ProviderModelID != "" {
+			if out, err := sjson.SetBytes(body, "model", target.ProviderModelID); err == nil {
+				body = out
+			}
+		}
+		return provcore.EncodeResult{Body: body, ContentType: "application/json"}, nil
 	case typology.WireShapeOpenAIEmbeddings:
 		return encodeOpenAIEmbeddingRequest(canonicalBody, target)
 	case typology.WireShapeNone, typology.WireShapeOpenAICompletionsLegacy:

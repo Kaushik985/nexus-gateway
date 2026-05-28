@@ -110,6 +110,14 @@ func AuditEventToMap(e auditevent.Event) map[string]any {
 	if len(e.PayloadResponse) > 0 {
 		m["payloadResponse"] = e.PayloadResponse
 	}
+	// Oversize bodies: the drain step uploaded them to S3 and stamped an
+	// S3 SpillRef here. Hub demuxes inline-vs-spill from these keys.
+	if e.RequestSpillRef != nil {
+		m["requestSpillRef"] = e.RequestSpillRef
+	}
+	if e.ResponseSpillRef != nil {
+		m["responseSpillRef"] = e.ResponseSpillRef
+	}
 	// V2 (#58) — pre-computed NormalizedPayload JSON. Hub-side
 	// AgentAuditAPI.Normalize is also available; sending the agent
 	// pre-normalized lets Hub skip the redundant work for AI traffic
@@ -245,6 +253,8 @@ func BuildHTTPAuditEvents(events []auditevent.Event) []hub.AuditEvent {
 			Details:               details,
 			PayloadRequest:        e.PayloadRequest,
 			PayloadResponse:       e.PayloadResponse,
+			RequestSpillRef:       e.RequestSpillRef,
+			ResponseSpillRef:      e.ResponseSpillRef,
 		}
 	}
 	return hubEvents

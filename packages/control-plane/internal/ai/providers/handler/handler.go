@@ -19,9 +19,7 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/ai/providers/modelstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/ai/providers/providerstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
-	auth "github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/authn"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/crypto"
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/users/iamstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
 	cpgx "github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/pgx"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/store/systemmetastore"
@@ -63,7 +61,6 @@ type Handler struct {
 	meta       *systemmetastore.Store
 	creds      *credstore.Store
 	models     *modelstore.Store
-	iam        *iamstore.Store
 	hub        HubInvalidator
 	audit      *audit.Writer
 	logger     *slog.Logger
@@ -86,10 +83,9 @@ func New(d Deps) *Handler {
 	}
 	if d.Pool != nil {
 		h.providers = providerstore.New(d.Pool)
-		h.meta = systemmetastore.NewFromPool(d.Pool)
+		h.meta = systemmetastore.New(d.Pool)
 		h.creds = credstore.New(d.Pool)
 		h.models = modelstore.New(d.Pool)
-		h.iam = iamstore.New(d.Pool)
 	}
 	return h
 }
@@ -172,23 +168,3 @@ func (h *Handler) incrementConfigVersion(ctx context.Context) {
 	}
 }
 
-// isSuperAdmin used by ListProviderCredentials for visibility check.
-func (h *Handler) isSuperAdmin(c echo.Context, aa *auth.AdminAuth) bool {
-	if aa == nil {
-		return false
-	}
-	pt := aa.AuthPrincipalType
-	if pt == "admin_user" {
-		pt = "nexus_user"
-	}
-	groups, err := h.iam.ListGroupNamesForPrincipal(c.Request().Context(), pt, aa.KeyID)
-	if err != nil {
-		return false
-	}
-	for _, g := range groups {
-		if g == "super-admins" {
-			return true
-		}
-	}
-	return false
-}

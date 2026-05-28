@@ -177,7 +177,7 @@ func TestIngressChatToWire_CanonicalErrorPropagates(t *testing.T) {
 	// the canonical-conversion error branch.
 	_, err := b.IngressChatToWire(provcore.FormatBedrock, provcore.FormatOpenAI, []byte(`{}`), provcore.CallTarget{
 		Format: provcore.FormatOpenAI,
-	})
+	}, false)
 	if err == nil {
 		t.Fatal("expected ingress→canonical error for bedrock ingress; got nil")
 	}
@@ -208,7 +208,7 @@ func TestIngressChatToWire_MissingTargetCodec(t *testing.T) {
 	_, err = b.IngressChatToWire(provcore.FormatAnthropic, provcore.FormatOpenAI, body, provcore.CallTarget{
 		Format:          provcore.FormatOpenAI,
 		ProviderModelID: "gpt-4o-mini",
-	})
+	}, false)
 	if err == nil {
 		t.Fatal("expected 'no codec for format' error; got nil")
 	}
@@ -413,6 +413,12 @@ func TestGeminiStreamEncoder_ToolCallInvalidArgsFallsBackEmpty(t *testing.T) {
 
 // TestGeminiStreamEncoder_ReasoningDelta covers stream_encoders.go:349-351
 // — reasoning text gets surfaced as an additional text part.
+// TestGeminiStreamEncoder_ReasoningDelta is the class-2 regression: a cross-format
+// reasoning delta (DeepSeek/OpenAI reasoning_content, Anthropic thinking) must
+// surface as a Gemini thought part (`thought:true`), matching the non-stream
+// egress (spec_gemini/ingress/hub_ingress.go) and keeping the gemini stream
+// decoder↔encoder round-trip symmetric. Pre-fix it leaked into the visible
+// answer text as an untagged part.
 func TestGeminiStreamEncoder_ReasoningDelta(t *testing.T) {
 	enc := &geminiStreamEncoder{}
 	out, err := enc.Write(context.Background(), provcore.Chunk{ReasoningDelta: "let me think"})
@@ -421,7 +427,10 @@ func TestGeminiStreamEncoder_ReasoningDelta(t *testing.T) {
 	}
 	s := string(out)
 	if !strings.Contains(s, `"text":"let me think"`) {
-		t.Errorf("expected reasoning text mapped to text part; got %s", s)
+		t.Errorf("expected reasoning text preserved; got %s", s)
+	}
+	if !strings.Contains(s, `"thought":true`) {
+		t.Errorf("reasoning delta must be tagged thought:true (not leaked as answer text); got %s", s)
 	}
 }
 

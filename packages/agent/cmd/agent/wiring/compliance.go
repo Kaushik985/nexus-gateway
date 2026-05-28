@@ -26,14 +26,27 @@ type ComplianceConfig struct {
 	ExemptionDurationSec      int
 	ExemptionAllowlist        []string
 	ExemptionDenylist         []string
+	// LocalBodyCapture seeds the always-on local capture store (see
+	// ComplianceBundle.LocalCaptureStore). Default-true is applied by the
+	// agent config loader.
+	LocalBodyCapture bool
 }
 
 // ComplianceBundle groups all compliance subsystem objects.
 type ComplianceBundle struct {
-	PolicyEngine         *policy.Engine
-	ExemptionStore       *exemption.Store
-	AgentPipeline        *agentcompliance.AgentPipeline
-	PayloadCaptureStore  *payloadcapture.Store
+	PolicyEngine *policy.Engine
+	ExemptionStore *exemption.Store
+	AgentPipeline  *agentcompliance.AgentPipeline
+	// PayloadCaptureStore holds the Hub-pushed payload_capture config. On the
+	// agent it is the UPLOAD gate (StoreRequestBody/StoreResponseBody decide
+	// whether a captured body is shipped to Hub/S3 at drain time) plus the
+	// source of the size params.
+	PayloadCaptureStore *payloadcapture.Store
+	// LocalCaptureStore drives the inspect path's local body capture (tlsbump).
+	// Always-on by default (LocalBodyCapture), independent of the Hub config,
+	// so users always see their own AI traffic locally. Mirrors the server
+	// store's size params; re-derived on every Hub payload_capture push.
+	LocalCaptureStore    *payloadcapture.Store
 	StreamingPolicyStore *streampolicy.Store
 	PoliciesCache        *policies.SnapshotCache
 }
@@ -71,10 +84,18 @@ func InitCompliance(cfg ComplianceConfig, logger *slog.Logger) ComplianceBundle 
 	// Register shared-hooks regex cache counters on the default registerer.
 	core.RegisterRegexCacheMetrics(prometheus.DefaultRegisterer)
 
-	// Payload capture Store. Boots with the zero-risk default (all-off,
-	// 64 KiB cap) — the first Hub shadow push of "payload_capture" swaps
-	// in the admin-configured values.
+	// Payload capture Store (the UPLOAD gate on the agent). Boots with the
+	// zero-risk default (all-off) — the first Hub shadow push of
+	// "payload_capture" swaps in the admin-configured upload flags + size params.
 	payloadCaptureStore := payloadcapture.NewStore(payloadcapture.DefaultConfig())
+
+	// Local capture store (the always-on local-capture gate for tlsbump).
+	// Flags follow LocalBodyCapture (default true); size params mirror the
+	// server store and are re-derived on every Hub push (see SyncLocalCapture).
+	localCaptureCfg := payloadcapture.DefaultConfig()
+	localCaptureCfg.StoreRequestBody = cfg.LocalBodyCapture
+	localCaptureCfg.StoreResponseBody = cfg.LocalBodyCapture
+	localCaptureStore := payloadcapture.NewStore(localCaptureCfg)
 
 	// Streaming compliance policy Store. Agent has no local config DB —
 	// every admin policy arrives via Hub shadow push, so BootStore with
@@ -96,9 +117,27 @@ func InitCompliance(cfg ComplianceConfig, logger *slog.Logger) ComplianceBundle 
 		ExemptionStore:       exemptionStore,
 		AgentPipeline:        agentPipeline,
 		PayloadCaptureStore:  payloadCaptureStore,
+		LocalCaptureStore:    localCaptureStore,
 		StreamingPolicyStore: streamingPolicyStore,
 		PoliciesCache:        policiesCache,
 	}
+}
+
+// SyncLocalCapture re-derives the always-on local capture config from the
+// freshly-applied server config: it keeps the server's size params (inline
+// cutoff + read caps, which the Hub push may have changed) but overrides the
+// capture flags with the agent-local LocalBodyCapture intent. Called by the
+// payload_capture applier after each Hub push so the local capture store
+// tracks server param changes without ever letting the Hub disable local
+// capture. No-op when localStore is nil.
+func SyncLocalCapture(localStore *payloadcapture.Store, serverCfg payloadcapture.Config, localBodyCapture bool) {
+	if localStore == nil {
+		return
+	}
+	cfg := serverCfg
+	cfg.StoreRequestBody = localBodyCapture
+	cfg.StoreResponseBody = localBodyCapture
+	localStore.Set(cfg)
 }
 
 // TeeApplier wraps an inner ShadowApplier so every apply is also

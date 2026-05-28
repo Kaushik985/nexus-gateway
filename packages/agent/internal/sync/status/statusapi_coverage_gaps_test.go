@@ -77,6 +77,42 @@ func dispatchRaw(t *testing.T, s *Server, cmd string) []byte {
 	return raw
 }
 
+// dispatch: EVENT_BY_ID (detail-by-id) coverage
+
+func TestDispatch_EventByID(t *testing.T) {
+	// Not configured → graceful {event:null}.
+	s := newBareServer(t)
+	out := dispatchJSON(t, s, "EVENT_BY_ID?id=abc")
+	if out["event"] != nil || out["error"] != "not configured" {
+		t.Errorf("unconfigured: got %v", out)
+	}
+
+	// Configured but no id param → missing id.
+	s.SetEventByID(func(id string) (*auditevent.Event, error) {
+		return &auditevent.Event{ID: id}, nil
+	})
+	out = dispatchJSON(t, s, "EVENT_BY_ID")
+	if out["event"] != nil || out["error"] != "missing id" {
+		t.Errorf("missing id: got %v", out)
+	}
+
+	// Success → event echoed.
+	out = dispatchJSON(t, s, "EVENT_BY_ID?id=evt-9")
+	ev, ok := out["event"].(map[string]any)
+	if !ok || ev["id"] != "evt-9" {
+		t.Errorf("success: got %v", out)
+	}
+
+	// Handler error → {event:null, error:...}.
+	s.SetEventByID(func(string) (*auditevent.Event, error) {
+		return nil, errors.New("db boom")
+	})
+	out = dispatchJSON(t, s, "EVENT_BY_ID?id=evt-9")
+	if out["event"] != nil || out["error"] != "db boom" {
+		t.Errorf("error path: got %v", out)
+	}
+}
+
 // dispatch: unconfigured-path coverage
 
 // TestDispatch_UnconfiguredCommands pins the "fn is nil" branch on
@@ -252,6 +288,32 @@ func TestDispatch_ShutdownBlockedByPolicy(t *testing.T) {
 	}
 	// Give the would-be shutdown goroutine a beat — there shouldn't be one.
 	time.Sleep(20 * time.Millisecond)
+}
+
+func TestDispatch_PauseBlockedByPolicy(t *testing.T) {
+	s := newBareServer(t)
+	s.SetPauseProtectionFn(func(int) time.Time {
+		t.Error("pause must NOT run when quitAllowed returns false")
+		return time.Time{}
+	})
+	s.quitAllowedFn = func() bool { return false }
+	got := dispatchJSON(t, s, "PAUSE_PROTECTION")
+	if got["paused"] != false || got["error"] != "pause is disabled by policy" {
+		t.Errorf("want pause-disabled-by-policy, got %v", got)
+	}
+}
+
+func TestDispatch_UnenrollBlockedByPolicy(t *testing.T) {
+	s := newBareServer(t)
+	s.SetSignOutFn(func(context.Context) error {
+		t.Error("sign-out must NOT run when quitAllowed returns false")
+		return nil
+	})
+	s.quitAllowedFn = func() bool { return false }
+	got := dispatchJSON(t, s, "UNENROLL")
+	if got["acknowledged"] != false || got["error"] != "sign-out is disabled by policy" {
+		t.Errorf("want sign-out-disabled-by-policy, got %v", got)
+	}
 }
 
 func TestDispatch_ShutdownAllowed_NoQuitGuard(t *testing.T) {

@@ -53,10 +53,13 @@ type TrafficEventWriter struct {
 	cfg    TrafficEventWriterConfig
 	logger *slog.Logger
 
-	// consumed_total / flush_total / errors_total align with
+	// consumed_total / flush_total / traffic_errors_total align with
 	// mq.processed_total{stream, status} but the existing label scheme
 	// (queue, result, error_type) is more diagnostic for the writer path,
-	// so kept verbatim under mq.* dotted names.
+	// so kept verbatim under mq.* dotted names. The error counter is
+	// traffic_errors_total (not errors_total) so it doesn't collide with the
+	// shared MQ transport layer's unlabeled nexus_mq_errors_total — same
+	// per-consumer namespacing the exemption/admin/siem writers use.
 	consumedTotal    *opsmetrics.Counter
 	flushTotal       *opsmetrics.Counter
 	batchSizeHist    *opsmetrics.Histogram
@@ -126,7 +129,7 @@ func newTrafficEventWriter(
 		w.consumedTotal = reg.NewCounter("mq.processed_total", []string{"queue"})
 		w.flushTotal = reg.NewCounter("mq.batch_flush_total", []string{"result"})
 		w.batchSizeHist = reg.NewHistogram("mq.batch_size", nil)
-		w.errorsTotal = reg.NewCounter("mq.errors_total", []string{"error_type"})
+		w.errorsTotal = reg.NewCounter("mq.traffic_errors_total", []string{"error_type"})
 		w.dlqInsertedTotal = reg.NewCounter("mq.dlq_inserted_total", []string{"subject"})
 	}
 	return w
@@ -376,6 +379,10 @@ func (w *TrafficEventWriter) insertTrafficEvents(ctx context.Context, tx pgx.Tx,
 				}
 				return s
 			}(),
+			// endpoint_type ($90). Canonical typology.EndpointKind stamped by
+			// the producer; '' for non-AI forwards. Column is NOT NULL DEFAULT
+			// '', so bind the string directly (empty is valid, never NULL).
+			stripNul(e.EndpointType),
 		)
 	}
 
@@ -440,7 +447,10 @@ INSERT INTO traffic_event (
     -- the poison-list POST carries the key the Reader's IsPoisoned check
     -- actually consults; before this column the UI posted traffic_event.id
     -- which never matched, making negative-feedback a silent no-op.
-    gateway_cache_l2_entry_key
+    gateway_cache_l2_entry_key,
+    -- Canonical request modality (typology.EndpointKind), stamped by the
+    -- producing service. '' for non-classified (compliance-proxy / agent).
+    endpoint_type
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10, $11,
@@ -479,7 +489,8 @@ INSERT INTO traffic_event (
     $83, $84,
     $85, $86,
     $87, $88,
-    $89
+    $89,
+    $90
 ) ON CONFLICT (id) DO NOTHING
 `
 

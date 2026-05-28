@@ -119,7 +119,7 @@ func claimsFromMap(m jwt.MapClaims) *Claims {
 	c.ClientID, _ = m["client_id"].(string)
 	c.Scope, _ = m["scope"].(string)
 	c.DeviceID, _ = m["device_id"].(string)
-	c.SessionID, _ = m["session_id"].(string)
+	c.SessionID, _ = m["sid"].(string)
 
 	// Numeric claims arrive as float64 via encoding/json. jwt/v5 does not use
 	// json.Number by default, so we only handle float64 and int64 here.

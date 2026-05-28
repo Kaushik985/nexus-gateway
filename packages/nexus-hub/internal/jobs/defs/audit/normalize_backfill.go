@@ -116,7 +116,6 @@ func (j *NormalizeBackfill) RunOnStart() bool { return false }
 type backfillCandidate struct {
 	EventID             string
 	Path                string
-	EndpointType        string
 	AdapterType         string
 	Model               string
 	RequestContentType  *string
@@ -143,7 +142,6 @@ func (j *NormalizeBackfill) Run(ctx context.Context) error {
 SELECT
     te.id,
     te.path,
-    te.endpoint_type,
     COALESCE(te.routed_provider_name, te.provider_name, '') AS adapter_type,
     COALESCE(te.routed_model_name, te.model_name, '')      AS model,
     tep.request_content_type,
@@ -170,7 +168,7 @@ LIMIT $1
 		var c backfillCandidate
 		var reqEnvelope, respEnvelope []byte
 		if err := rows.Scan(
-			&c.EventID, &c.Path, &c.EndpointType, &c.AdapterType, &c.Model,
+			&c.EventID, &c.Path, &c.AdapterType, &c.Model,
 			&c.RequestContentType, &c.ResponseContentType,
 			&reqEnvelope, &respEnvelope,
 		); err != nil {

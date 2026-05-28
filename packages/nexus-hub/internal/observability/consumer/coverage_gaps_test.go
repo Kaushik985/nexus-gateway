@@ -638,7 +638,7 @@ func TestTrafficWriter_InsertTrafficEvents_FullRowSendBatch(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb := mock.ExpectBatch()
-	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	mock.ExpectCommit()
 
 	tx, _ := mock.Begin(ctx)
@@ -685,7 +685,7 @@ func TestTrafficWriter_InsertTrafficEvents_BatchExecErrorPropagates(t *testing.T
 	ctx := context.Background()
 	mock.ExpectBegin()
 	eb := mock.ExpectBatch()
-	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnError(errors.New("constraint-violation"))
+	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnError(errors.New("constraint-violation"))
 
 	tx, _ := mock.Begin(ctx)
 	defer tx.Rollback(ctx) //nolint:errcheck

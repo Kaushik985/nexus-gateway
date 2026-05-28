@@ -253,16 +253,44 @@ func mountCore(e *echo.Echo, d Deps, f StoreFactory) *Mounted {
 		Audit:     d.Audit,
 	}))
 
-	// OIDC SSO routes — registered regardless of whether an OIDC IdP is
-	// currently enabled; the handlers self-check and return a clear error
-	// when OIDC is not configured so the SPA can surface an informative message.
+	// External-IdP SSO routes — registered regardless of whether any OIDC/SAML
+	// IdP is currently enabled; the handlers self-check and bounce the browser
+	// back to the SPA login page when the chosen provider is not usable.
+	// samlRequests tracks outstanding SAML AuthnRequest IDs for InResponseTo
+	// validation; its janitor is process-lifetime like the other in-memory
+	// stores.
+	samlRequests := store.NewSAMLRequestStore()
+
+	// Unified SSO entry. The SPA login picker navigates the browser here for any
+	// external IdP, regardless of protocol; StartHandler owns the OIDC-vs-SAML
+	// divergence (302 to the IdP for OIDC, auto-submitting AuthnRequest POST form
+	// for SAML) so the front end stays protocol-agnostic.
+	e.GET("/authserver/idp/:idpId/start", login.StartHandler(login.StartDeps{
+		IdPs:     idps,
+		Pending:  pending,
+		Requests: samlRequests,
+		Issuer:   d.Issuer,
+	}))
+
+	// Return-leg handlers the external IdP redirects (OIDC) or POSTs (SAML) back
+	// to once it has authenticated the user.
 	oidcDeps := login.OIDCDeps{
 		IdPs:      idps,
 		Federated: federated,
 		Pending:   pending,
 		AuthCodes: authcodes,
 	}
-	e.GET("/authserver/oidc/begin", login.OIDCBeginHandler(oidcDeps))
 	e.GET("/authserver/oidc/callback", login.OIDCCallbackHandler(oidcDeps))
+
+	samlDeps := login.SAMLDeps{
+		IdPs:      idps,
+		Federated: federated,
+		Pending:   pending,
+		AuthCodes: authcodes,
+		Requests:  samlRequests,
+		Issuer:    d.Issuer,
+	}
+	e.POST("/authserver/saml/acs", login.SAMLACSHandler(samlDeps))
+	e.GET("/authserver/saml/metadata", login.SAMLMetadataHandler(samlDeps))
 	return &Mounted{RefreshHelper: refreshHelper}
 }

@@ -19,8 +19,12 @@ func defaultPaths() Paths {
 		LogDir:     "/Library/Logs/" + bundleID,
 		// System-wide path under /var/run/ so the root LaunchDaemon (write)
 		// and any logged-in user's tray binary (connect) can both reach it.
-		// The daemon sets mode 0666 on the socket file; IPC handlers
-		// enforce origin checks before performing privileged operations.
+		// The listen helper chmods the socket 0666 (world-connectable, the
+		// cross-UID cost of root-daemon ↔ user-GUI on macOS). There is no
+		// peer-credential check on the socket; instead the state-changing IPC
+		// commands (SHUTDOWN / PAUSE_PROTECTION / UNENROLL) are gated by the
+		// admin quitAllowed policy, so a no-quit fleet cannot be disabled over
+		// this socket. A LOCAL_PEERCRED / group-ACL transport check is future work.
 		SocketPath:       "/var/run/nexus-agent-status.sock",
 		FlagsDir:         flagsDir,
 		UserQuitFlagPath: flagsDir + "/user-quit",

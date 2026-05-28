@@ -96,7 +96,7 @@ func newHandlerWithMock(t *testing.T) (*Handler, pgxmock.PgxPoolIface) {
 		dsar:       dsarstore.New(mock),
 		metrics:    ms,
 		compliance: compliancestore.New(mock, ms),
-		meta:       systemmetastore.NewFromPool(mock),
+		meta:       systemmetastore.New(mock),
 		audit:      noopAuditWriter(),
 		logger:     silentLogger(),
 	}

@@ -113,9 +113,10 @@ func TestMountWithFactory_GetLocalSuccess(t *testing.T) {
 
 	// Password route now exists.
 	mustRegister(t, e, http.MethodPost, "/authserver/password")
-	// Both OIDC routes register on the GetLocal-success path.
-	mustRegister(t, e, http.MethodGet, "/authserver/oidc/begin")
+	// The SSO start entry + return-leg routes register on the GetLocal-success path.
+	mustRegister(t, e, http.MethodGet, "/authserver/idp/:idpId/start")
 	mustRegister(t, e, http.MethodGet, "/authserver/oidc/callback")
+	mustRegister(t, e, http.MethodPost, "/authserver/saml/acs")
 
 	// The pgxmock ExpectQuery for GetLocal must have been hit exactly once.
 	// Catches the regression "Mount swallowed the error and skipped GetLocal".

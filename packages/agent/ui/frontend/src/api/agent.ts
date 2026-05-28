@@ -70,6 +70,22 @@ export interface StatusSnapshot {
 }
 
 /**
+ * SpillRef mirrors the daemon's audit.SpillRef — the out-of-band pointer for an
+ * oversize body. `backend` is "localfs" (kept on the device; the daemon reads
+ * it back into the inline body for the detail view) or "s3" (uploaded at drain;
+ * the agent has no S3 GET credential, so the drawer shows a "view in Control
+ * Plane" affordance instead of the bytes).
+ */
+export interface SpillRef {
+  backend: string;
+  key: string;
+  size: number;
+  sha256?: string;
+  contentType?: string;
+  truncated?: boolean;
+}
+
+/**
  * AgentEvent mirrors the daemon's QUERY_EVENTS IPC response. The daemon emits
  * every column; consumers pick which fields to render.
  */
@@ -137,14 +153,24 @@ export interface AgentEvent {
 
   /**
    * Captured request/response bodies. Wire shape is base64-encoded
-   * string (Go json.Marshal of []byte yields base64). Empty / undefined
-   * when payload capture is disabled or the body was zero-length.
-   * Bodies larger than the inline cap (default 256 KiB) are spilled
-   * to S3 — those rows currently surface as empty here; spill-ref
-   * projection is a follow-up.
+   * string (Go json.Marshal of []byte yields base64). Only populated on
+   * the EVENT_BY_ID detail fetch (the list query omits bodies). Empty /
+   * undefined when capture is off, the body was zero-length, or it spilled
+   * to S3 (see {request,response}SpillRef). A localfs-spilled body is read
+   * back off disk by the daemon and surfaces here inline.
    */
   payloadRequest?: string;
   payloadResponse?: string;
+
+  /**
+   * Out-of-band pointers for oversize bodies. Present on the detail fetch
+   * when a body exceeded the inline cap. An s3-backend ref means the body
+   * was uploaded at drain and is not locally readable — the drawer renders
+   * a "view in Control Plane" affordance. A localfs ref is normally already
+   * hydrated into payload{Request,Response} by the daemon.
+   */
+  requestSpillRef?: SpillRef;
+  responseSpillRef?: SpillRef;
 
   /**
    * V2 (#58) — pre-normalized payload JSON, computed by forward_handler
@@ -159,6 +185,16 @@ export interface AgentEvent {
 export interface EventPage {
   events: AgentEvent[];
   total: number;
+  error?: string;
+}
+
+/**
+ * EventDetail is the EVENT_BY_ID response — the full event (body + normalized
+ * + spill refs) fetched on demand when the detail drawer opens, so the list
+ * query stays lightweight. `event` is null when the id no longer exists.
+ */
+export interface EventDetail {
+  event: AgentEvent | null;
   error?: string;
 }
 
@@ -420,6 +456,9 @@ export const agentApi = {
     aiOnly?: boolean;
     sinceUnixMillis?: number;
   }) => bridge().QueryEvents(filter) as Promise<EventPage>,
+  // Detail-by-id: the drawer fetches body + normalized + spill on open so the
+  // list query (queryEvents) stays metadata-only.
+  eventById: (id: string) => bridge().EventByID(id) as Promise<EventDetail>,
   queryLifecycle: (filter: { offset: number; limit: number }) =>
     bridge().QueryLifecycleEvents(filter) as Promise<LifecycleEventPage>,
   getAppliedConfig: () => bridge().GetAppliedConfig() as Promise<AppliedConfig>,

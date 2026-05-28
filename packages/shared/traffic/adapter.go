@@ -91,7 +91,7 @@ type AdapterRegistry struct {
 }
 
 // NewAdapterRegistry creates a new registry. namespace is used for metrics
-// prefixing per §2.5 (e.g. "nexus_compliance_proxy").
+// prefixing per §2.5 (e.g. "nexus").
 func NewAdapterRegistry(namespace string) *AdapterRegistry {
 	return &AdapterRegistry{
 		factories: make(map[string]AdapterFactory),

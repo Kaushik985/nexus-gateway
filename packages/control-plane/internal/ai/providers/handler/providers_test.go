@@ -277,16 +277,6 @@ func TestCreateProvider_CredentialMissingName400(t *testing.T) {
 
 // CreateProvider — store paths
 
-// providerWithChildrenCredCols mirrors the 14-column projection that
-// CreateProviderWithChildren scans into the inline credential row (the
-// SQL RETURNs credMetadataColumns but Scan reads only the first 14 fields).
-var providerWithChildrenCredCols = []string{
-	"id", "name", "providerId", "enabled", "rotationState",
-	"lastRotatedAt", "lastUsedAt", "lastSuccessAt", "lastFailureAt",
-	"lastFailureReason", "totalUsageCount", "expiresAt",
-	"createdAt", "updatedAt",
-}
-
 func TestCreateProvider_HappyBareProvider(t *testing.T) {
 	// No models, no credential — exercises the simplest atomic create.
 	mock, db := newMockStore(t)
@@ -354,8 +344,8 @@ func TestCreateProvider_HappyWithModelsAndCredential(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows(providerWithChildrenCredCols).
-			AddRow(makeProviderInsertWithChildrenCredRow(now)...))
+		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).
+			AddRow(makeCredentialRow(now)...))
 	mock.ExpectCommit()
 	mock.ExpectQuery(`SELECT value FROM system_metadata`).
 		WillReturnRows(pgxmock.NewRows([]string{"value"}))
@@ -538,8 +528,8 @@ func TestCreateProvider_EnabledFalseAndOptionalFieldsBranch(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
-		WillReturnRows(pgxmock.NewRows(providerWithChildrenCredCols).
-			AddRow(makeProviderInsertWithChildrenCredRow(now)...))
+		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).
+			AddRow(makeCredentialRow(now)...))
 	mock.ExpectCommit()
 	mock.ExpectQuery(`SELECT value FROM system_metadata`).
 		WillReturnRows(pgxmock.NewRows([]string{"value"}))

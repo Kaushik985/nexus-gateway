@@ -80,9 +80,7 @@ func New(d Deps) *Handler {
 // RegisterRoutes registers system settings routes.
 //
 // The /settings/sso* routes are gone — SSO configuration lives on per-IdP
-// rows under /api/admin/identity-providers (handled by
-// admin_identity_provider.go). The SystemMetadata["sso.config"] blob is
-// not read here; existing blobs were converted to IdentityProvider rows.
+// rows under /api/admin/identity-providers (handled by identity_provider.go).
 func (h *Handler) RegisterRoutes(g *echo.Group, iamMW func(action string) echo.MiddlewareFunc) {
 	g.GET("/settings", h.GetSettings, iamMW(iam.ResourceSettings.Action(iam.VerbRead)))
 	g.PUT("/settings", h.UpdateSettings, iamMW(iam.ResourceSettings.Action(iam.VerbUpdate)))

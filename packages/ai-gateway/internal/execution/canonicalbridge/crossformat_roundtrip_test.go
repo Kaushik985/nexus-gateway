@@ -67,7 +67,7 @@ func TestCrossFormatChatRoundTrip(t *testing.T) {
 			}
 			ct := provcore.CallTarget{Format: c.target, ProviderModelID: FixtureProviderModel(c.target)}
 
-			wire, err := b.IngressChatToWire(c.ingress, c.target, body, ct)
+			wire, err := b.IngressChatToWire(c.ingress, c.target, body, ct, false)
 			if err != nil {
 				t.Fatalf("IngressChatToWire(%s): %v", name, err)
 			}

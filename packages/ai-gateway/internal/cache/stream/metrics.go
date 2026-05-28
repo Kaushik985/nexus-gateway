@@ -39,7 +39,7 @@ type Metrics struct {
 	EntryBytes prometheus.Histogram
 }
 
-// NewMetrics constructs the metric set under the nexus_aigw_cache
+// NewMetrics constructs the metric set under the nexus_cache
 // namespace/subsystem. reg may be nil to use prometheus.DefaultRegisterer.
 func NewMetrics(reg prometheus.Registerer) *Metrics {
 	if reg == nil {
@@ -48,37 +48,37 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	f := promauto.With(reg)
 	return &Metrics{
 		LookupsTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_aigw",
+			Namespace: "nexus",
 			Subsystem: "cache",
 			Name:      "lookups_total",
 			Help:      "Cache lookups by outcome (hit, hit_live, miss, skip_no_cache, disabled).",
 		}, []string{"result"}),
 		WritesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_aigw",
+			Namespace: "nexus",
 			Subsystem: "cache",
 			Name:      "writes_total",
 			Help:      "Cache writes by entry kind (stream, response) and outcome (ok, too_large, encode_error).",
 		}, []string{"kind", "reason"}),
 		BrokerSubscribers: f.NewGauge(prometheus.GaugeOpts{
-			Namespace: "nexus_aigw",
+			Namespace: "nexus",
 			Subsystem: "cache",
 			Name:      "broker_subscribers",
 			Help:      "Current sum of subscribers across all in-flight brokers.",
 		}),
 		BrokerActive: f.NewGauge(prometheus.GaugeOpts{
-			Namespace: "nexus_aigw",
+			Namespace: "nexus",
 			Subsystem: "cache",
 			Name:      "broker_active",
 			Help:      "Current number of in-flight brokers.",
 		}),
 		ReplayChunks: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "nexus_aigw",
+			Namespace: "nexus",
 			Subsystem: "cache",
 			Name:      "replay_chunks_total",
 			Help:      "Chunks replayed from a Redis cache HIT.",
 		}),
 		EntryBytes: f.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "nexus_aigw",
+			Namespace: "nexus",
 			Subsystem: "cache",
 			Name:      "entry_bytes",
 			Help:      "Persisted cache-entry size in bytes (observed on successful writes only).",

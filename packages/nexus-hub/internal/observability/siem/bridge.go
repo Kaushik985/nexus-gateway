@@ -40,7 +40,6 @@ type BridgeConfig struct {
 	PollInterval time.Duration `json:"pollInterval"`
 	BatchSize    int           `json:"batchSize"`
 	EventTypes   []string      `json:"eventTypes"`
-	TrafficMode  string        `json:"trafficMode"`
 }
 
 // Bridge polls the unified traffic_event table and the AdminAuditLog table for
@@ -220,7 +219,7 @@ func (b *Bridge) Poll(ctx context.Context) {
 		b.logger.Error("siem bridge: load traffic checkpoint", "error", err)
 		return
 	}
-	trafficEvents, trafficLastTS, err := b.queryEvents(ctx, trafficCP, cfg.BatchSize, cfg.TrafficMode)
+	trafficEvents, trafficLastTS, err := b.queryEvents(ctx, trafficCP, cfg.BatchSize)
 	if err != nil {
 		b.logger.Error("siem bridge: query traffic events", "error", err)
 		return
@@ -342,55 +341,37 @@ func (b *Bridge) saveCheckpoint(ctx context.Context, key string, ts time.Time) e
 	return nil
 }
 
-// queryEvents fetches up to batchSize rows from traffic_event with
-// timestamp > since, ordered by timestamp ASC. When trafficMode is "all",
-// every traffic event is returned; otherwise only security-relevant rows
-// (blocked, rate-limited, budget-exceeded) are included.
+// queryEvents fetches up to batchSize security-relevant rows from traffic_event
+// with timestamp > since, ordered by timestamp ASC. Security-relevant means
+// either pipeline stage blocked the request or flagged it rate-limited or
+// budget-exceeded; ordinary allowed traffic is not forwarded to the SIEM.
 //
-// batchSize + trafficMode parameters come from the live cfg snapshot in
-// Poll() so the bridge picks up the latest siem.config values without
-// the per-query path reading from a struct field.
-func (b *Bridge) queryEvents(ctx context.Context, since time.Time, batchSize int, trafficMode string) ([]Event, time.Time, error) {
+// batchSize comes from the live cfg snapshot in Poll() so the bridge picks up
+// the latest siem.config value without the per-query path reading a struct field.
+func (b *Bridge) queryEvents(ctx context.Context, since time.Time, batchSize int) ([]Event, time.Time, error) {
 	// The traffic_event table uses split request_hook_* + response_hook_*
 	// columns (one per pipeline stage). The bridge selects both pairs and
 	// exposes them as requestHook* / responseHook* in the outgoing event so
-	// SIEM dashboards can distinguish pipeline stages. For "security mode"
-	// filtering, EITHER stage's block / rate-limited / budget-exceeded signal
-	// makes the row interesting.
-	var query string
-	if trafficMode == "all" {
-		query = `
-			SELECT id, source, timestamp,
-			       source_ip, target_host, method, path, status_code, latency_ms,
-			       entity_id, entity_type, org_id,
-			       request_hook_decision, request_hook_reason, request_hook_reason_code,
-			       response_hook_decision, response_hook_reason, response_hook_reason_code,
-			       compliance_tags,
-			       details
-			FROM traffic_event
-			WHERE timestamp > $1
-			ORDER BY timestamp ASC
-			LIMIT $2
-		`
-	} else {
-		query = `
-			SELECT id, source, timestamp,
-			       source_ip, target_host, method, path, status_code, latency_ms,
-			       entity_id, entity_type, org_id,
-			       request_hook_decision, request_hook_reason, request_hook_reason_code,
-			       response_hook_decision, response_hook_reason, response_hook_reason_code,
-			       compliance_tags,
-			       details
-			FROM traffic_event
-			WHERE timestamp > $1
-			  AND (request_hook_decision = 'block'
-			       OR response_hook_decision = 'block'
-			       OR request_hook_reason_code IN ('rate_limited', 'budget_exceeded')
-			       OR response_hook_reason_code IN ('rate_limited', 'budget_exceeded'))
-			ORDER BY timestamp ASC
-			LIMIT $2
-		`
-	}
+	// SIEM dashboards can distinguish pipeline stages. EITHER stage's block /
+	// rate-limited / budget-exceeded signal makes the row interesting.
+	const query = `
+		SELECT id, source, timestamp,
+		       source_ip, target_host, method, path, status_code, latency_ms,
+		       entity_id, entity_type, org_id,
+		       request_hook_decision, request_hook_reason, request_hook_reason_code,
+		       response_hook_decision, response_hook_reason, response_hook_reason_code,
+		       compliance_tags,
+		       details,
+		       trace_id
+		FROM traffic_event
+		WHERE timestamp > $1
+		  AND (request_hook_decision = 'block'
+		       OR response_hook_decision = 'block'
+		       OR request_hook_reason_code IN ('rate_limited', 'budget_exceeded')
+		       OR response_hook_reason_code IN ('rate_limited', 'budget_exceeded'))
+		ORDER BY timestamp ASC
+		LIMIT $2
+	`
 	rows, err := b.pool.Query(ctx, query, since, batchSize)
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("query traffic_event: %w", err)
@@ -411,6 +392,7 @@ func (b *Bridge) queryEvents(ctx context.Context, since time.Time, batchSize int
 			respHookDecision, respHookReason, respHookReasonCode *string
 			complianceTags                                       []string
 			details                                              *json.RawMessage
+			traceID                                              *string
 		)
 
 		if err := rows.Scan(
@@ -421,6 +403,7 @@ func (b *Bridge) queryEvents(ctx context.Context, since time.Time, batchSize int
 			&respHookDecision, &respHookReason, &respHookReasonCode,
 			&complianceTags,
 			&details,
+			&traceID,
 		); err != nil {
 			return nil, time.Time{}, fmt.Errorf("scan traffic_event: %w", err)
 		}
@@ -431,6 +414,10 @@ func (b *Bridge) queryEvents(ctx context.Context, since time.Time, batchSize int
 			"timestamp": ts.UTC().Format(time.RFC3339Nano),
 		}
 
+		// trace_id (the X-Nexus-Request-Id) is the cross-service correlation
+		// key; forward it so an external SIEM can stitch this event back to the
+		// other traffic_event rows for the same request.
+		setIfNotNil(evt, "traceId", traceID)
 		setIfNotNil(evt, "sourceIp", sourceIP)
 		setIfNotNil(evt, "targetHost", targetHost)
 		setIfNotNil(evt, "method", method)

@@ -42,7 +42,7 @@ func newHandlerWithMock(t *testing.T) (pgxmock.PgxPoolIface, *Handler) {
 		t.Fatal(err)
 	}
 	t.Cleanup(mock.Close)
-	db := systemmetastore.NewFromPool(mock)
+	db := systemmetastore.New(mock)
 	h := New(Deps{
 		Meta:   db,
 		Hub:    nil,

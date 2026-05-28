@@ -18,7 +18,6 @@ import (
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/bridge"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/proxy"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	agentTLS "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/tls"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/api"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/darwin/bundles"
@@ -38,17 +37,16 @@ type DarwinPlatform struct {
 	done     chan struct{}
 	stopOnce sync.Once
 
-	// MITM bridge: present when SetMITMDeps + StartBridge wire up the
-	// loopback listener that runs proxy.MITMRelay against Swift NE
-	// redirected inspect flows. Both nil = bridge disabled.
-	tlsEngine   *agentTLS.Engine
-	relayClient *relay.Client
+	// tlsEngine is the device-CA TLS engine the NE bridge uses to mint
+	// per-host leaf certs for inspect flows. Wired by LoadTLSEngineFromDisk
+	// before StartBridge; nil = bridge disabled.
+	tlsEngine *agentTLS.Engine
 
 	// bridgeDeps: when non-nil, handleBridgeFlow routes inspect flows
-	// through shared/tlsbump.BumpConnection via proxy.BumpFlow. When nil
-	// the legacy proxy.MITMRelay path runs. Set via SetBridgeDeps from
-	// main.go after thingclient settles its initial config pull so the
-	// resolver / domain snapshot / adapter registry are populated.
+	// through shared/tlsbump.BumpConnection via proxy.BumpFlow. Set via
+	// SetBridgeDeps from main.go after thingclient settles its initial
+	// config pull so the resolver / domain snapshot / adapter registry
+	// are populated. Nil leaves inspect flows on the Swift raw-relay path.
 	bridgeDeps *proxy.BridgeDeps
 
 	// backpressure: when non-nil + IsThrottled() returns true,
@@ -73,14 +71,11 @@ type DarwinPlatform struct {
 	lastFlowAtNS     atomic.Int64 // unix nanos of last flow_new
 }
 
-// NewPlatform creates a new Darwin platform shim. relayClient is stored
-// for use by the MITM bridge listener; when the bridge isn't configured
-// the relayClient is dormant.
-func NewPlatform(_ string, relayClient *relay.Client) api.Platform {
+// NewPlatform creates a new Darwin platform shim.
+func NewPlatform(_ string) api.Platform {
 	return &DarwinPlatform{
 		done:        make(chan struct{}),
 		activeFlows: make(map[string]*flow.State),
-		relayClient: relayClient,
 	}
 }
 
@@ -503,16 +498,13 @@ func (p *DarwinPlatform) LookupFlowDestination(flowID string) (host string, port
 	return fs.DstHost, fs.DstPort, fs.SrcIP, pm, true
 }
 
-// StartBridge starts the macOS NE → Go MITM bridge listener on addr
-// (typically 127.0.0.1:9443). The listener accepts Swift NE redirected
-// connections and runs proxy.MITMRelay. Returns the listener so the
-// caller can close it on shutdown.
+// StartBridge starts the macOS NE → Go bridge listener on addr (typically
+// 127.0.0.1:9443). The listener accepts Swift NE redirected inspect flows
+// and hands each off to proxy.BumpFlow (shared/tlsbump). Returns the
+// listener so the caller can close it on shutdown.
 //
-// Requires:
-//   - p.handler (the connectionBridge) must implement RequestInspector,
-//     ResponseInspector, ResponseUsageDetector, BodyReadCapper.
-//   - SetMITMDeps must have been called with non-nil tlsEngine and
-//     relayClient before this method is invoked.
+// Requires p.tlsEngine to be set (via LoadTLSEngineFromDisk) before this
+// method is invoked.
 //
 // Returns nil + nil error when the bridge is not configured (addr == "")
 // — caller should treat that as "feature disabled" and continue.
@@ -523,8 +515,8 @@ func (p *DarwinPlatform) StartBridge(ctx context.Context, addr string) (io.Close
 	if p.handler == nil {
 		return nil, fmt.Errorf("StartBridge: ConnectionHandler not set — call Start() first")
 	}
-	if p.tlsEngine == nil || p.relayClient == nil {
-		return nil, fmt.Errorf("StartBridge: SetMITMDeps must supply tlsEngine and relayClient before bridge can run")
+	if p.tlsEngine == nil {
+		return nil, fmt.Errorf("StartBridge: LoadTLSEngineFromDisk must supply tlsEngine before bridge can run")
 	}
 	ln, err := bridge.New(bridge.Config{
 		Addr:   addr,
@@ -535,19 +527,8 @@ func (p *DarwinPlatform) StartBridge(ctx context.Context, addr string) (io.Close
 		return nil, fmt.Errorf("StartBridge: %w", err)
 	}
 	go ln.Run(ctx)
-	slog.Info("bridge listener attached to MITMRelay pipeline", "addr", ln.Addr())
+	slog.Info("bridge listener attached to BumpFlow pipeline", "addr", ln.Addr())
 	return ln, nil
-}
-
-// SetMITMDeps wires the TLS engine + outbound relay client the bridge
-// listener will use to MITM-bump inspect flows. Called from main.go
-// before StartBridge. Both fields are non-nil required; passing nil
-// disables the bridge gracefully.
-func (p *DarwinPlatform) SetMITMDeps(tlsEngine *agentTLS.Engine, relayClient *relay.Client) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.tlsEngine = tlsEngine
-	p.relayClient = relayClient
 }
 
 // SetBackpressure wires the audit-queue backpressure store. When the
@@ -561,9 +542,9 @@ func (p *DarwinPlatform) SetBackpressure(bp interface{ IsThrottled() bool }) {
 	p.backpressure = bp
 }
 
-// TLSEngine returns the device-CA TLS engine wired by SetMITMDeps /
-// LoadTLSEngineFromDisk. Nil before either has run; main.go reads this
-// to populate BridgeDeps.TLSEngine after the disk-load step.
+// TLSEngine returns the device-CA TLS engine wired by
+// LoadTLSEngineFromDisk. Nil before it has run; main.go reads this to
+// populate BridgeDeps.TLSEngine after the disk-load step.
 func (p *DarwinPlatform) TLSEngine() *agentTLS.Engine {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -572,21 +553,18 @@ func (p *DarwinPlatform) TLSEngine() *agentTLS.Engine {
 
 // SetBridgeDeps wires the agent's BridgeDeps so handleBridgeFlow can
 // route inspect flows through shared/tlsbump.BumpConnection via
-// proxy.BumpFlow. When non-nil, the bridge handler prefers BumpFlow
-// over the legacy proxy.MITMRelay path. Setting nil reverts to the
-// legacy path.
+// proxy.BumpFlow. Setting nil leaves inspect flows on the Swift
+// raw-relay path.
 func (p *DarwinPlatform) SetBridgeDeps(deps *proxy.BridgeDeps) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.bridgeDeps = deps
 }
 
-// LoadTLSEngineFromDisk reads the agent's device CA from the standard
-// CA file paths and constructs the proxy.MITMRelay engine in one shot.
-// Mirrors linux.go's NewEngine call. caCertPath / caKeyPath usually
-// come from platform.DefaultPaths(). Idempotent — replaces any prior
-// engine. relayClient must already be set by NewPlatform; this is a
-// helper that takes the boilerplate out of main.go.
+// LoadTLSEngineFromDisk reads the agent's device CA from the standard CA
+// file paths and constructs the device-CA TLS engine in one shot. Mirrors
+// linux.go's NewEngine call. caCertPath / caKeyPath usually come from
+// platform.DefaultPaths(). Idempotent — replaces any prior engine.
 func (p *DarwinPlatform) LoadTLSEngineFromDisk(caCertPath, caKeyPath string) error {
 	caCert, caKey, generated, err := agentTLS.LoadOrGenerateCA(caCertPath, caKeyPath)
 	if err != nil {
@@ -604,10 +582,9 @@ func (p *DarwinPlatform) LoadTLSEngineFromDisk(caCertPath, caKeyPath string) err
 }
 
 // handleBridgeFlow is the bridge.HandleFunc closure registered in
-// StartBridge. Mirrors the linux.go inspect path exactly so macOS
-// gains TLS-bump parity: build inspector callbacks from p.handler,
-// run proxy.MITMRelay, stamp the result back onto the per-flow
-// state so handleFlowClosed picks it up when Swift sends flow_closed.
+// StartBridge. It is a thin dispatcher into proxy.BumpFlow: inspect flows
+// terminate TLS and emit per-HTTP-request audit rows from inside tlsbump,
+// so handleFlowClosed skips the flow-level row for them.
 func (p *DarwinPlatform) handleBridgeFlow(ctx context.Context, clientConn net.Conn, peeked []byte, dstHost string, dstPort int, flowID string) {
 	defer clientConn.Close() //nolint:errcheck
 	bridgeStart := time.Now()
@@ -620,7 +597,7 @@ func (p *DarwinPlatform) handleBridgeFlow(ctx context.Context, clientConn net.Co
 	// Recover the daemon-side destination — Swift may have sent the
 	// IP literal in the BRIDGE header (caller pre-resolved DNS) and
 	// the SNI-derived hostname is on flowState by now. Use it for
-	// MITMRelay's leaf-cert SAN matching.
+	// BumpFlow's leaf-cert SAN matching.
 	originalHost := dstHost
 	if recordedHost, _, _, _, ok := p.LookupFlowDestination(flowID); ok && recordedHost != "" && !looksLikeIPLiteral(recordedHost) {
 		dstHost = recordedHost

@@ -44,7 +44,7 @@ func emitForwardHeaderDrop(direction, adapterType, headerLabel string) {
 }
 
 // ReasoningPassthroughFunc is the signature for the
-// nexus_aigw_reasoning_passthrough_total counter increment. Provider is
+// nexus_reasoning_passthrough_total counter increment. Provider is
 // the adapter slug (e.g. "anthropic", "gemini"); action is one of
 // "injected" (extension found and forwarded to upstream) or
 // "skipped_malformed" (extension found but had wrong JSON type and was

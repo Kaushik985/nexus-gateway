@@ -92,26 +92,3 @@ type SpillStore interface {
 	// `SpillRef.Backend` so the audit row records which backend it lives in.
 	Backend() string
 }
-
-// Config is the operator-facing configuration for the spill subsystem.
-// Lives in `system_metadata['spill_store.config']`. Each data-plane service
-// reads it at startup and watches the same shadow key for live changes.
-//
-// Example payload:
-//
-//	{
-//	  "backend": "localfs",
-//	  "localfs": {
-//	    "root": "/var/lib/nexus/spill",
-//	    "max_size_gb": 50,
-//	    "retention_days": 30
-//	  }
-//	}
-type Config struct {
-	Backend string `json:"backend"`
-	Localfs struct {
-		Root          string `json:"root,omitempty"`
-		MaxSizeGB     int    `json:"max_size_gb,omitempty"`
-		RetentionDays int    `json:"retention_days,omitempty"`
-	} `json:"localfs"`
-}

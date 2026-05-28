@@ -20,6 +20,7 @@ import (
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/hub"
+	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/identity/iam"
 )
 
@@ -290,16 +291,15 @@ func hubPropagationErrorJSON(detail error) map[string]any {
 	}
 }
 
-// actor reads the JWT-auth-populated "user" context key. Mirrors the
-// original handler — different from killswitch's actorFromContext
-// which reads middleware.AdminAuth.
+// actor extracts the authenticated admin identity attached by the
+// AdminAuth middleware — the same source killswitch and every other admin
+// handler use. Returns ("", "") when no admin auth is present.
 func actor(c echo.Context) (string, string) {
-	if u, ok := c.Get("user").(map[string]any); ok {
-		id, _ := u["id"].(string)
-		name, _ := u["display_name"].(string)
-		return id, name
+	aa := middleware.AdminAuthFromContext(c)
+	if aa == nil {
+		return "", ""
 	}
-	return "", ""
+	return aa.KeyID, aa.KeyName
 }
 
 // ── Endpoints ─────────────────────────────────────────────────────────────
@@ -334,7 +334,7 @@ func (h *Handler) PutGlobal(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errJSON(msg, code, ""))
 	}
 	cfg, _ := body.configJSON()
-	actorID, _ := actor(c)
+	actorID, actorName := actor(c)
 	ctx := c.Request().Context()
 	// Snapshot the prior tier row before the upsert so the audit emit can
 	// emit a BeforeState diff alongside the AfterState. A read error here
@@ -356,7 +356,7 @@ func (h *Handler) PutGlobal(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, errJSON("write global passthrough: "+err.Error(), "server_error", ""))
 	}
-	if err := h.propagateConfig(ctx, actorID, ""); err != nil {
+	if err := h.propagateConfig(ctx, actorID, actorName); err != nil {
 		return c.JSON(http.StatusBadGateway, hubPropagationErrorJSON(err))
 	}
 	// Emit audit after both the DB upsert and the Hub propagation have
@@ -398,7 +398,7 @@ func (h *Handler) PutAdapter(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errJSON(msg, code, ""))
 	}
 	cfg, _ := body.configJSON()
-	actorID, _ := actor(c)
+	actorID, actorName := actor(c)
 	ctx := c.Request().Context()
 	before, beforeErr := h.readTierState(ctx, "adapter", aType)
 	if beforeErr != nil {
@@ -416,7 +416,7 @@ func (h *Handler) PutAdapter(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, errJSON("write adapter passthrough: "+err.Error(), "server_error", ""))
 	}
-	if err := h.propagateConfig(ctx, actorID, ""); err != nil {
+	if err := h.propagateConfig(ctx, actorID, actorName); err != nil {
 		return c.JSON(http.StatusBadGateway, hubPropagationErrorJSON(err))
 	}
 	h.emitAudit(c, iam.VerbEmergencyEnable, aType, before, payloadAuditState(body))
@@ -435,8 +435,8 @@ func (h *Handler) DeleteAdapter(c echo.Context) error {
 		`DELETE FROM gateway_passthrough_config_adapter WHERE adapter_type = $1`, aType); err != nil {
 		return c.JSON(http.StatusInternalServerError, errJSON("delete adapter passthrough: "+err.Error(), "server_error", ""))
 	}
-	actorID, _ := actor(c)
-	if err := h.propagateConfig(ctx, actorID, ""); err != nil {
+	actorID, actorName := actor(c)
+	if err := h.propagateConfig(ctx, actorID, actorName); err != nil {
 		return c.JSON(http.StatusBadGateway, hubPropagationErrorJSON(err))
 	}
 	h.emitAudit(c, iam.VerbWrite, aType, before, nil)
@@ -475,7 +475,7 @@ func (h *Handler) PutProvider(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errJSON(msg, code, ""))
 	}
 	cfg, _ := body.configJSON()
-	actorID, _ := actor(c)
+	actorID, actorName := actor(c)
 	ctx := c.Request().Context()
 	before, beforeErr := h.readTierState(ctx, "provider", pID)
 	if beforeErr != nil {
@@ -493,7 +493,7 @@ func (h *Handler) PutProvider(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, errJSON("write provider passthrough: "+err.Error(), "server_error", ""))
 	}
-	if err := h.propagateConfig(ctx, actorID, ""); err != nil {
+	if err := h.propagateConfig(ctx, actorID, actorName); err != nil {
 		return c.JSON(http.StatusBadGateway, hubPropagationErrorJSON(err))
 	}
 	h.emitAudit(c, iam.VerbEmergencyEnable, pID, before, payloadAuditState(body))
@@ -512,8 +512,8 @@ func (h *Handler) DeleteProvider(c echo.Context) error {
 		`DELETE FROM gateway_passthrough_config_provider WHERE provider_id = $1`, pID); err != nil {
 		return c.JSON(http.StatusInternalServerError, errJSON("delete provider passthrough: "+err.Error(), "server_error", ""))
 	}
-	actorID, _ := actor(c)
-	if err := h.propagateConfig(ctx, actorID, ""); err != nil {
+	actorID, actorName := actor(c)
+	if err := h.propagateConfig(ctx, actorID, actorName); err != nil {
 		return c.JSON(http.StatusBadGateway, hubPropagationErrorJSON(err))
 	}
 	h.emitAudit(c, iam.VerbWrite, pID, before, nil)

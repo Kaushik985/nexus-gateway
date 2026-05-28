@@ -19,7 +19,7 @@ func noopHandle(_ context.Context, conn net.Conn, _ []byte, _ string, _ int, _ s
 	_ = conn.Close()
 }
 
-// recordingHandler captures the parameters MITMRelay would receive,
+// recordingHandler captures the parameters the bump handler would receive,
 // closing the client connection at the end so the goroutine returns.
 type recordingHandler struct {
 	mu       sync.Mutex
@@ -612,7 +612,7 @@ func TestServe_ClearDeadlineErrorStillProceeds(t *testing.T) {
 // TestServe_DrainPeekFail asserts that when io.ReadFull on the
 // buffered peek bytes fails (synthetic short-read), the serve path
 // closes the connection and does NOT invoke the handler — passing a
-// truncated ClientHello to MITMRelay would risk a malformed TLS
+// truncated ClientHello to the bump handler would risk a malformed TLS
 // handshake.
 func TestServe_DrainPeekFail(t *testing.T) {
 	called := atomic.Bool{}

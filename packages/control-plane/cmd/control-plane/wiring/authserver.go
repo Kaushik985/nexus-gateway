@@ -56,13 +56,6 @@ func InitAuthServer(ctx context.Context, e *echo.Echo, d AuthServerDeps) (closer
 	}
 	d.Logger.Info("auth keystore ready", "dir", keystoreDir)
 
-	// One-shot idempotent migration of legacy SSO config.
-	if created, err := d.DB.MigrateLegacySSOConfigToIdentityProviders(ctx, d.Logger); err != nil {
-		d.Logger.Warn("legacy SSO config migration failed (non-fatal)", "error", err)
-	} else if created > 0 {
-		d.Logger.Info("legacy SSO config migrated to IdentityProvider rows", "rows_created", created)
-	}
-
 	if len(ks.All()) == 0 {
 		kid, err := ks.Generate()
 		if err != nil {

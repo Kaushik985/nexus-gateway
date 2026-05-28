@@ -85,25 +85,6 @@ func (s *IdPStore) GetByID(ctx context.Context, id string) (*IdentityProvider, e
 	return p, nil
 }
 
-// GetOIDC returns the first enabled OIDC IdP. Returns ErrIdPNotFound if none
-// is registered.
-func (s *IdPStore) GetOIDC(ctx context.Context) (*IdentityProvider, error) {
-	row := s.db.QueryRow(ctx,
-		`SELECT id, type, name, enabled, config, "roleMapping", "defaultRole", "jitEnabled"
-		   FROM "IdentityProvider"
-		  WHERE type = 'oidc' AND enabled = TRUE
-		  ORDER BY "createdAt" ASC
-		  LIMIT 1`)
-	p, err := scanIdP(row)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrIdPNotFound
-		}
-		return nil, err
-	}
-	return p, nil
-}
-
 // GetLocal returns the enabled local IdP. Only one local IdP is expected per
 // deployment; if more than one exists the earliest-created row wins (stable
 // ordering via createdAt ASC).

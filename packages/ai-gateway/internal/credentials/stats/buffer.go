@@ -63,31 +63,31 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	f := promauto.With(reg)
 	return &Metrics{
 		attemptsTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_ai_gateway",
+			Namespace: "nexus",
 			Subsystem: "credstats",
 			Name:      "attempts_total",
 			Help:      "Number of upstream attempts recorded by the credential stats buffer, labelled by HTTP class.",
 		}, []string{"class"}),
 		circuitTransitions: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_ai_gateway",
+			Namespace: "nexus",
 			Subsystem: "credstats",
 			Name:      "circuit_transitions_total",
 			Help:      "Circuit-breaker state transitions observed by the buffer.",
 		}, []string{"to", "reason"}),
 		authFailIncrements: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "nexus_ai_gateway",
+			Namespace: "nexus",
 			Subsystem: "credstats",
 			Name:      "auth_fail_increments_total",
 			Help:      "Number of 401/403 responses that incremented the live auth_fails counter without crossing the open threshold.",
 		}),
 		redisWriteFailures: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_ai_gateway",
+			Namespace: "nexus",
 			Subsystem: "credstats",
 			Name:      "redis_write_failures_total",
 			Help:      "Buffer Redis writes that returned an error, labelled by stage.",
 		}, []string{"stage"}),
 		redisWriteLatencyS: f.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "nexus_ai_gateway",
+			Namespace: "nexus",
 			Subsystem: "credstats",
 			Name:      "redis_write_seconds",
 			Help:      "End-to-end time spent in the Buffer's Redis pipelines.",

@@ -67,7 +67,6 @@ func InitProxyServerFull(d ProxyServerDeps) *proxyserver.ProxyServer {
 		UpstreamTransport:     d.UpstreamTransport,
 		CertCache:             d.CertResult.CertCache,
 		ComplianceResolver:    d.CompRes.Resolver,
-		DomainSnapshot:        d.CompRes.DomainSnapshot,
 		AuditEmitter:          d.CompRes.Emitter,
 		StreamingLiveConfig:   d.CompRes.LiveConfig,
 		PerHookTimeout:        d.CompRes.PerHookTmout,

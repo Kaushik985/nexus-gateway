@@ -54,8 +54,9 @@ type smartCatalogProvider struct {
 	Models     []smartCatalogRow `json:"m"`
 }
 
-// smartCatalogRow is one routable model. JSON key i is Model.id only
-// (providerModelId is intentionally omitted from the catalog JSON).
+// smartCatalogRow is one routable model. JSON key i is Model.code only
+// (the UUID Model.id and providerModelId are intentionally omitted from
+// the catalog JSON — the router LLM is shown the short customer-facing code).
 // ip/op USD per 1M tokens, f = feature tags, mx/mo = context and output limits.
 type smartCatalogRow struct {
 	ID       string   `json:"i"`

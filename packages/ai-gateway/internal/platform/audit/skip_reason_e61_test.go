@@ -42,7 +42,6 @@ func TestSkipReasonRoundTrip(t *testing.T) {
 		{"semantic_reindex_in_progress", GatewayCacheSkipReasonSemanticReindexInProgress, "semantic_reindex_in_progress"},
 		{"semantic_unavailable", GatewayCacheSkipReasonSemanticUnavailable, "semantic_unavailable"},
 		{"embedding_circuit_open", GatewayCacheSkipReasonEmbeddingCircuitOpen, "embedding_circuit_open"},
-		{"embedding_budget_exceeded", GatewayCacheSkipReasonEmbeddingBudgetExceeded, "embedding_budget_exceeded"},
 		// Negative-feedback poison list.
 		{"poisoned", GatewayCacheSkipReasonPoisoned, "poisoned"},
 	}
@@ -59,11 +58,10 @@ func TestSkipReasonRoundTrip(t *testing.T) {
 	}
 }
 
-// TestE61SkipReasonCount verifies exactly 13 semantic-cache skip-reason
-// constants exist (12 base + 1 poisoned). The architecture doc
-// response-cache-architecture.md §4.2 enumerates the base 12. This test pins
+// TestE61SkipReasonCount verifies exactly 12 semantic-cache skip-reason
+// constants exist (11 base + 1 poisoned). The architecture doc
+// response-cache-architecture.md enumerates the base reasons. This test pins
 // the count so an accidental addition or deletion surfaces immediately.
-// Sticky-token and domain-threshold were removed as dead code.
 func TestE61SkipReasonCount(t *testing.T) {
 	// List every constant explicitly — no reflection magic. A missing constant
 	// becomes a compile error; an extra constant makes this count wrong.
@@ -79,12 +77,11 @@ func TestE61SkipReasonCount(t *testing.T) {
 		GatewayCacheSkipReasonSemanticReindexInProgress,
 		GatewayCacheSkipReasonSemanticUnavailable,
 		GatewayCacheSkipReasonEmbeddingCircuitOpen,
-		GatewayCacheSkipReasonEmbeddingBudgetExceeded,
 		// Poison-list addition.
 		GatewayCacheSkipReasonPoisoned,
 	}
-	if got := len(e61Reasons); got != 13 {
-		t.Errorf("has %d skip-reason constants, want exactly 13 (12 base + 1 poisoned)", got)
+	if got := len(e61Reasons); got != 12 {
+		t.Errorf("has %d skip-reason constants, want exactly 12 (11 base + 1 poisoned)", got)
 	}
 	// Also verify all are distinct (no accidental duplicate string values).
 	seen := make(map[string]bool, len(e61Reasons))

@@ -10,7 +10,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	agentTLS "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/tls"
@@ -37,7 +36,6 @@ type BridgeDeps struct {
 	TLSEngine       *agentTLS.Engine
 	Upstream        *tlsbump.UpstreamTransport
 	PolicyResolver  *pipeline.PolicyResolver
-	DomainSnapshot  *atomic.Pointer[traffic.DomainSnapshot]
 	DomainEngine    *domain.Engine
 	AdapterRegistry *traffic.AdapterRegistry
 	// NormalizeRegistry — V2 #67 — Tier 1+2+3 shared chain. Wired via
@@ -280,7 +278,6 @@ func BumpFlow(
 		tlsbump.WithProcessInfo(proc.Name, proc.Bundle, proc.User),
 		tlsbump.WithCompliance(
 			deps.PolicyResolver,
-			deps.DomainSnapshot,
 			emitter,
 			// LiveConfig zero value is fine — chunked_async defaults apply.
 			// Per-host overrides resolve through streampolicy.Resolve at

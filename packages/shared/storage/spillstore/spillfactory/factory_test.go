@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/async"
 )
@@ -113,6 +114,33 @@ func TestPerObjectCap_DefaultFallback(t *testing.T) {
 	}
 	if got := (FactoryConfig{}).PerObjectCap(); got != want {
 		t.Errorf("zero-value config: got %d want %d", got, want)
+	}
+}
+
+func TestRetentionHorizon(t *testing.T) {
+	day := 24 * time.Hour
+	const fallback = 30 * 24 * time.Hour
+
+	// localfs block drives the horizon for localfs / empty backends.
+	if got := (FactoryConfig{Backend: "localfs", Localfs: LocalfsOptions{RetentionDays: 7}}).RetentionHorizon(); got != 7*day {
+		t.Errorf("localfs 7d: got %v want %v", got, 7*day)
+	}
+	if got := (FactoryConfig{Localfs: LocalfsOptions{RetentionDays: 14}}).RetentionHorizon(); got != 14*day {
+		t.Errorf("empty backend uses localfs: got %v want %v", got, 14*day)
+	}
+	// s3 backend reads the s3 block, not localfs.
+	if got := (FactoryConfig{Backend: "s3", S3: S3Options{RetentionDays: 90}, Localfs: LocalfsOptions{RetentionDays: 7}}).RetentionHorizon(); got != 90*day {
+		t.Errorf("s3 90d: got %v want %v", got, 90*day)
+	}
+	// Unset RetentionDays falls back to 30 days on every backend.
+	if got := (FactoryConfig{Backend: "localfs"}).RetentionHorizon(); got != fallback {
+		t.Errorf("localfs default: got %v want %v", got, fallback)
+	}
+	if got := (FactoryConfig{Backend: "s3"}).RetentionHorizon(); got != fallback {
+		t.Errorf("s3 default: got %v want %v", got, fallback)
+	}
+	if got := (FactoryConfig{}).RetentionHorizon(); got != fallback {
+		t.Errorf("zero-value config: got %v want %v", got, fallback)
 	}
 }
 

@@ -23,25 +23,6 @@ func TestBridgeConfigDefaults(t *testing.T) {
 	if c.BatchSize != 200 {
 		t.Errorf("expected 200, got %d", c.BatchSize)
 	}
-	if c.TrafficMode != "" {
-		t.Errorf("expected empty TrafficMode default, got %q", c.TrafficMode)
-	}
-}
-
-func TestBridgeConfigTrafficMode(t *testing.T) {
-	cfg := BridgeConfig{TrafficMode: "all"}
-	b := NewBridge(nil, nil, cfg, testLogger())
-	c := b.activeCfg.Load()
-	if c == nil || c.TrafficMode != "all" {
-		t.Errorf("expected 'all', got %+v", c)
-	}
-
-	cfg2 := BridgeConfig{TrafficMode: "security"}
-	b2 := NewBridge(nil, nil, cfg2, testLogger())
-	c2 := b2.activeCfg.Load()
-	if c2 == nil || c2.TrafficMode != "security" {
-		t.Errorf("expected 'security', got %+v", c2)
-	}
 }
 
 func TestClassifyAndFilterIntegration(t *testing.T) {

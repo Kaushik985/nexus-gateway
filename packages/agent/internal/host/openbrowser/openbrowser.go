@@ -19,7 +19,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 )
 
@@ -78,26 +77,37 @@ func (o *Opener) Open(rawURL string) error {
 	// xdg-open child from blocking the IPC handler forever.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return dispatch(ctx, u.String())
+	return openWith(runtime.GOOS, ctx, u.String())
 }
 
-func dispatch(ctx context.Context, url string) error {
-	// Defense-in-depth: never spawn a real browser when running under
-	// `go test`. testing.Testing() is true only in binaries built by
-	// `go test`; production binaries take the real shell-out path.
-	if testing.Testing() {
-		return fmt.Errorf("openbrowser: dispatch called from a test binary; tests must stub dispatch via a seam rather than calling Open")
-	}
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", url)
-	case "linux":
-		cmd = exec.CommandContext(ctx, "xdg-open", url)
-	case "windows":
-		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url)
-	default:
-		return fmt.Errorf("unsupported OS: %s", runtime.GOOS)
+// openWith is the launch seam: production points it at realOpen; tests replace
+// it so Open's validation can be exercised without spawning a process.
+var openWith = realOpen
+
+// realOpen builds the platform-native command and starts it. The only line not
+// reachable from a unit test is cmd.Start() — actually spawning the browser —
+// so coverage exercises everything via buildBrowserCmd and the unsupported-OS
+// arm here, leaving just the process launch to integration use.
+func realOpen(goos string, ctx context.Context, url string) error {
+	cmd, err := buildBrowserCmd(goos, ctx, url)
+	if err != nil {
+		return err
 	}
 	return cmd.Start()
+}
+
+// buildBrowserCmd maps an OS to its native URL-open command. goos is a
+// parameter (not runtime.GOOS) so every branch — including the unsupported-OS
+// rejection — is unit-testable on any host.
+func buildBrowserCmd(goos string, ctx context.Context, url string) (*exec.Cmd, error) {
+	switch goos {
+	case "darwin":
+		return exec.CommandContext(ctx, "open", url), nil
+	case "linux":
+		return exec.CommandContext(ctx, "xdg-open", url), nil
+	case "windows":
+		return exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", url), nil
+	default:
+		return nil, fmt.Errorf("unsupported OS: %s", goos)
+	}
 }

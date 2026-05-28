@@ -406,9 +406,9 @@ func (c *Client) RotateAgentCert(ctx context.Context, thingID string) (map[strin
 
 // ListDLQ calls GET /api/hub/dlq with the supplied filters and returns the
 // raw response body + HTTP status. The body is opaque to CP — it carries
-// Hub's dlqListResponse envelope verbatim to the UI. Pass empty strings
-// for filters that should not be applied.
-func (c *Client) ListDLQ(ctx context.Context, subject, limit, cursor string) ([]byte, int, error) {
+// Hub's dlqListResponse envelope ({rows,total}) verbatim to the UI. Pass
+// empty strings for filters that should not be applied.
+func (c *Client) ListDLQ(ctx context.Context, subject, limit, offset string) ([]byte, int, error) {
 	if c.baseURL == "" {
 		return nil, 0, ErrNotConfigured
 	}
@@ -429,7 +429,7 @@ func (c *Client) ListDLQ(ctx context.Context, subject, limit, cursor string) ([]
 	}
 	add("subject", subject)
 	add("limit", limit)
-	add("cursor", cursor)
+	add("offset", offset)
 	url := c.baseURL + "/api/hub/dlq" + q
 	r, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

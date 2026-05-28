@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"sync"
-	"sync/atomic"
 
 	compliance "github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/pipeline"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/domain"
@@ -106,7 +105,6 @@ func BumpConnection(
 // bumpOptions holds optional compliance dependencies injected into the bump handler.
 type bumpOptions struct {
 	policyResolver      *compliance.PolicyResolver
-	domainSnapshot      *atomic.Pointer[traffic.DomainSnapshot]
 	auditEmitter        *compliance.AuditEmitter
 	streamingConfig     streaming.LiveConfig
 	perHookTimeout      time.Duration
@@ -221,7 +219,6 @@ type BumpOption func(*bumpOptions)
 // alignment; admin policy is the single source of truth for SSE mode).
 func WithCompliance(
 	resolver *compliance.PolicyResolver,
-	snapshot *atomic.Pointer[traffic.DomainSnapshot],
 	emitter *compliance.AuditEmitter,
 	streamingConfig streaming.LiveConfig,
 	perHookTimeout, totalTimeout time.Duration,
@@ -229,7 +226,6 @@ func WithCompliance(
 ) BumpOption {
 	return func(o *bumpOptions) {
 		o.policyResolver = resolver
-		o.domainSnapshot = snapshot
 		o.auditEmitter = emitter
 		o.streamingConfig = streamingConfig
 		o.perHookTimeout = perHookTimeout

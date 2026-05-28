@@ -7,17 +7,13 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 )
 
 type Deps struct {
-	Audit  *audit.Writer
 	Logger *slog.Logger
 }
 
 type Handler struct {
-	audit  *audit.Writer
 	logger *slog.Logger
 }
 
@@ -26,7 +22,7 @@ func New(d Deps) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{audit: d.Audit, logger: logger}
+	return &Handler{logger: logger}
 }
 
 func errJSON(message, errType, code string) map[string]any {

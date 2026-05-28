@@ -12,21 +12,11 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
-
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 )
-
-// nopProducer satisfies the mq.Producer interface with no-ops.
-type nopProducer struct{}
-
-func (n *nopProducer) Publish(_ context.Context, _ string, _ []byte) error { return nil }
-func (n *nopProducer) Enqueue(_ context.Context, _ string, _ []byte) error { return nil }
-func (n *nopProducer) Close() error                                        { return nil }
 
 func newTestHandler() *Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	aw := audit.NewWriter(&nopProducer{}, "audit", logger)
-	return New(Deps{Audit: aw, Logger: logger})
+	return New(Deps{Logger: logger})
 }
 
 func TestErrJSON(t *testing.T) {
@@ -471,7 +461,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNew_NilLogger_UsesDefault(t *testing.T) {
-	h := New(Deps{Audit: nil, Logger: nil})
+	h := New(Deps{Logger: nil})
 	if h == nil {
 		t.Fatal("New returned nil")
 	}

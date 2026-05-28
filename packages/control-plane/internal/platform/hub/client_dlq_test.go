@@ -36,7 +36,7 @@ func TestListDLQ_HappyPathForwardsQuery(t *testing.T) {
 	defer ts.Close()
 
 	c := dlqTestClient(t, ts.URL)
-	body, status, err := c.ListDLQ(context.Background(), "nexus.event.compliance", "25", "2026-05-26T10:00:00Z")
+	body, status, err := c.ListDLQ(context.Background(), "nexus.event.compliance", "25", "40")
 	if err != nil {
 		t.Fatalf("ListDLQ: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestListDLQ_HappyPathForwardsQuery(t *testing.T) {
 		t.Errorf("auth = %q, want 'Bearer test-token'", seenAuth)
 	}
 	// All three filters must appear in the query string.
-	for _, want := range []string{"subject=nexus.event.compliance", "limit=25", "cursor=2026-05-26T10"} {
+	for _, want := range []string{"subject=nexus.event.compliance", "limit=25", "offset=40"} {
 		if !strings.Contains(seenPath, want) {
 			t.Errorf("path %q missing %q", seenPath, want)
 		}

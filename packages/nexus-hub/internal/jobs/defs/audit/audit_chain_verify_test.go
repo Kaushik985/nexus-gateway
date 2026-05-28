@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -87,6 +89,50 @@ func expectChainQuery(mock pgxmock.PgxPoolIface, rows []fakeChainRow) {
 	mock.ExpectQuery(`FROM "AdminAuditLog"`).WillReturnRows(pgxRows)
 }
 
+// expectNoAckedOrphans wires the system_metadata read that Run() performs
+// before walking the chain to return ErrNoRows → nil ack set (verify full
+// chain). Must be queued BEFORE the chain query (pgxmock is ordered).
+func expectNoAckedOrphans(mock pgxmock.PgxPoolIface) {
+	mock.ExpectQuery(`FROM system_metadata`).
+		WithArgs(ackedOrphansKey).
+		WillReturnError(pgx.ErrNoRows)
+}
+
+// expectAckedOrphans wires the system_metadata read to return the given JSON
+// blob (the value column). Queue BEFORE the chain query.
+func expectAckedOrphans(mock pgxmock.PgxPoolIface, valueJSON string) {
+	mock.ExpectQuery(`FROM system_metadata`).
+		WithArgs(ackedOrphansKey).
+		WillReturnRows(pgxmock.NewRows([]string{"value"}).AddRow([]byte(valueJSON)))
+}
+
+// orphanChainWithReanchor builds a chain where row at index `orphanIdx` is a
+// chainless orphan (NULL previousHash, empty integrityHash, empty hashInput —
+// exactly what a pre-fix job wrote), and the row after it re-anchors as a fresh
+// genesis (NULL previousHash, integrityHash = SHA256(hashInput)). Returns the
+// rows plus the orphan's sequenceNumber.
+func orphanChainWithReanchor() (rows []fakeChainRow, orphanSeq int64) {
+	// seq 1,2: a normal opening chain.
+	rows = buildIntactChain(1, 2)
+	// seq 3: the orphan — empty everything, NULL previousHash.
+	orphanSeq = 3
+	rows = append(rows, fakeChainRow{seq: orphanSeq, previousHash: nil, integrityHash: "", hashInput: nil})
+	// seq 4,5: re-anchored genesis chain (prev NULL → integ = SHA256(hashInput)).
+	var prev string
+	for i, seq := range []int64{4, 5} {
+		hi := fmt.Appendf(nil, "reanchor-%d", i)
+		integ := chainHashLink(prev, hi)
+		var prevPtr *string
+		if prev != "" {
+			cp := prev
+			prevPtr = &cp
+		}
+		rows = append(rows, fakeChainRow{seq: seq, previousHash: prevPtr, integrityHash: integ, hashInput: hi})
+		prev = integ
+	}
+	return rows, orphanSeq
+}
+
 func TestAuditChainVerify_Identity(t *testing.T) {
 	job := NewAuditChainVerify(nil, 17*time.Minute, nil, testLogger())
 	if job.ID() != "audit-chain-verify" {
@@ -115,6 +161,7 @@ func TestAuditChainVerify_IntactChain(t *testing.T) {
 
 	// 3 rows wired into a valid chain.
 	rows := buildIntactChain(1, 3)
+	expectNoAckedOrphans(mock)
 	expectChainQuery(mock, rows)
 
 	job := NewAuditChainVerify(nil, 1*time.Hour, nil, testLogger())
@@ -125,6 +172,7 @@ func TestAuditChainVerify_IntactChain(t *testing.T) {
 
 	// Re-run to confirm idempotency on intact chain (independent mock
 	// expectation so the second Query is matched separately).
+	expectNoAckedOrphans(mock)
 	expectChainQuery(mock, rows)
 	if err := job.Run(context.Background()); err != nil {
 		t.Fatalf("Run (second): %v", err)
@@ -146,6 +194,7 @@ func TestAuditChainVerify_BreakDetected(t *testing.T) {
 	// VerifyChain must surface row #2's sequenceNumber as the break.
 	rows := buildIntactChain(1, 4)
 	rows[1].hashInput = append(rows[1].hashInput, 0x00)
+	expectNoAckedOrphans(mock)
 	expectChainQuery(mock, rows)
 
 	job := NewAuditChainVerify(nil, 1*time.Hour, nil, testLogger())
@@ -177,6 +226,7 @@ func TestAuditChainVerify_BreakObservability(t *testing.T) {
 	// Tamper with row #2 (seq=2): flip a byte in hashInput.
 	tamperedSeq := rows[1].seq
 	rows[1].hashInput = append(rows[1].hashInput, 0x00)
+	expectNoAckedOrphans(mock)
 	expectChainQuery(mock, rows)
 
 	opsReg := opsmetrics.NewRegistry(prometheus.NewRegistry())
@@ -232,6 +282,7 @@ func TestAuditChainVerify_EmptyChain(t *testing.T) {
 	}
 	defer mock.Close()
 
+	expectNoAckedOrphans(mock)
 	expectChainQuery(mock, nil)
 
 	opsReg := opsmetrics.NewRegistry(prometheus.NewRegistry())
@@ -256,5 +307,136 @@ func TestAuditChainVerify_EmptyChain(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("mock expectations: %v", err)
+	}
+}
+
+// TestAuditChainVerify_AckedOrphanIntact: a chain whose only break is an
+// acknowledged chainless orphan verifies as intact — no break alert fires.
+// This is the prod incident's fix path (seq-1180-style orphan).
+func TestAuditChainVerify_AckedOrphanIntact(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("pgxmock.NewPool: %v", err)
+	}
+	defer mock.Close()
+
+	rows, orphanSeq := orphanChainWithReanchor()
+	expectAckedOrphans(mock, fmt.Sprintf(
+		`[{"seq":%d,"reason":"pre-fix semantic-cache reindex job wrote a chainless row","ackedBy":"sre","ackedAt":"2026-05-28"}]`, orphanSeq))
+	expectChainQuery(mock, rows)
+
+	opsReg := opsmetrics.NewRegistry(prometheus.NewRegistry())
+	var buf bytes.Buffer
+	bufLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	job := NewAuditChainVerify(nil, time.Hour, opsReg, bufLogger)
+	job.pool = mock
+	if err := job.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "event=audit_chain_verified") {
+		t.Errorf("expected audit_chain_verified with acked orphan; got:\n%s", buf.String())
+	}
+	for _, s := range opsReg.Collect() {
+		if s.Name == "audit_chain.break_detected_total" && s.Value != 0 {
+			t.Errorf("break_detected_total=%v with acked orphan, want 0", s.Value)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("mock expectations: %v", err)
+	}
+}
+
+// TestAuditChainVerify_AckedOrphan_TamperAfterDetected: acking the orphan must
+// NOT blind the verifier to tampering AFTER it — the whole point of resuming
+// verification past an acknowledged break.
+func TestAuditChainVerify_AckedOrphan_TamperAfterDetected(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("pgxmock.NewPool: %v", err)
+	}
+	defer mock.Close()
+
+	rows, orphanSeq := orphanChainWithReanchor()
+	tamperedSeq := rows[len(rows)-1].seq
+	rows[len(rows)-1].hashInput = append(rows[len(rows)-1].hashInput, 0x00)
+	expectAckedOrphans(mock, fmt.Sprintf(`[{"seq":%d}]`, orphanSeq))
+	expectChainQuery(mock, rows)
+
+	opsReg := opsmetrics.NewRegistry(prometheus.NewRegistry())
+	var buf bytes.Buffer
+	bufLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	job := NewAuditChainVerify(nil, time.Hour, opsReg, bufLogger)
+	job.pool = mock
+	if err := job.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	logs := buf.String()
+	if !strings.Contains(logs, "event=audit_chain_break") {
+		t.Errorf("expected audit_chain_break for post-orphan tamper; got:\n%s", logs)
+	}
+	if !strings.Contains(logs, fmt.Sprintf("first_bad_sequence_number=%d", tamperedSeq)) {
+		t.Errorf("expected first_bad_sequence_number=%d; got:\n%s", tamperedSeq, logs)
+	}
+}
+
+// TestAuditChainVerify_CorruptAckBlob: a corrupt acked-orphans blob falls back
+// to full verification (fail toward detection) and warns — it must NOT silently
+// skip rows from an unparseable blob.
+func TestAuditChainVerify_CorruptAckBlob(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("pgxmock.NewPool: %v", err)
+	}
+	defer mock.Close()
+
+	rows, orphanSeq := orphanChainWithReanchor()
+	expectAckedOrphans(mock, `{not-valid-json`)
+	expectChainQuery(mock, rows)
+
+	var buf bytes.Buffer
+	bufLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	job := NewAuditChainVerify(nil, time.Hour, nil, bufLogger)
+	job.pool = mock
+	if err := job.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	logs := buf.String()
+	if !strings.Contains(logs, "corrupt acked-orphans") {
+		t.Errorf("expected corrupt-blob warning; got:\n%s", logs)
+	}
+	// Full verification ran → the orphan break is reported, not skipped.
+	if !strings.Contains(logs, fmt.Sprintf("first_bad_sequence_number=%d", orphanSeq)) {
+		t.Errorf("expected break at orphan seq %d after corrupt blob; got:\n%s", orphanSeq, logs)
+	}
+}
+
+// TestAuditChainVerify_AckLoadError: a real DB error reading the acked-orphans
+// key surfaces as a job error (Run returns it; the chain is not walked).
+func TestAuditChainVerify_AckLoadError(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	if err != nil {
+		t.Fatalf("pgxmock.NewPool: %v", err)
+	}
+	defer mock.Close()
+
+	mock.ExpectQuery(`FROM system_metadata`).
+		WithArgs(ackedOrphansKey).
+		WillReturnError(errors.New("db down"))
+	// No chain query expected — Run must bail before walking the chain.
+	// (We assert on the returned error rather than ExpectationsWereMet: pgxmock
+	// does not mark an ExpectQuery "fulfilled" when QueryRow surfaces the error
+	// via Scan — the same idiom the semantic-cache job tests use.)
+
+	job := NewAuditChainVerify(nil, time.Hour, nil, testLogger())
+	job.pool = mock
+	err = job.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected Run to return the ack-load DB error")
+	}
+	if !strings.Contains(err.Error(), "db down") {
+		t.Errorf("Run error = %q, want it to carry the underlying 'db down'", err.Error())
 	}
 }

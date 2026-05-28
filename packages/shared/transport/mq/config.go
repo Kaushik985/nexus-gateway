@@ -7,7 +7,7 @@ type Config struct {
 	Driver string `yaml:"driver"`
 
 	// Namespace is the Prometheus metrics namespace for this service
-	// (e.g. "nexus_hub", "nexus_ai_gateway"). Defaults to "nexus" if empty.
+	// (e.g. "nexus"). Defaults to "nexus" if empty.
 	Namespace string `yaml:"namespace"`
 
 	// NATS holds NATS-specific configuration.

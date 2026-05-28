@@ -80,6 +80,12 @@ func Decompress(body []byte, resp *http.Response) []byte {
 	case "zstd":
 		r, err := zstd.NewReader(bytes.NewReader(body))
 		if err != nil {
+			// Defensive: zstd.NewReader only errors on invalid decoder
+			// options, never on input bytes (data errors surface on Read
+			// below), so with a fixed nil-option call this branch is not
+			// reachable from a unit test. Kept so a future option change
+			// can't silently panic. Corrupt/truncated streams are covered
+			// via the io.ReadAll path.
 			return body
 		}
 		defer r.Close()

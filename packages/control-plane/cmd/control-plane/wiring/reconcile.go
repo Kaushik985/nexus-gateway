@@ -46,7 +46,7 @@ func InitReconciler(
 	}
 	pool := db.InternalPool()
 	cs := cachestore.New(pool)
-	meta := systemmetastore.NewFromPool(pool)
+	meta := systemmetastore.New(pool)
 	watches := []configreconcile.Watch{
 		{
 			ConfigKey: configkey.Cache,

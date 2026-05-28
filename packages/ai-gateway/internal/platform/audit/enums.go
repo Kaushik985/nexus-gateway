@@ -134,15 +134,8 @@ const (
 	// failures within 60s tripped the breaker). Every L2-eligible request
 	// stamps this reason and falls through to the broker without firing an
 	// embedding call. Latency overhead in this state: <1ms. See
-	// response-cache-architecture.md §3.3 for the full circuit-breaker spec.
+	// response-cache-architecture.md for the circuit-breaker behaviour.
 	GatewayCacheSkipReasonEmbeddingCircuitOpen GatewayCacheSkipReason = "embedding_circuit_open"
-
-	// GatewayCacheSkipReasonEmbeddingBudgetExceeded is stamped when the day's
-	// accumulated embedding_cost_usd for a route exceeds the per-route ceiling
-	// (response_cache_policy.semantic.embedding_cost_ceiling_usd_per_day). L2
-	// is auto-disabled for that route until next UTC midnight. See
-	// response-cache-architecture.md §7.4.
-	GatewayCacheSkipReasonEmbeddingBudgetExceeded GatewayCacheSkipReason = "embedding_budget_exceeded"
 
 	// GatewayCacheSkipReasonPoisoned is stamped when a semantic cache hit is
 	// rejected because the admin explicitly marked that entry as a bad hit via

@@ -2,7 +2,7 @@
 // Named failure modes:
 //   - [DONE] sentinel: emits Done=true chunk with RawBytes forwarded
 //   - text delta: Delta populated from choices[0].delta.content
-//   - reasoning_content: appended to Delta (DeepSeek / Kimi / thinking models)
+//   - reasoning_content: routed to ReasoningDelta (DeepSeek / Kimi / thinking models)
 //   - tool_call deltas: ToolCallDeltas populated from choices[0].delta.tool_calls
 //   - usage chunk: Usage extracted via shared/normalize
 //   - empty data line: silently skipped (Next recurses)
@@ -93,9 +93,11 @@ func TestStreamDecoder_textDelta(t *testing.T) {
 	}
 }
 
-func TestStreamDecoder_reasoningContent_appendedToDelta(t *testing.T) {
+func TestStreamDecoder_reasoningContent_routedToReasoningDelta(t *testing.T) {
 	// DeepSeek / Kimi reasoning_content streams appear on delta.reasoning_content.
-	// The gateway appends it to Delta so audit logs capture both.
+	// It must land on the dedicated ReasoningDelta channel (kept separate from
+	// the answer Delta) so cross-format encoders surface it as the target's
+	// reasoning channel rather than leaking it into the visible answer.
 	payload := `{"choices":[{"index":0,"delta":{"content":"answer","reasoning_content":"think"},"finish_reason":null}]}`
 	body := sseBody("data: " + payload + "\n\n")
 	d := ostream.NewStreamDecoder(slog.Default())
@@ -106,8 +108,11 @@ func TestStreamDecoder_reasoningContent_appendedToDelta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Next: %v", err)
 	}
-	if chunk.Delta != "answerthink" {
-		t.Errorf("Delta: got %q, want %q (content + reasoning_content)", chunk.Delta, "answerthink")
+	if chunk.Delta != "answer" {
+		t.Errorf("Delta: got %q, want %q (answer content only)", chunk.Delta, "answer")
+	}
+	if chunk.ReasoningDelta != "think" {
+		t.Errorf("ReasoningDelta: got %q, want %q (reasoning_content channel)", chunk.ReasoningDelta, "think")
 	}
 }
 

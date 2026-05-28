@@ -17,6 +17,7 @@ import (
 	_ "github.com/mutecomm/go-sqlcipher/v4"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/event"
+	sharedaudit "github.com/AlphaBitCore/nexus-gateway/packages/shared/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/schemas/configtypes/enums"
 )
 
@@ -148,6 +149,12 @@ func NewQueue(dbPath string, encryptionKey []byte) (*Queue, error) {
 			usage_extraction_status TEXT,
 			payload_request BLOB,
 			payload_response BLOB,
+			-- Out-of-band spill refs (JSON-encoded audit.SpillRef) for bodies
+			-- that exceed the inline cap and were uploaded to S3 via the Hub
+			-- presign flow (or kept on local disk when offline). NULL when the
+			-- body travelled inline in payload_request/payload_response.
+			request_spill_ref TEXT,
+			response_spill_ref TEXT,
 			-- Pre-normalized payload JSON, computed by
 			-- forward_handler's runtimeNormalize and forwarded through
 			-- the audit emit chain. NULL when no AI adapter matched
@@ -304,6 +311,9 @@ func NewQueue(dbPath string, encryptionKey []byte) (*Queue, error) {
 		`ALTER TABLE audit_events ADD COLUMN normalized_response TEXT`,
 		// Cross-service correlation id threaded from agent → ai-gateway.
 		`ALTER TABLE audit_events ADD COLUMN trace_id TEXT`,
+		// Out-of-band spill refs (JSON audit.SpillRef) for oversize bodies.
+		`ALTER TABLE audit_events ADD COLUMN request_spill_ref TEXT`,
+		`ALTER TABLE audit_events ADD COLUMN response_spill_ref TEXT`,
 	} {
 		if _, err := db.ExecContext(context.Background(), alter); err != nil {
 			msg := err.Error()
@@ -432,13 +442,14 @@ func (q *Queue) Record(e event.Event) error {
 		 provider_name, model_name, api_key_class, api_key_fingerprint,
 		 prompt_tokens, completion_tokens, usage_extraction_status,
 		 payload_request, payload_response,
+		 request_spill_ref, response_spill_ref,
 		 normalized_request, normalized_response,
 		 upstream_ttfb_ms, upstream_total_ms, request_hooks_ms, response_hooks_ms,
 		 latency_breakdown, hooks_pipeline,
 		 domain_rule_id, path_action,
 		 trace_id,
 		 synced)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
 		e.ID, e.Timestamp.UTC().Format(time.RFC3339Nano),
 		e.SourceProcess, e.OSUser, e.TargetHost, e.DestIP, e.DestPort,
 		nullableString(e.Method), nullableString(e.Path), nullableStatusCode(e.StatusCode),
@@ -447,6 +458,7 @@ func (q *Queue) Record(e event.Event) error {
 		e.ProviderName, e.ModelName, e.ApiKeyClass, e.ApiKeyFingerprint,
 		nullableInt(e.PromptTokens), nullableInt(e.CompletionTokens), e.UsageExtractionStatus,
 		nullableBytes(e.PayloadRequest), nullableBytes(e.PayloadResponse),
+		nullableSpillRefJSON(e.RequestSpillRef), nullableSpillRefJSON(e.ResponseSpillRef),
 		nullableJSONString(e.NormalizedRequest), nullableJSONString(e.NormalizedResponse),
 		nullableInt(e.UpstreamTtfbMs), nullableInt(e.UpstreamTotalMs),
 		nullableInt(e.RequestHooksMs), nullableInt(e.ResponseHooksMs),
@@ -489,13 +501,14 @@ func (q *Queue) RecordBatch(events []event.Event) error {
 		 provider_name, model_name, api_key_class, api_key_fingerprint,
 		 prompt_tokens, completion_tokens, usage_extraction_status,
 		 payload_request, payload_response,
+		 request_spill_ref, response_spill_ref,
 		 normalized_request, normalized_response,
 		 upstream_ttfb_ms, upstream_total_ms, request_hooks_ms, response_hooks_ms,
 		 latency_breakdown, hooks_pipeline,
 		 domain_rule_id, path_action,
 		 trace_id,
 		 synced)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
 	for _, e := range events {
 		if _, err := tx.ExecContext(ctx, insertSQL,
 			e.ID, e.Timestamp.UTC().Format(time.RFC3339Nano),
@@ -506,6 +519,7 @@ func (q *Queue) RecordBatch(events []event.Event) error {
 			e.ProviderName, e.ModelName, e.ApiKeyClass, e.ApiKeyFingerprint,
 			nullableInt(e.PromptTokens), nullableInt(e.CompletionTokens), e.UsageExtractionStatus,
 			nullableBytes(e.PayloadRequest), nullableBytes(e.PayloadResponse),
+			nullableSpillRefJSON(e.RequestSpillRef), nullableSpillRefJSON(e.ResponseSpillRef),
 			nullableJSONString(e.NormalizedRequest), nullableJSONString(e.NormalizedResponse),
 			nullableInt(e.UpstreamTtfbMs), nullableInt(e.UpstreamTotalMs),
 			nullableInt(e.RequestHooksMs), nullableInt(e.ResponseHooksMs),
@@ -529,6 +543,34 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// nullableSpillRefJSON returns the JSON-encoded SpillRef for SQLite storage,
+// or nil (SQL NULL) when the body travelled inline (ref == nil). Stored as
+// TEXT in request_spill_ref / response_spill_ref and re-decoded on drain.
+func nullableSpillRefJSON(ref *sharedaudit.SpillRef) any {
+	if ref == nil {
+		return nil
+	}
+	b, err := json.Marshal(ref)
+	if err != nil {
+		return nil
+	}
+	return string(b)
+}
+
+// decodeSpillRef parses a request_spill_ref / response_spill_ref TEXT column
+// back into a *SpillRef. Returns nil for NULL / empty / malformed values so a
+// corrupt column degrades to "no spill" rather than failing the drain.
+func decodeSpillRef(col sql.NullString) *sharedaudit.SpillRef {
+	if !col.Valid || col.String == "" {
+		return nil
+	}
+	var ref sharedaudit.SpillRef
+	if err := json.Unmarshal([]byte(col.String), &ref); err != nil {
+		return nil
+	}
+	return &ref
 }
 
 // encodeBreakdown marshals a phase-breakdown map[string]int into a JSON
@@ -622,6 +664,7 @@ func (q *Queue) DrainBatch(limit int) ([]event.Event, error) {
 		       provider_name, model_name, api_key_class, api_key_fingerprint,
 		       prompt_tokens, completion_tokens, usage_extraction_status,
 		       payload_request, payload_response,
+		       request_spill_ref, response_spill_ref,
 		       normalized_request, normalized_response,
 		       domain_rule_id, path_action,
 		       trace_id
@@ -644,6 +687,7 @@ func (q *Queue) DrainBatch(limit int) ([]event.Event, error) {
 		var providerName, modelName, apiKeyClass, apiKeyFingerprint, usageStatus sql.NullString
 		var promptTokens, completionTokens sql.NullInt64
 		var payloadRequest, payloadResponse []byte
+		var requestSpillRef, responseSpillRef sql.NullString
 		var normalizedRequest, normalizedResponse sql.NullString
 		var domainRuleID, pathAction, traceID sql.NullString
 		err := rows.Scan(&e.ID, &ts, &e.SourceProcess, &e.OSUser,
@@ -655,11 +699,14 @@ func (q *Queue) DrainBatch(limit int) ([]event.Event, error) {
 			&providerName, &modelName, &apiKeyClass, &apiKeyFingerprint,
 			&promptTokens, &completionTokens, &usageStatus,
 			&payloadRequest, &payloadResponse,
+			&requestSpillRef, &responseSpillRef,
 			&normalizedRequest, &normalizedResponse,
 			&domainRuleID, &pathAction, &traceID)
 		if err != nil {
 			return nil, err
 		}
+		e.RequestSpillRef = decodeSpillRef(requestSpillRef)
+		e.ResponseSpillRef = decodeSpillRef(responseSpillRef)
 		if normalizedRequest.Valid && normalizedRequest.String != "" {
 			e.NormalizedRequest = json.RawMessage(normalizedRequest.String)
 		}
@@ -898,7 +945,11 @@ func (q *Queue) QueryEventsFiltered(f QueryEventsFilter) ([]event.Event, int, er
 		return nil, 0, err
 	}
 
-	query := "SELECT id, timestamp, source_process, source_user, dest_host, dest_ip, dest_port, method, path, status_code, action, policy_rule_id, bump_status, bytes_in, bytes_out, duration_ms, hook_decision, hook_reason, hook_reason_code, compliance_tags, provider_name, model_name, api_key_class, api_key_fingerprint, prompt_tokens, completion_tokens, usage_extraction_status, payload_request, payload_response, normalized_request, normalized_response, upstream_ttfb_ms, upstream_total_ms, request_hooks_ms, response_hooks_ms, latency_breakdown, hooks_pipeline, domain_rule_id, path_action, trace_id FROM audit_events WHERE " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	// The list query is metadata-only: request/response bodies and normalized
+	// payloads are NOT projected here (they can be large and the table never
+	// renders them). The agent UI's detail drawer fetches those on demand via
+	// EventByID. Spill refs are likewise omitted from the list.
+	query := "SELECT id, timestamp, source_process, source_user, dest_host, dest_ip, dest_port, method, path, status_code, action, policy_rule_id, bump_status, bytes_in, bytes_out, duration_ms, hook_decision, hook_reason, hook_reason_code, compliance_tags, provider_name, model_name, api_key_class, api_key_fingerprint, prompt_tokens, completion_tokens, usage_extraction_status, upstream_ttfb_ms, upstream_total_ms, request_hooks_ms, response_hooks_ms, latency_breakdown, hooks_pipeline, domain_rule_id, path_action, trace_id FROM audit_events WHERE " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 	rows, err := q.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
@@ -920,14 +971,8 @@ func (q *Queue) QueryEventsFiltered(f QueryEventsFilter) ([]event.Event, int, er
 		var domainRuleID, pathAction sql.NullString
 		// #70 cross-service correlation id.
 		var traceID sql.NullString
-		// Inline body BLOBs (spillstore SpillRef metadata not yet
-		// projected by this query — when a body exceeds inline cap and
-		// lives in S3, the column stores nil here. The UI will see
-		// PayloadRequest/PayloadResponse as empty in that case;
-		// future enhancement: project SpillRef JSON metadata so UI
-		// can render a "stored in spill" affordance).
-		var payloadRequest, payloadResponse []byte
-		var normalizedRequest, normalizedResponse sql.NullString
+		// Body + normalized columns are intentionally NOT scanned here — the
+		// list is metadata-only; the detail drawer fetches them via EventByID.
 		if err := rows.Scan(&e.ID, &ts, &e.SourceProcess, &e.OSUser,
 			&e.TargetHost, &e.DestIP, &e.DestPort,
 			&method, &path, &statusCode,
@@ -936,20 +981,10 @@ func (q *Queue) QueryEventsFiltered(f QueryEventsFilter) ([]event.Event, int, er
 			&e.HookDecision, &e.HookReason, &e.HookReasonCode, &complianceTags,
 			&providerName, &modelName, &apiKeyClass, &apiKeyFingerprint,
 			&promptTokens, &completionTokens, &usageStatus,
-			&payloadRequest, &payloadResponse,
-			&normalizedRequest, &normalizedResponse,
 			&upstreamTtfb, &upstreamTotal, &requestHooks, &responseHooks,
 			&latencyBreakdown, &hooksPipeline,
 			&domainRuleID, &pathAction, &traceID); err != nil {
 			return nil, 0, err
-		}
-		e.PayloadRequest = payloadRequest
-		e.PayloadResponse = payloadResponse
-		if normalizedRequest.Valid && normalizedRequest.String != "" {
-			e.NormalizedRequest = json.RawMessage(normalizedRequest.String)
-		}
-		if normalizedResponse.Valid && normalizedResponse.String != "" {
-			e.NormalizedResponse = json.RawMessage(normalizedResponse.String)
 		}
 		if traceID.Valid {
 			e.TraceID = traceID.String
@@ -1016,6 +1051,140 @@ func (q *Queue) QueryEventsFiltered(f QueryEventsFilter) ([]event.Event, int, er
 		events = append(events, e)
 	}
 	return events, total, rows.Err()
+}
+
+// EventByID returns the full detail row for a single event: list metadata plus
+// the inline body, normalized payloads, and spill refs. It is the data source
+// for the agent UI's detail drawer, which fetches the heavy fields on demand
+// rather than dragging them through every list page (QueryEventsFiltered).
+//
+// Spill refs are returned as-is; reading an oversize body back from the local
+// spill store is the caller's job (it owns the spill reader). Returns
+// (nil, nil) when no row matches id.
+func (q *Queue) EventByID(id string) (*event.Event, error) {
+	if q == nil || q.db == nil {
+		return nil, fmt.Errorf("EventByID: nil queue")
+	}
+	row := q.db.QueryRowContext(context.Background(), `
+		SELECT id, timestamp, source_process, source_user, dest_host, dest_ip, dest_port,
+		       method, path, status_code,
+		       action, policy_rule_id, bump_status, bytes_in, bytes_out, duration_ms,
+		       hook_decision, hook_reason, hook_reason_code, compliance_tags,
+		       provider_name, model_name, api_key_class, api_key_fingerprint,
+		       prompt_tokens, completion_tokens, usage_extraction_status,
+		       payload_request, payload_response,
+		       request_spill_ref, response_spill_ref,
+		       normalized_request, normalized_response,
+		       upstream_ttfb_ms, upstream_total_ms, request_hooks_ms, response_hooks_ms,
+		       latency_breakdown, hooks_pipeline,
+		       domain_rule_id, path_action, trace_id
+		FROM audit_events WHERE id = ?`, id)
+
+	var e event.Event
+	var ts string
+	var method, path sql.NullString
+	var statusCode sql.NullInt64
+	var complianceTags sql.NullString
+	var providerName, modelName, apiKeyClass, apiKeyFingerprint, usageStatus sql.NullString
+	var promptTokens, completionTokens sql.NullInt64
+	var payloadRequest, payloadResponse []byte
+	var requestSpillRef, responseSpillRef sql.NullString
+	var normalizedRequest, normalizedResponse sql.NullString
+	var upstreamTtfb, upstreamTotal, requestHooks, responseHooks sql.NullInt64
+	var latencyBreakdown, hooksPipeline sql.NullString
+	var domainRuleID, pathAction, traceID sql.NullString
+	err := row.Scan(&e.ID, &ts, &e.SourceProcess, &e.OSUser,
+		&e.TargetHost, &e.DestIP, &e.DestPort,
+		&method, &path, &statusCode,
+		&e.Action,
+		&e.PolicyRuleID, &e.BumpStatus, &e.BytesIn, &e.BytesOut, &e.LatencyMs,
+		&e.HookDecision, &e.HookReason, &e.HookReasonCode, &complianceTags,
+		&providerName, &modelName, &apiKeyClass, &apiKeyFingerprint,
+		&promptTokens, &completionTokens, &usageStatus,
+		&payloadRequest, &payloadResponse,
+		&requestSpillRef, &responseSpillRef,
+		&normalizedRequest, &normalizedResponse,
+		&upstreamTtfb, &upstreamTotal, &requestHooks, &responseHooks,
+		&latencyBreakdown, &hooksPipeline,
+		&domainRuleID, &pathAction, &traceID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	e.PayloadRequest = payloadRequest
+	e.PayloadResponse = payloadResponse
+	e.RequestSpillRef = decodeSpillRef(requestSpillRef)
+	e.ResponseSpillRef = decodeSpillRef(responseSpillRef)
+	if normalizedRequest.Valid && normalizedRequest.String != "" {
+		e.NormalizedRequest = json.RawMessage(normalizedRequest.String)
+	}
+	if normalizedResponse.Valid && normalizedResponse.String != "" {
+		e.NormalizedResponse = json.RawMessage(normalizedResponse.String)
+	}
+	if traceID.Valid {
+		e.TraceID = traceID.String
+	}
+	if method.Valid {
+		e.Method = method.String
+	}
+	if path.Valid {
+		e.Path = path.String
+	}
+	if statusCode.Valid {
+		e.StatusCode = int(statusCode.Int64)
+	}
+	if domainRuleID.Valid {
+		e.DomainRuleID = domainRuleID.String
+	}
+	if pathAction.Valid {
+		e.PathAction = pathAction.String
+	}
+	e.ComplianceTags = decodeTags(complianceTags)
+	if t, perr := time.Parse(time.RFC3339Nano, ts); perr == nil {
+		e.Timestamp = t
+	}
+	e.ProviderName = providerName.String
+	e.ModelName = modelName.String
+	e.ApiKeyClass = apiKeyClass.String
+	e.ApiKeyFingerprint = apiKeyFingerprint.String
+	e.UsageExtractionStatus = usageStatus.String
+	if promptTokens.Valid {
+		v := int(promptTokens.Int64)
+		e.PromptTokens = &v
+	}
+	if completionTokens.Valid {
+		v := int(completionTokens.Int64)
+		e.CompletionTokens = &v
+	}
+	if upstreamTtfb.Valid {
+		v := int(upstreamTtfb.Int64)
+		e.UpstreamTtfbMs = &v
+	}
+	if upstreamTotal.Valid {
+		v := int(upstreamTotal.Int64)
+		e.UpstreamTotalMs = &v
+	}
+	if requestHooks.Valid {
+		v := int(requestHooks.Int64)
+		e.RequestHooksMs = &v
+	}
+	if responseHooks.Valid {
+		v := int(responseHooks.Int64)
+		e.ResponseHooksMs = &v
+	}
+	if latencyBreakdown.Valid && latencyBreakdown.String != "" {
+		var m map[string]int
+		if json.Unmarshal([]byte(latencyBreakdown.String), &m) == nil {
+			e.LatencyBreakdown = m
+		}
+	}
+	if hooksPipeline.Valid && hooksPipeline.String != "" {
+		e.HooksPipeline = json.RawMessage(hooksPipeline.String)
+	}
+	return &e, nil
 }
 
 // LifecycleEvent is the on-the-wire shape returned by QueryLifecycle.

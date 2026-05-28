@@ -252,7 +252,8 @@ func TestStreamDecoder_ReasoningContentWiring(t *testing.T) {
 	}
 	defer sess.Close() //nolint:errcheck
 
-	var merged strings.Builder
+	var mergedAnswer strings.Builder
+	var mergedReasoning strings.Builder
 	sawReasoningFrame := false
 	for {
 		ev, err := sess.Next(context.Background())
@@ -262,19 +263,25 @@ func TestStreamDecoder_ReasoningContentWiring(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Next err=%v", err)
 		}
-		merged.WriteString(ev.Delta)
-		// Pin the per-frame observable: reasoning-only frames produce a
-		// non-empty Delta carrying the reasoning text (the decoder
-		// promotes reasoning_content into Delta when content is absent).
-		if strings.Contains(ev.Delta, "thinking step") {
+		mergedAnswer.WriteString(ev.Delta)
+		mergedReasoning.WriteString(ev.ReasoningDelta)
+		// Pin the per-frame observable: reasoning-only frames carry the
+		// reasoning text on the dedicated ReasoningDelta channel (kept
+		// separate from the answer Delta so it doesn't leak cross-format).
+		if strings.Contains(ev.ReasoningDelta, "thinking step") {
 			sawReasoningFrame = true
+		}
+		if strings.Contains(ev.Delta, "thinking step") {
+			t.Errorf("reasoning_content must NOT leak into answer Delta; got %q", ev.Delta)
 		}
 	}
 	if !sawReasoningFrame {
 		t.Error("decoder dropped reasoning_content frames (DeepSeek-R1 regression)")
 	}
-	want := "thinking step one. thinking step two. final answer"
-	if got := merged.String(); got != want {
-		t.Errorf("merged Delta=%q want %q (reasoning_content must append, not replace)", got, want)
+	if got := mergedReasoning.String(); got != "thinking step one. thinking step two. " {
+		t.Errorf("merged ReasoningDelta=%q want the two reasoning frames", got)
+	}
+	if got := mergedAnswer.String(); got != "final answer" {
+		t.Errorf("merged answer Delta=%q want %q (answer only, reasoning on its own channel)", got, "final answer")
 	}
 }

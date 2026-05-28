@@ -19,7 +19,7 @@ type freshnessMetrics struct {
 // newFreshnessMetrics registers nexus_cache_freshness_skips_total under the
 // given Prometheus namespace using the supplied registerer.
 //
-// namespace is typically the service-level namespace (e.g. "nexus_aigw").
+// namespace is typically the service-level namespace (e.g. "nexus").
 // reg must not be nil; pass prometheus.NewRegistry() in tests to isolate from
 // the default registry.
 func newFreshnessMetrics(namespace string, reg prometheus.Registerer) *freshnessMetrics {

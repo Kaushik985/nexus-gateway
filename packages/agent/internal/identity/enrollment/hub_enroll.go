@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
+	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/clienttls"
 	nexushttp "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/http"
 )
 
@@ -128,7 +128,7 @@ func NewHubEnrollClient(baseURL, caCertFile string) (*HubEnrollClient, error) {
 		H2ReadIdleTimeout:   30 * time.Second,
 		ForceHTTP2:          nexushttp.On(),
 	})
-	if err := relay.WithTLSConfig(httpC, tlsCfg); err != nil {
+	if err := clienttls.WithTLSConfig(httpC, tlsCfg); err != nil {
 		return nil, fmt.Errorf("hub enroll: install TLS config: %w", err)
 	}
 

@@ -1,44 +1,28 @@
 package wiring
 
 import (
-	"fmt"
 	"log/slog"
 
 	agentcompliance "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/compliance"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/lifecycle/killswitch"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	auditqueue "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/queue"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/spilluploader"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform"
 	policy "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/policy/core"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/core/metrics/registry"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
 )
-
-// InitRelay creates the outbound HTTP relay client.
-// Singleton — per-host HTTP/2 pool absorbs concurrency to a single provider host.
-func InitRelay(opsReg *registry.Registry, version string) (*relay.Client, error) {
-	return relay.New(relay.Config{
-		UserAgent:   fmt.Sprintf("nexus-agent/%s", version),
-		OpsRegistry: opsReg,
-	})
-}
 
 // InitPlatform creates the platform-specific network interception shim
 // (macOS NE / Linux iptables / Windows NexusWFP).
-func InitPlatform(bridgeAddr string, relayClient *relay.Client) platform.Platform {
-	return platform.NewPlatform(bridgeAddr, relayClient)
+func InitPlatform(bridgeAddr string) platform.Platform {
+	return platform.NewPlatform(bridgeAddr)
 }
 
 // ConnectionBridgeConfig groups everything InitConnectionBridge needs.
 type ConnectionBridgeConfig struct {
 	PolicyEngine        *policy.Engine
 	AgentPipeline       *agentcompliance.AgentPipeline
-	AuditQueue          *auditqueue.Queue
-	ThingID             string
-	PayloadCaptureStore *payloadcapture.Store
-	SpillUploader       *spilluploader.Uploader
-	KillSwitch          *killswitch.Switch
+	AuditQueue *auditqueue.Queue
+	ThingID    string
+	KillSwitch *killswitch.Switch
 	// InspectBodyCap is the per-flow buffer ceiling (default 256 MiB).
 	InspectBodyCap          int64
 	ProviderTrafficNotifier func()
@@ -58,8 +42,6 @@ func InitConnectionBridge(cfg ConnectionBridgeConfig) *ConnectionBridge {
 		AgentPipeline:           cfg.AgentPipeline,
 		AuditQueue:              cfg.AuditQueue,
 		ThingID:                 cfg.ThingID,
-		PayloadCaptureStore:     cfg.PayloadCaptureStore,
-		SpillUploader:           cfg.SpillUploader,
 		KillSwitch:              cfg.KillSwitch,
 		InspectBodyCap:          cap,
 		ProviderTrafficNotifier: cfg.ProviderTrafficNotifier,

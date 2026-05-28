@@ -60,44 +60,44 @@ func NewCircuitFlushMetrics(reg prometheus.Registerer) *CircuitFlushMetrics {
 	f := promauto.With(reg)
 	return &CircuitFlushMetrics{
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "cycles_total",
 			Help:      "Number of flush cycles run, labelled by outcome.",
 		}, []string{"outcome"}),
 		flushedTotal: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "flushed_total",
 			Help:      "Credential rows whose circuit fields were UPDATEd to DB.",
 		}),
 		reclaimedTotal: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "reclaimed_total",
 			Help:      "Members reclaimed from a prior in-flight set (crash recovery).",
 		}),
 		rehydrateTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "rehydrate_total",
 			Help:      "Credentials examined during the post-restart rehydrate, labelled by outcome.",
 		}, []string{"outcome"}),
 		dirtySetSize: f.NewGauge(prometheus.GaugeOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "dirty_set_size",
 			Help:      "Size of cred:circuit:dirty observed at the start of the most recent cycle.",
 		}),
 		runDurationSec: f.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "run_duration_seconds",
 			Help:      "End-to-end time spent in each flush cycle.",
 			Buckets:   []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10},
 		}),
 		transitionsTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_circuit_flush",
 			Name:      "transitions_total",
 			Help:      "Circuit state transitions persisted to DB, labelled by destination state and reason.",

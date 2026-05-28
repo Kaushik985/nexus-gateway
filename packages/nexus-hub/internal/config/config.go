@@ -137,12 +137,12 @@ type AlertEvalConfig struct {
 
 // RetentionConfig controls per-table retention (in days) for the
 // data-retention and rollup-retention jobs. Zero disables a table.
+// The metric_rollup_* tier chain is owned by the rollup-retention job via the
+// Rollup*Days fields; data-retention covers traffic_event + AdminAuditLog.
 type RetentionConfig struct {
 	TrafficEventDays        int `yaml:"trafficEventDays"`
 	TrafficEventPayloadDays int `yaml:"trafficEventPayloadDays"`
 	AdminAuditLogDays       int `yaml:"adminAuditLogDays"`
-	MetricRollupDays        int `yaml:"metricRollupDays"`
-	AgentAuditDays          int `yaml:"agentAuditDays"`
 	Rollup5mDays            int `yaml:"rollup5mDays"`
 	Rollup1hDays            int `yaml:"rollup1hDays"`
 	Rollup1dDays            int `yaml:"rollup1dDays"`
@@ -345,8 +345,6 @@ func defaults() *HubConfig {
 				TrafficEventDays:        90,
 				TrafficEventPayloadDays: 30,
 				AdminAuditLogDays:       365,
-				MetricRollupDays:        365,
-				AgentAuditDays:          90,
 				Rollup5mDays:            7,
 				Rollup1hDays:            90,
 				Rollup1dDays:            365,
@@ -453,8 +451,6 @@ func applyEnvOverrides(cfg *HubConfig) {
 	parseIntEnv("NEXUS_HUB_RETENTION_TRAFFIC_EVENT_DAYS", &cfg.Scheduler.Retention.TrafficEventDays)
 	parseIntEnv("NEXUS_HUB_RETENTION_TRAFFIC_EVENT_PAYLOAD_DAYS", &cfg.Scheduler.Retention.TrafficEventPayloadDays)
 	parseIntEnv("NEXUS_HUB_RETENTION_ADMIN_AUDIT_DAYS", &cfg.Scheduler.Retention.AdminAuditLogDays)
-	parseIntEnv("NEXUS_HUB_RETENTION_METRIC_ROLLUP_DAYS", &cfg.Scheduler.Retention.MetricRollupDays)
-	parseIntEnv("NEXUS_HUB_RETENTION_AGENT_AUDIT_DAYS", &cfg.Scheduler.Retention.AgentAuditDays)
 	parseIntEnv("NEXUS_HUB_RETENTION_ROLLUP_5M_DAYS", &cfg.Scheduler.Retention.Rollup5mDays)
 	parseIntEnv("NEXUS_HUB_RETENTION_ROLLUP_1H_DAYS", &cfg.Scheduler.Retention.Rollup1hDays)
 	parseIntEnv("NEXUS_HUB_RETENTION_ROLLUP_1D_DAYS", &cfg.Scheduler.Retention.Rollup1dDays)

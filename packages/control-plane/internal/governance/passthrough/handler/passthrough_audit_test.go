@@ -32,12 +32,9 @@ import (
 // (nil, nil) — the "no prior row" branch.
 func noRowsErr() error { return pgx.ErrNoRows }
 
-// echoCtxWithAdminAuth builds an Echo context that satisfies BOTH the
-// audit.EntryFor reader (which calls middleware.AdminAuthFromContext)
-// AND the legacy actor() reader (which calls c.Get("user")). The
-// passthrough handler historically wired only the "user" key for Hub
-// propagation; the new audit emit pulls actor identity from
-// AdminAuth, so tests must populate both.
+// echoCtxWithAdminAuth builds an Echo context with the AdminAuth identity
+// attached — both actor() and audit.EntryFor read it via
+// middleware.AdminAuthFromContext.
 func echoCtxWithAdminAuth(method, path, body string) (echo.Context, *httptest.ResponseRecorder) {
 	c, rec := echoCtxWithUser(method, path, body)
 	middleware.WithAdminAuth(c, &auth.AdminAuth{

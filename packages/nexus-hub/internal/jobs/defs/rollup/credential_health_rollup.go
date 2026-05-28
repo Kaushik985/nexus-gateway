@@ -84,31 +84,31 @@ func NewHealthRollupMetrics(reg prometheus.Registerer) *HealthRollupMetrics {
 	f := promauto.With(reg)
 	return &HealthRollupMetrics{
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_health_rollup",
 			Name:      "cycles_total",
 			Help:      "Number of rollup cycles run, labelled by outcome.",
 		}, []string{"outcome"}),
 		updatedTotal: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_health_rollup",
 			Name:      "updated_total",
 			Help:      "Credential rows whose health fields were UPDATEd to DB.",
 		}),
 		candidatesTotal: f.NewCounter(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_health_rollup",
 			Name:      "candidates_total",
 			Help:      "Credentials with at least one traffic_event sample in the short window across all cycles.",
 		}),
 		transitionsTotal: f.NewCounterVec(prometheus.CounterOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_health_rollup",
 			Name:      "transitions_total",
 			Help:      "Health status transitions, labelled by from and to.",
 		}, []string{"from", "to"}),
 		runDurationSec: f.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "nexus_hub",
+			Namespace: "nexus",
 			Subsystem: "credential_health_rollup",
 			Name:      "run_duration_seconds",
 			Help:      "End-to-end time spent in each rollup cycle.",

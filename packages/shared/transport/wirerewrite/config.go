@@ -83,8 +83,9 @@ type Rule struct {
 	Regex    *regexp.Regexp // compiled pattern to remove from matched values
 }
 
-// Config is the runtime configuration loaded from system_metadata
-// "prompt_cache" key. The zero value is a safe default (all off).
+// Config is the runtime configuration projected from the `cache` config-key
+// blob (configkey.Cache) that the AI Gateway watches on its shadow. The zero
+// value is a safe default (all off).
 type Config struct {
 	// NormaliserEnabled gates NormalizeUpstream (L3). NormalizeKey is
 	// always active regardless of this switch.

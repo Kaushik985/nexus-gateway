@@ -9,10 +9,12 @@
  */
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { getPhaseColors } from '@nexus-gateway/ui-shared';
 import { useTheme } from '@/theme/ThemeProvider';
-import type { AgentEvent } from '@/api/agent';
+import { agentApi } from '@/api/agent';
+import type { AgentEvent, SpillRef } from '@/api/agent';
 import { NormalizedPayloadView } from '@/components/normalized/NormalizedPayloadView';
 
 interface Props {
@@ -306,7 +308,21 @@ function HookList({ raw, t }: { raw: unknown; t: ReturnType<typeof useTranslatio
 
 export function TrafficEventDetail({ event, onClose }: Props) {
   const { t } = useTranslation();
+  // Fetch the heavy fields (request/response body + normalized payloads + spill
+  // refs) on demand when the drawer opens — the list query (queryEvents) is
+  // metadata-only, so these arrive via EVENT_BY_ID. The list row provides an
+  // instant header render; PayloadsSection upgrades to the fetched detail once
+  // it resolves. Falls back to the list row on load/error so the drawer is
+  // never empty. (Hook called before the null-return to keep hook order stable.)
+  const detailQuery = useQuery({
+    queryKey: ['agent', 'event', event?.id ?? ''],
+    queryFn: () => agentApi.eventById(event!.id),
+    enabled: !!event?.id,
+    staleTime: 30_000,
+  });
   if (!event) return null;
+  // Detail (with bodies + normalized + spill) once fetched; list row until then.
+  const detail = detailQuery.data?.event ?? event;
   return (
     <div
       role="dialog"
@@ -466,7 +482,7 @@ export function TrafficEventDetail({ event, onClose }: Props) {
             translation) is a follow-up; for now the Raw view answers
             "what did the LLM see" / "what did it return". */}
         <SectionTitle>{t('traffic.detail.payloadsTitle', 'Payloads')}</SectionTitle>
-        <PayloadsSection event={event} t={t} />
+        <PayloadsSection event={detail} t={t} />
       </div>
     </div>
   );
@@ -531,6 +547,7 @@ function PayloadsSection({
       <PayloadDirection
         label={t('traffic.detail.payloadRequest', 'Request body')}
         base64={(event as { payloadRequest?: string }).payloadRequest}
+        spillRef={event.requestSpillRef}
         normalized={event.normalizedRequest}
         direction="request"
         tab={tab}
@@ -539,6 +556,7 @@ function PayloadsSection({
       <PayloadDirection
         label={t('traffic.detail.payloadResponse', 'Response body')}
         base64={(event as { payloadResponse?: string }).payloadResponse}
+        spillRef={event.responseSpillRef}
         normalized={event.normalizedResponse}
         direction="response"
         tab={tab}
@@ -551,6 +569,7 @@ function PayloadsSection({
 function PayloadDirection({
   label,
   base64,
+  spillRef,
   normalized,
   direction,
   tab,
@@ -558,6 +577,7 @@ function PayloadDirection({
 }: {
   label: string;
   base64?: string;
+  spillRef?: SpillRef;
   normalized?: import('@/components/normalized/types').NormalizedPayload;
   direction: 'request' | 'response';
   tab: 'normalized' | 'raw';
@@ -571,10 +591,16 @@ function PayloadDirection({
       {tab === 'normalized' && normalized ? (
         <NormalizedPayloadView payload={normalized} direction={direction} />
       ) : (
-        <PayloadView base64={base64} t={t} />
+        <PayloadView base64={base64} spillRef={spillRef} t={t} />
       )}
     </div>
   );
+}
+
+function fmtBytes(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} MB`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)} KB`;
+  return `${n} B`;
 }
 
 /**
@@ -586,15 +612,30 @@ function PayloadDirection({
  */
 function PayloadView({
   base64,
+  spillRef,
   t,
 }: {
   base64?: string;
+  spillRef?: SpillRef;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
   // 2026-05-24: removed internal label render — caller (PayloadDirection)
   // owns the label so we don't show "Response body / Response body" twice
   // when PayloadDirection has its own header. PayloadView is now pure body.
   if (!base64) {
+    // An oversize body that spilled to S3 at drain is not locally readable
+    // (the agent holds no S3 GET credential) — point the user to the Control
+    // Plane, which fetches it from S3. A localfs-spilled body is read back by
+    // the daemon and arrives in base64, so it never reaches this branch.
+    if (spillRef && spillRef.backend && spillRef.backend !== 'localfs') {
+      return (
+        <span style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+          {t('traffic.detail.payloadSpilled', 'Large body stored in spill ({{size}}) — view it in the Control Plane.', {
+            size: fmtBytes(spillRef.size ?? 0),
+          })}
+        </span>
+      );
+    }
     return (
       <span style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
         {t('traffic.detail.payloadEmpty', 'Not captured (payload capture disabled or body spilled to remote store).')}

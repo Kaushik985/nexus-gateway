@@ -138,6 +138,36 @@ type createProviderCredentialInput struct {
 // in one request; a duplicate name on Provider or a (providerId,
 // providerModelId) collision on Model rolls back the entire create so the
 // DB never ends up half-populated.
+// conflictForUniqueViolation maps a Postgres 23505 unique-violation on the
+// provider/model/credential tables to an accurate admin-API error. The create
+// path can trip several distinct unique indexes — provider name, provider path
+// prefix, the globally-unique credential name, the globally-unique model code,
+// and the per-provider model natural key. Previously every non-model collision
+// was reported as "provider name exists", which misdirected admins who had only
+// reused a credential name or model code from an earlier provider (changing the
+// provider name never cleared the error). The machine code lets the UI point at
+// the offending field. providerName is interpolated into the name message when
+// known (empty otherwise).
+func conflictForUniqueViolation(pgErr *pgconn.PgError, providerName string) (message, code string) {
+	switch pgErr.ConstraintName {
+	case "Provider_name_key":
+		if providerName != "" {
+			return "A provider named '" + providerName + "' already exists", "PROVIDER_NAME_EXISTS"
+		}
+		return "A provider with that name already exists", "PROVIDER_NAME_EXISTS"
+	case "Provider_pathPrefix_key":
+		return "A provider with that URL path prefix already exists (the path prefix is derived from the provider name)", "PROVIDER_PATH_EXISTS"
+	case "Credential_name_key":
+		return "A credential with that name already exists — credential names are globally unique; choose a different credential.name", "CREDENTIAL_NAME_EXISTS"
+	case "Model_code_key":
+		return "A model with that code already exists — model codes are globally unique; choose a different code (or providerModelId)", "MODEL_CODE_EXISTS"
+	case "Model_providerId_providerModelId_key":
+		return "A model with that providerModelId is already registered under this provider", "MODEL_ALREADY_REGISTERED"
+	default:
+		return "A unique value in the request conflicts with an existing record", "CONFLICT"
+	}
+}
+
 func (h *Handler) CreateProvider(c echo.Context) error {
 	var body struct {
 		Name        string                         `json:"name"`
@@ -295,19 +325,12 @@ func (h *Handler) CreateProvider(c echo.Context) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// Distinguish provider-name collision from model natural-key
-			// collision so the UI can point the user at the right field.
-			// Constraint names come from Prisma's default naming
-			// (Provider_name_key / Provider_pathPrefix_key /
-			// Model_providerId_providerModelId_key).
-			if pgErr.ConstraintName == "Model_providerId_providerModelId_key" {
-				return c.JSON(http.StatusConflict, errJSON(
-					"One of the selected models is already registered under this provider",
-					"conflict", "MODEL_ALREADY_REGISTERED"))
-			}
-			return c.JSON(http.StatusConflict, errJSON(
-				"A provider named '"+body.Name+"' already exists",
-				"conflict", "PROVIDER_NAME_EXISTS"))
+			// Constraint names come from Prisma's default naming. Classify each
+			// so the response names the actual offending field (provider name,
+			// path prefix, credential name, model code, or model natural key)
+			// rather than always blaming the provider name.
+			msg, code := conflictForUniqueViolation(pgErr, body.Name)
+			return c.JSON(http.StatusConflict, errJSON(msg, "conflict", code))
 		}
 		h.logger.Error("create provider", "error", err)
 		return c.JSON(http.StatusInternalServerError, errJSON("Internal server error", "server_error", ""))
@@ -445,9 +468,8 @@ func (h *Handler) UpdateProvider(c echo.Context) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return c.JSON(http.StatusConflict, errJSON(
-				"A provider with that name already exists",
-				"conflict", "PROVIDER_NAME_EXISTS"))
+			msg, code := conflictForUniqueViolation(pgErr, "")
+			return c.JSON(http.StatusConflict, errJSON(msg, "conflict", code))
 		}
 		h.logger.Error("update provider", "error", err)
 		return c.JSON(http.StatusInternalServerError, errJSON("Internal server error", "server_error", ""))
@@ -511,17 +533,20 @@ func (h *Handler) AddProviderModel(c echo.Context) error {
 	}
 
 	var body struct {
-		Code                  string   `json:"code"`
-		Name                  string   `json:"name"`
-		Description           string   `json:"description"`
-		ProviderModelID       string   `json:"providerModelId"`
-		Type                  string   `json:"type"`
-		Features              []string `json:"features"`
-		InputPricePerMillion  *float64 `json:"inputPricePerMillion"`
-		OutputPricePerMillion *float64 `json:"outputPricePerMillion"`
-		MaxContextTokens      *int     `json:"maxContextTokens"`
-		MaxOutputTokens       *int     `json:"maxOutputTokens"`
-		Aliases               []string `json:"aliases"`
+		Code                            string          `json:"code"`
+		Name                            string          `json:"name"`
+		Description                     string          `json:"description"`
+		ProviderModelID                 string          `json:"providerModelId"`
+		Type                            string          `json:"type"`
+		Features                        []string        `json:"features"`
+		InputPricePerMillion            *float64        `json:"inputPricePerMillion"`
+		OutputPricePerMillion           *float64        `json:"outputPricePerMillion"`
+		CachedInputReadPricePerMillion  *float64        `json:"cachedInputReadPricePerMillion"`
+		CachedInputWritePricePerMillion *float64        `json:"cachedInputWritePricePerMillion"`
+		MaxContextTokens                *int            `json:"maxContextTokens"`
+		MaxOutputTokens                 *int            `json:"maxOutputTokens"`
+		Aliases                         []string        `json:"aliases"`
+		CapabilityJson                  json.RawMessage `json:"capabilityJson"`
 	}
 	if err := c.Bind(&body); err != nil {
 		return c.JSON(http.StatusBadRequest, errJSON("Invalid request body", "validation_error", ""))
@@ -545,26 +570,30 @@ func (h *Handler) AddProviderModel(c echo.Context) error {
 	if body.Description != "" {
 		desc = &body.Description
 	}
+	var capJSON *json.RawMessage
+	if len(body.CapabilityJson) > 0 {
+		capJSON = &body.CapabilityJson
+	}
 
 	m, err := h.models.CreateModel(c.Request().Context(), modelstore.CreateModelParams{
 		Code: body.Code, Name: body.Name, Description: desc,
 		ProviderID: providerID, ProviderModelID: body.ProviderModelID,
 		Type: body.Type, Features: body.Features,
 		InputPricePerMillion: body.InputPricePerMillion, OutputPricePerMillion: body.OutputPricePerMillion,
+		CachedInputReadPricePerMillion:  body.CachedInputReadPricePerMillion,
+		CachedInputWritePricePerMillion: body.CachedInputWritePricePerMillion,
 		MaxContextTokens: body.MaxContextTokens, MaxOutputTokens: body.MaxOutputTokens,
-		Aliases: body.Aliases, Enabled: true,
+		Aliases: body.Aliases, CapabilityJson: capJSON, Enabled: true,
 	})
 	if err != nil {
-		// 23505 = unique_violation. Two cases:
-		//   - PK "Model_pkey": the caller supplied an id that collides — rare
-		//     now that we auto-UUID when empty, but keep the branch.
-		//   - @@unique([providerId, providerModelId]): the caller is trying
-		//     to register the same upstream model twice under this provider.
+		// 23505 = unique_violation: the per-provider model natural key
+		// (@@unique([providerId, providerModelId])) or the globally-unique
+		// model code (Model_code_key). Classify so the response names the
+		// right field instead of always blaming providerModelId.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return c.JSON(http.StatusConflict, errJSON(
-				"Provider already has a model with providerModelId '"+body.ProviderModelID+"'",
-				"conflict", "MODEL_ALREADY_REGISTERED"))
+			msg, code := conflictForUniqueViolation(pgErr, "")
+			return c.JSON(http.StatusConflict, errJSON(msg, "conflict", code))
 		}
 		h.logger.Error("create model", "error", err)
 		return c.JSON(http.StatusInternalServerError, errJSON("Internal server error", "server_error", ""))

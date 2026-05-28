@@ -22,7 +22,6 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/traffic/store/trafficstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/ai/providers/modelstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/ai/providers/credstore"
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/scim/scimstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/observability/thingstats/thingstore"
 )
 
@@ -87,14 +86,6 @@ type Model = modelstore.Model
 type CreateModelParams = modelstore.CreateModelParams
 type Credential = credstore.Credential
 type CreateCredentialParams = credstore.CreateCredentialParams
-
-// CreateIdentityProviderParams is re-exported from scimstore for idp_migrate.go.
-type CreateIdentityProviderParams = scimstore.CreateIdentityProviderParams
-
-// CreateIdentityProvider delegates to scimstore for idp_migrate.go cross-boundary call.
-func (db *DB) CreateIdentityProvider(ctx context.Context, p CreateIdentityProviderParams) (*scimstore.IdentityProviderRecord, error) {
-	return scimstore.New(db.pool).CreateIdentityProvider(ctx, p)
-}
 
 // GetThingTypeSummaries delegates to thingstore for service_instance.go cross-boundary call.
 func (db *DB) GetThingTypeSummaries(ctx context.Context) ([]thingstore.ThingTypeSummary, error) {

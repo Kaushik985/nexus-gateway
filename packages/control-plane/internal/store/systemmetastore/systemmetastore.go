@@ -11,11 +11,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // PgxPool is the minimal pgx surface needed. Matches store.PgxPool so the
-// same mock can satisfy both interfaces in tests.
+// same mock can satisfy both interfaces in tests. *pgxpool.Pool satisfies it
+// directly, so production callers pass their pool straight to New.
 type PgxPool interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -26,11 +26,8 @@ type Store struct {
 	pool PgxPool
 }
 
-// New constructs a Store from a concrete *pgxpool.Pool (production path).
-func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
-
-// NewFromPool constructs a Store from the PgxPool interface (test path).
-func NewFromPool(pool PgxPool) *Store { return &Store{pool: pool} }
+// New constructs a Store from any PgxPool (production *pgxpool.Pool or a mock).
+func New(pool PgxPool) *Store { return &Store{pool: pool} }
 
 // GetSystemMetadata returns the JSON value for a system metadata key.
 // Returns (nil, nil) when the key does not exist.

@@ -9,10 +9,21 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	mathrand "math/rand"
 	"strings"
 	"testing"
 	"time"
 )
+
+// detEntropy returns a deterministic but uniformly-distributed byte source.
+// The threshold-sweep tests below previously used crypto/rand.Reader as
+// failAfter.inner; because each crypto primitive's rejection sampling consumes
+// a runtime-variable number of reads, the 1..60 sweep intermittently failed to
+// reach x509.CreateCertificate's entropy read, leaving that error branch
+// uncovered and dropping package coverage below 95% at random. A fixed-seed
+// stream makes the per-call read boundaries identical on every run, so the
+// sweep covers every rand consumer (key gen / serial / certificate) reliably.
+func detEntropy() io.Reader { return mathrand.New(mathrand.NewSource(0x6e6578757300)) }
 
 // failReader is an io.Reader that always returns a sentinel error;
 // drives the rand-failure branches in ecdsa.GenerateKey / rand.Int /
@@ -140,37 +151,6 @@ func TestIssueLeafCertByHostname_GenerateKeyError(t *testing.T) {
 	}
 }
 
-// IssueLeafCert path
-
-func TestIssueLeafCert_GenerateKeyError(t *testing.T) {
-	caCert, caKey := mustValidCA(t)
-	eng, err := NewEngine(caCert, caKey, 10, time.Hour)
-	if err != nil {
-		t.Fatalf("NewEngine: %v", err)
-	}
-
-	// Construct a stub upstream cert to satisfy IssueLeafCert's input;
-	// real fingerprint computed from CommonName.
-	upstream := &x509.Certificate{
-		Subject:   pkix.Name{CommonName: "upstream.example"},
-		DNSNames:  []string{"upstream.example"},
-		NotBefore: time.Now().Add(-time.Minute),
-		NotAfter:  time.Now().Add(time.Hour),
-		Raw:       []byte("synthetic-fingerprint-bytes-for-test"),
-	}
-
-	restore := swapTLSRandReader(t, failReader{err: errors.New("starved")})
-	defer restore()
-
-	_, err = eng.IssueLeafCert(upstream)
-	if err == nil {
-		t.Fatal("must surface entropy error from ecdsa.GenerateKey")
-	}
-	if !strings.Contains(err.Error(), "generate leaf key") {
-		t.Errorf("err should wrap 'generate leaf key'; got %q", err)
-	}
-}
-
 // Production-default pin: the package init wires the real rand.Reader.
 
 func TestTLSRandReader_ProductionDefault(t *testing.T) {
@@ -194,50 +174,12 @@ func TestIssueLeafCertByHostname_DownstreamEntropyError(t *testing.T) {
 	for at := 1; at < 60; at++ {
 		calls := 0
 		tlsRandReader = &failAfter{
-			inner: rand.Reader,
+			inner: detEntropy(),
 			err:   errors.New("starved at downstream"),
 			calls: &calls,
 			at:    at,
 		}
 		_, err := eng.IssueLeafCertByHostname(hostname + ".v" + strings.Repeat("x", at))
-		tlsRandReader = rand.Reader
-		if err == nil {
-			continue
-		}
-		msg := err.Error()
-		if !strings.Contains(msg, "generate leaf key") &&
-			!strings.Contains(msg, "generate serial") &&
-			!strings.Contains(msg, "create leaf cert") {
-			t.Errorf("err should wrap a downstream rand consumer; got %q", msg)
-		}
-		return
-	}
-	t.Fatal("no failAfter threshold in [1,60) surfaced an entropy error")
-}
-
-func TestIssueLeafCert_DownstreamEntropyError(t *testing.T) {
-	caCert, caKey := mustValidCA(t)
-	eng, err := NewEngine(caCert, caKey, 10, time.Hour)
-	if err != nil {
-		t.Fatalf("NewEngine: %v", err)
-	}
-
-	for at := 1; at < 60; at++ {
-		upstream := &x509.Certificate{
-			Subject:   pkix.Name{CommonName: "upstream-probe.example"},
-			DNSNames:  []string{"upstream-probe.example"},
-			NotBefore: time.Now().Add(-time.Minute),
-			NotAfter:  time.Now().Add(time.Hour),
-			Raw:       []byte("fp-" + strings.Repeat("x", at)),
-		}
-		calls := 0
-		tlsRandReader = &failAfter{
-			inner: rand.Reader,
-			err:   errors.New("starved at downstream"),
-			calls: &calls,
-			at:    at,
-		}
-		_, err := eng.IssueLeafCert(upstream)
 		tlsRandReader = rand.Reader
 		if err == nil {
 			continue
@@ -262,7 +204,7 @@ func TestGenerateCA_AllRandConsumerArms(t *testing.T) {
 	for at := 1; at < 60; at++ {
 		calls := 0
 		restore := swapTLSRandReader(t, &failAfter{
-			inner: rand.Reader,
+			inner: detEntropy(),
 			err:   errors.New("starved"),
 			calls: &calls,
 			at:    at,
@@ -288,7 +230,7 @@ func TestIssueLeafCertByHostname_AllRandConsumerArms(t *testing.T) {
 	for at := 1; at < 60; at++ {
 		calls := 0
 		tlsRandReader = &failAfter{
-			inner: rand.Reader,
+			inner: detEntropy(),
 			err:   errors.New("starved"),
 			calls: &calls,
 			at:    at,
@@ -306,35 +248,97 @@ func TestIssueLeafCertByHostname_AllRandConsumerArms(t *testing.T) {
 	}
 }
 
-func TestIssueLeafCert_AllRandConsumerArms(t *testing.T) {
+// (IssueLeafCert fingerprint-keyed path removed; the hostname-keyed path
+// above covers the same rand-consumer arms.)
+
+// budgetReader serves exactly len(buf) deterministic bytes, then errors. The
+// failAfter sweep above counts Read CALLS, which crypto/internal/randutil's
+// MaybeReadByte jitters by ±1 per primitive — so it cannot reliably starve one
+// specific operation, and the package coverage flaked 94.8%–96.9%. Each crypto
+// primitive here consumes tens of bytes, so a byte budget placed in the gap
+// between two operations' cumulative needs starves the intended operation
+// deterministically despite the ±1 jitter.
+type budgetReader struct {
+	buf []byte
+	pos int
+}
+
+func (b *budgetReader) Read(p []byte) (int, error) {
+	if b.pos >= len(b.buf) {
+		return 0, errors.New("entropy budget exhausted")
+	}
+	n := copy(p, b.buf[b.pos:])
+	b.pos += n
+	return n, nil
+}
+
+// detBudget returns a reader that yields n bytes of real entropy then fails.
+// Real (vs seeded) bytes are used so P256 key generation never hits its rare
+// scalar-rejection retry — it consumes ~33 bytes (32 + the MaybeReadByte
+// probe), and rand.Int(2^128) consumes ~16. Budget 40 therefore clears the key
+// but starves the serial draw; budget 60 clears both but starves
+// x509.CreateCertificate's signature nonce. The ~7–11 byte margins absorb the
+// ±1 MaybeReadByte jitter, so the targeted branch fails on every run.
+func detBudget(n int) *budgetReader {
+	buf := make([]byte, n)
+	_, _ = rand.Read(buf)
+	return &budgetReader{buf: buf}
+}
+
+// TestGenerateCA_SerialEntropyError deterministically covers the serial-draw
+// failure arm of generateCA (key succeeds, rand.Int is starved).
+func TestGenerateCA_SerialEntropyError(t *testing.T) {
+	restore := swapTLSRandReader(t, detBudget(40))
+	defer restore()
+	if _, _, err := generateCA(); err == nil || !strings.Contains(err.Error(), "generate CA serial") {
+		t.Fatalf("starved serial draw should wrap %q, got %v", "generate CA serial", err)
+	}
+}
+
+// TestGenerateCA_CertEntropyError deterministically covers the certificate
+// signing failure arm of generateCA (key + serial succeed, CreateCertificate
+// is starved).
+func TestGenerateCA_CertEntropyError(t *testing.T) {
+	restore := swapTLSRandReader(t, detBudget(60))
+	defer restore()
+	_, _, err := generateCA()
+	if err == nil {
+		t.Fatal("starved certificate signing should error")
+	}
+	if strings.Contains(err.Error(), "generate CA serial") {
+		t.Fatalf("budget should clear the serial draw and fail at signing, got %v", err)
+	}
+}
+
+// TestIssueLeaf_SerialEntropyError covers IssueLeafCertByHostname's serial arm.
+func TestIssueLeaf_SerialEntropyError(t *testing.T) {
 	caCert, caKey := mustValidCA(t)
-	eng, err := NewEngine(caCert, caKey, 200, time.Hour)
+	eng, err := NewEngine(caCert, caKey, 10, time.Hour)
 	if err != nil {
 		t.Fatalf("NewEngine: %v", err)
 	}
-	sawAny := false
-	for at := 1; at < 60; at++ {
-		upstream := &x509.Certificate{
-			Subject:   pkix.Name{CommonName: "u.example"},
-			DNSNames:  []string{"u.example"},
-			NotBefore: time.Now().Add(-time.Minute),
-			NotAfter:  time.Now().Add(time.Hour),
-			Raw:       []byte("fp-" + strings.Repeat("z", at)),
-		}
-		calls := 0
-		tlsRandReader = &failAfter{
-			inner: rand.Reader,
-			err:   errors.New("starved"),
-			calls: &calls,
-			at:    at,
-		}
-		_, err := eng.IssueLeafCert(upstream)
-		tlsRandReader = rand.Reader
-		if err != nil {
-			sawAny = true
-		}
+	restore := swapTLSRandReader(t, detBudget(40))
+	defer restore()
+	if _, err := eng.IssueLeafCertByHostname("starved-serial.example"); err == nil ||
+		!strings.Contains(err.Error(), "generate serial") {
+		t.Fatalf("starved serial draw should wrap %q, got %v", "generate serial", err)
 	}
-	if !sawAny {
-		t.Fatal("no failAfter threshold surfaced entropy err in IssueLeafCert")
+}
+
+// TestIssueLeaf_CertEntropyError covers IssueLeafCertByHostname's signing arm.
+func TestIssueLeaf_CertEntropyError(t *testing.T) {
+	caCert, caKey := mustValidCA(t)
+	eng, err := NewEngine(caCert, caKey, 10, time.Hour)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	restore := swapTLSRandReader(t, detBudget(60))
+	defer restore()
+	_, err = eng.IssueLeafCertByHostname("starved-cert.example")
+	if err == nil {
+		t.Fatal("starved certificate signing should error")
+	}
+	if strings.Contains(err.Error(), "generate serial") {
+		t.Fatalf("budget should clear the serial draw and fail at signing, got %v", err)
 	}
 }

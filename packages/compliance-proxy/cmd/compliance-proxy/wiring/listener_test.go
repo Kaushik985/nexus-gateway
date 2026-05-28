@@ -1,7 +1,6 @@
 package wiring
 
 import (
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,7 +57,6 @@ func buildMinimalListenerDeps(t *testing.T) ListenerDeps {
 		UpstreamTransport:     upstream,
 		CertCache:             certRes.CertCache,
 		ComplianceResolver:    nil,
-		DomainSnapshot:        &atomic.Pointer[traffic.DomainSnapshot]{},
 		AuditEmitter:          nil,
 		StreamingPolicyStore: streampolicy.NewStore(streampolicy.DefaultPolicy()),
 	}

@@ -87,14 +87,12 @@ This layer is the fleet-managed config: admin writes a value in the Control Plan
 
 | `key` | Purpose | Primary reader |
 |---|---|---|
-| `siem.config` | SIEM bridge sink + auth header config | `packages/nexus-hub/internal/traffic/siem/bridge.go` |
+| `siem.config` | SIEM bridge sink + auth header config | `packages/nexus-hub/internal/observability/siem/bridge.go` |
 | `payload_capture.config` | Payload-capture toggles + caps (overrides `thing_config_template.payload_capture` for service-side receivers) | `packages/nexus-hub/internal/compliance/catbagent/payload_capture.go` + AI Gateway / Compliance Proxy receivers |
 | `streaming_compliance.config` | Streaming-compliance policy snapshot | `packages/nexus-hub/internal/compliance/catbagent/streaming_compliance.go` |
 | `observability.config` | Fleet observability toggles (re-read by every receiver — see A01 §5 note) | Every service's configdispatch receiver |
 | `gateway.settings` | AI Gateway runtime settings (cache toggles, behaviour flags) | AI Gateway dispatch |
 | `agent.settings` | Agent runtime settings | Hub catbagent loader path |
-| `sso.config` | SSO provider config | CP identity layer |
-| `oidc.config` | OIDC IdP config | CP identity layer |
 | `semantic_cache.config` | Semantic cache singleton config (fleet-wide L1 embedding) | AI Gateway dispatch |
 | `gateway.credential_reliability.config` | Credential reliability thresholds | AI Gateway dispatch + Hub credential-health rollup job |
 
@@ -189,7 +187,7 @@ The single source of truth for the configKey set is `packages/shared/schemas/con
 
 ### L4 `system_metadata` keys
 
-See §6 for the table — `siem.config`, `payload_capture.config`, `streaming_compliance.config`, `observability.config`, `gateway.settings`, `agent.settings`, `sso.config`, `oidc.config`, `semantic_cache.config`, `gateway.credential_reliability.config`.
+See §6 for the table — `siem.config`, `payload_capture.config`, `streaming_compliance.config`, `observability.config`, `gateway.settings`, `agent.settings`, `semantic_cache.config`, `gateway.credential_reliability.config`.
 
 ## §8 — Workflow: adding a new config field
 
@@ -249,7 +247,7 @@ The factory that consumes this yaml lives at `packages/shared/storage/redisfacto
 - `system_metadata` table — `tools/db-migrate/schema.prisma`
 - Rename sweep script — `scripts/check-rename.sh` + `scripts/check-rename.manifest.tsv`
 - yaml-secrets guard — `scripts/check-no-yaml-secrets.mjs`
-- Hub side `system_metadata` loaders — `packages/nexus-hub/internal/compliance/catbagent/`, `packages/nexus-hub/internal/traffic/siem/bridge.go`
+- Hub side `system_metadata` loaders — `packages/nexus-hub/internal/compliance/catbagent/`, `packages/nexus-hub/internal/observability/siem/bridge.go`
 - L3 data model + cascade — `docs/developers/architecture/cross-cutting/foundation/thing-model.md` (A01)
 - L3 sync flow — `docs/developers/architecture/cross-cutting/foundation/thing-config-sync-architecture.md` (A02)
 - yaml + bootstrap loader specifics — `docs/developers/architecture/cross-cutting/foundation/service-bootstrap-config-architecture.md` (A05)

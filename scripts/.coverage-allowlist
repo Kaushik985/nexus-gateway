@@ -25,6 +25,20 @@
 # file carries only the current live state plus a section at the bottom
 # listing the canonical seam patterns proven during prior sweeps.
 
+# ══════════════════════════════════════════════════════════════════════
+# BACKFILL-PENDING — BURNED DOWN TO ZERO (2026-05-27).
+# ══════════════════════════════════════════════════════════════════════
+# This section temporarily held packages that were silently passing the gate
+# because of the check-go-coverage.sh parser bug (BUGS-FOUND #1, fixed Phase 0).
+# All 31 entries have since been backfilled with business-asserting tests and
+# removed: 29 CP/hub store + ingest packages via the pgxmock PgxPool seam
+# (Phase 2), bufconn + idptest (Phase 3, were mislabeled (B)), and the agent
+# platform sub-packages paths / darwin/ne / darwin/proc / darwin/bundles (Phase 6,
+# now off allowlist) plus catrust / darwin (reclassified to the (D) section below
+# with per-package rationale once their testable surface was covered).
+# Keep this section EMPTY. New entries require explicit user approval and a real
+# A–F category. Tracking + phase plan: docs/handoffs/unit-test-coverage-program/PLAN.md
+
 # ──────────────────────────────────────────────────────────────────────
 # (A) cmd/* entry points — main() wiring, no business logic.
 # ──────────────────────────────────────────────────────────────────────
@@ -36,6 +50,7 @@
 */packages/ai-gateway/cmd/ai-gateway
 */packages/compliance-proxy/cmd/compliance-proxy
 */packages/control-plane/cmd/control-plane
+*/packages/nexus-cli/cmd/nexus            # A — entry point: os.Exit(cli.Main()) wiring only (E88-S2)
 */packages/nexus-hub/cmd/nexus-hub
 
 # (A) cmd/*/wiring — DI assembly with measurable observable behavior. E85
@@ -74,8 +89,6 @@
 # ──────────────────────────────────────────────────────────────────────
 # (B) Test helpers — used only from *_test.go of other packages.
 # ──────────────────────────────────────────────────────────────────────
-*/packages/shared/transport/bufconn
-*/packages/control-plane/internal/identity/idptest
 */packages/control-plane/internal/identity/authserver/store/storetest
 */packages/compliance-proxy/internal/testutil
 
@@ -91,15 +104,44 @@
 # runner — not deferred E85 work, separate-epic infrastructure.
 */packages/control-plane/internal/store
 
+# (C) control-plane/internal/platform/pgx — the shared pgx pool constructor.
+# New() runs pgxpool.ParseConfig + NewWithConfig + Ping; the happy
+# connect+ping return requires a live PostgreSQL, and the NewWithConfig
+# error branch is unreachable for any DSN that ParseConfig accepts. The
+# testable surface IS covered (EscapeILIKE 100%, ParseConfig-error, pool
+# tuning + Ping-failure + Close) — package sits at 89.5%, the residual is
+# the live-DB happy path. Reclassified from BACKFILL 2026-05-27.
+*/packages/control-plane/internal/platform/pgx
+
 # ──────────────────────────────────────────────────────────────────────
 # (D) OS-bound — tests need kernel APIs / system keychain / WinDivert /
 #                packet capture / Wails-frontend embed.
 # ──────────────────────────────────────────────────────────────────────
 
-# (D) Agent OS-direct shims — keychain, systray, browser launcher.
+# (D) agent/internal/platform/catrust — OS trust-store integration. Per GOOS:
+# macOS `security add-trusted-cert` into the System keychain, Linux
+# `update-ca-certificates`, Windows certutil. InstallCACert is a thin
+# temp-file + exec shim with no business logic to assert; mutating the system
+# trust store needs root + a real keychain. Reclassified from BACKFILL 2026-05-27.
+*/packages/agent/internal/platform/catrust
+
+# (D) agent/internal/platform/darwin — the macOS Network Extension platform impl.
+# The OS surface (NE Unix-socket listen in Start, TLS engine load from disk,
+# the NE→bridge listener, libproc ProcessInfo, flow_closed audit emit) needs a
+# live NE + on-disk CA + a running bridge; covered by Skill('build-agent') +
+# the NE edge soak. The SAFETY-CRITICAL fail-open decision core IS now
+# unit-tested (platform_flow_darwin_test.go: handleNewFlow kill-switch /
+# backpressure / handler-nil passthrough + decision mapping + flow-map track,
+# handleFlowUpdateHost, LookupFlowDestination, looksLikeIPLiteral, handleNEConn
+# dispatch — directly verifying the NE fail-open binding). Package sits at 36.6%
+# (rest is OS wiring). Reclassified from BACKFILL 2026-05-27.
+*/packages/agent/internal/platform/darwin
+
+# (D) Agent OS-direct shims — keychain, systray. (openbrowser removed: the
+# URL/host security validation is now unit-tested via a launch seam; only the
+# process spawn is excluded, which does not need a whole-package exemption.)
 */packages/agent/internal/identity/keystore
 */packages/agent/internal/host/trayipc
-*/packages/agent/internal/host/openbrowser
 
 # (D) agent/cmd/agent/platformshim — re-categorized 2026-05-21 from (A)
 # to (D) (E85 D-4). 16 files split across //go:build darwin / linux /
@@ -183,9 +225,9 @@
 # Seam pattern 2 — narrow interface in production file, concrete type
 # satisfies unchanged. Applied to (E85 D-8):
 #   compliance-proxy/cmd/compliance-proxy/breakglass (100.0%) —
-#     `shadowProbeClient` + `replayer` interfaces
-#   compliance-proxy/cmd/compliance-proxy/replay (96.7%) —
-#     injectable `buildSink` package-level var
+#     `shadowProbeClient` + `replayer` interfaces; `runReplayWith`
+#     testable core takes an injectable interval so tests drive the
+#     ticker loop without waiting on the production cadence.
 
 # Seam pattern 3 — doc_test.go converts `[no test files]` to
 # `[no statements]` for pure-type / sentinel-only packages. Applied to

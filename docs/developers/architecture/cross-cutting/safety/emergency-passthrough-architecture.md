@@ -229,8 +229,8 @@ Bypass activity is observable through three artefacts already covered above; the
 - `packages/control-plane-ui/src/api/services/ai-gateway/passthrough.ts`
 - `packages/control-plane-ui/src/hooks/usePermission.ts`
 - `packages/nexus-hub/internal/jobs/defs/expiry/passthrough_expiry.go`
-- `packages/nexus-hub/internal/jobs/consumer/message.go`
-- `packages/nexus-hub/internal/jobs/consumer/traffic.go`
+- `packages/nexus-hub/internal/observability/consumer/message.go`
+- `packages/nexus-hub/internal/observability/consumer/traffic.go`
 - `packages/shared/transport/mq/messages.go`
 - `packages/shared/identity/iam/catalog.go`
 - `packages/shared/identity/iam/catalog_data.go`

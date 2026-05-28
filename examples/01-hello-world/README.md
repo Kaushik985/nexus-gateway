@@ -13,19 +13,13 @@ Walks an OpenAI-format chat-completion request through the AI Gateway, then show
 ## Prerequisites
 
 - Local stack up (`./scripts/dev-start.sh` finished cleanly).
-- A virtual key seeded with quota for at least one OpenAI-format model. The dev seed creates one — find it via:
-  ```bash
-  docker exec $(docker ps --filter "name=postgres" -q | head -1) \
-    psql -U postgres -d nexus_gateway -t -c \
-    "SELECT key FROM \"VirtualKey\" WHERE \"isActive\" = true LIMIT 1;"
-  ```
-  Copy the returned `vk-...` value into the `VK` env var below.
+- A virtual key for at least one OpenAI-format model. The seed stores only hashed keys, so create a fresh one in the Control Plane console (Virtual Keys, or your Personal Virtual Keys) and copy it — the secret is shown once at creation. Gateway virtual keys are prefixed `nvk_`. Paste it into the `VK` env var below.
 - A real OpenAI API key in the seeded `openai` Provider's Credential row. If you haven't replaced the placeholder, set up the provider through the Control Plane UI first (`Settings → Providers → OpenAI → Add credential`).
 
 ## Run it
 
 ```bash
-export VK="vk-<paste-from-prerequisite>"
+export VK="nvk_<paste-from-prerequisite>"
 export PROMPT="What's the capital of Japan?"
 
 curl -sS http://localhost:3050/v1/chat/completions \

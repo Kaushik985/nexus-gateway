@@ -2,7 +2,7 @@
 description: Adding a usage/token field requires 5 stamp sites
 globs:
   - packages/ai-gateway/internal/**/proxy*.go
-  - packages/ai-gateway/internal/providers/types.go
+  - packages/ai-gateway/internal/providers/core/types.go
   - packages/ai-gateway/internal/providers/**
 ---
 

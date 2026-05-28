@@ -172,10 +172,12 @@ The Control Plane uses OAuth + PKCE. The simplest sanity check is to load the UI
 If you want a curl-level confirmation that the auth server is responsive:
 
 ```bash
+# Credentials come from tests/.env.local — source it first:
+#   cp tests/.env.local.example tests/.env.local && source tests/lib/loadenv.sh local
 # 400 here is correct — the body lacks authctx; the endpoint exists and is reachable.
-curl -s -X POST http://localhost:3001/authserver/password \
+curl -s -X POST "$NEXUS_CP_URL/authserver/password" \
   -H "Content-Type: application/json" \
-  -d '{"authctx":"","email":"admin@nexus.ai","password":"admin123"}' \
+  -d "{\"authctx\":\"\",\"email\":\"$NEXUS_ADMIN_EMAIL\",\"password\":\"$NEXUS_ADMIN_PASSWORD\"}" \
   -o /dev/null -w "%{http_code}\n"
 ```
 

@@ -21,8 +21,8 @@ set -euo pipefail
 
 GW_URL="${NEXUS_GW_URL:-http://localhost:3050}"
 CP_URL="${NEXUS_CP_URL:-http://localhost:3001}"
-CP_USER="${NEXUS_CP_USER:-admin@nexus.ai}"
-CP_PASS="${NEXUS_CP_PASS:-admin123}"
+CP_USER="${NEXUS_CP_USER:-${NEXUS_ADMIN_EMAIL:-}}"
+CP_PASS="${NEXUS_CP_PASS:-${NEXUS_ADMIN_PASSWORD:-}}"
 VK="${NEXUS_VK:-}"
 MODEL="gpt-5.2"
 CROSS_FORMAT=0

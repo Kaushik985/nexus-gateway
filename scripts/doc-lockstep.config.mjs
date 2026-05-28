@@ -73,7 +73,7 @@ export default [
     {
         name: 'iam-identity',
         code: [
-            'packages/control-plane/internal/iam/**',
+            'packages/control-plane/internal/identity/iam/**',
             'packages/shared/identity/iam/**',
         ],
         docs: [
@@ -203,8 +203,8 @@ export default [
             'docs/developers/roadmap.md',
         ],
         docs: [
-            'docs/developers/specs/e86-e2e-coverage-matrix.md',
+            'docs/developers/specs/e2e-coverage-matrix.md',
         ],
-        waiverHint: 'New / changed user-facing capability must update the E86 E2E coverage matrix in the same PR (capability ↔ test arm map). Endpoint-level scenario coverage lives in tests/scenarios/00-catalog.md; this matrix sits above it at the user-perspective layer.',
+        waiverHint: 'New / changed user-facing capability must update the E2E coverage matrix in the same PR (capability ↔ test arm map). Endpoint-level scenario coverage lives in tests/scenarios/00-catalog.md; this matrix sits above it at the user-perspective layer.',
     },
 ];

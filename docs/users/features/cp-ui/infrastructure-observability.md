@@ -40,9 +40,9 @@ This group of INFRASTRUCTURE leaves controls platform telemetry, how long diagno
 
 **Purpose.** Inspect and replay audit and event messages that exhausted their redelivery attempts to the Hub consumer.
 
-**What you see.** A subject filter over a table of dead-lettered messages: inserted-at, subject, message id, delivery count, payload size, and the last error. Pagination is cursor-based, newest first.
+**What you see.** A subject filter over a table of dead-lettered messages: inserted-at, subject, message id, delivery count, payload size, and the last error. Rows are newest first, with the same paginated footer as every other admin list (rows-per-page, page numbers, row range, and total count).
 
-**Controls.** Filter by subject and page through the rows. Each row has a Retry action that republishes the original payload to its MQ subject and deletes the row on success; Retry is shown only to users who can manage the queue.
+**Controls.** Filter by subject and page through the rows with the shared pagination control. Each row has a Retry action that republishes the original payload to its MQ subject and deletes the row on success; Retry is shown only to users who can manage the queue.
 
 **Key concepts.** A message lands here after the Hub consumer's redelivery threshold is hit; the delivery count and last error explain why. Retrying is the way to recover a message once the underlying cause is fixed.
 

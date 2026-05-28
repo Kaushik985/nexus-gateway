@@ -70,7 +70,7 @@ Reason: under Go 1.25, real pseudo-versions are validated against the upstream G
 
 ## Forbidden
 
-- `sqlc`. Use hand-written SQL + Prisma → Go codegen for types.
+- `sqlc`. Use hand-written SQL; Go struct types are hand-maintained mirrors of the Prisma schema (no codegen script).
 - Breaking API change in `packages/shared/*` once shipped in a released Agent binary (additive-only).
 
 ## Dependencies in `packages/shared`

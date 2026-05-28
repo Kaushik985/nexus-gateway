@@ -29,18 +29,25 @@ If you are about to edit code in an area that is genuinely **not** covered by an
 | Adding/changing an admin API endpoint, sidebar nav, or route path | CLAUDE.md "API / menu / route changes require IAM impact review" rule + `docs/developers/architecture/services/control-plane/iam-identity-architecture.md` |
 | Adding/changing a Prisma migration (any `tools/db-migrate/migrations/**`) | CLAUDE.md "Migration timestamp prefix must be unique" rule + `docs/developers/architecture/cross-cutting/storage/db-migration-mechanics-architecture.md` |
 
+## Operator Toolkit (`packages/nexus-cli/`)
+
+| Editing area / file glob | Read FIRST |
+|---|---|
+| The `nexus` TUI / CLI / MCP binary as a whole; `packages/nexus-cli/internal/{core,cli,tui,mcp}/**` — auth, profiles, keychain, typed client, command tree, Bubble Tea console, MCP server | `docs/developers/architecture/nexus-operator-toolkit-architecture.md` |
+
 ## AI Gateway (`packages/ai-gateway/`)
 
 | Editing area / file glob | Read FIRST |
 |---|---|
 | AI Gateway as a whole; `packages/ai-gateway/internal/{ingress,platform,auth,execution}/**` request-entry + runtime internals without their own doc | `docs/developers/architecture/services/ai-gateway/ai-gateway-architecture.md` (service overview + index) |
+| Caller-facing ingress API — endpoints, virtual-key auth, cross-format translation, response headers, error envelopes (`packages/ai-gateway/internal/auth/vkauth/**`, `packages/ai-gateway/internal/ingress/envelope/**`, route registration) | `docs/developers/architecture/services/ai-gateway/ingress-api.md` |
 | `packages/ai-gateway/internal/routing/**`, routing-rule handlers, canonical payload, `ResolvedRequest`, model catalog, fallback chain | `docs/developers/architecture/services/ai-gateway/routing-architecture.md` |
 | Smart routing (LLM-dispatch routing strategy) | `docs/developers/architecture/services/ai-gateway/smart-routing-architecture.md` |
 | `packages/ai-gateway/internal/providers/**` (specs, core, dispatch), `packages/shared/traffic/adapters/**`, format translators, streaming, token-field stamping | `docs/developers/architecture/services/ai-gateway/provider-adapter-architecture.md` + `docs/developers/architecture/services/ai-gateway/provider-coverage.md` |
 | `packages/shared/transport/normalize/**`, `packages/ai-gateway/internal/execution/canonicalbridge/**`, codec decode/parse, `NormalizedPayload` shape | `docs/developers/architecture/services/ai-gateway/normalization-architecture.md` |
 | `packages/ai-gateway/internal/policy/hooks/**`, `packages/shared/policy/hooks/**`, HookConfig, `onMatch` logic | `docs/developers/architecture/services/ai-gateway/hook-architecture.md` |
 | Prompt-cache code, Gemini cached content, multi-tier prompt cache config | `docs/developers/architecture/services/ai-gateway/prompt-cache-architecture.md` |
-| Response cache code (`packages/ai-gateway/internal/cache/**`), route-level cache policy, `response_cache_policy` schema | `docs/developers/architecture/services/ai-gateway/response-cache-architecture.md` |
+| Response cache config + service integration (`packages/ai-gateway/internal/cache/**`, `extract_cache_config` / `semantic_cache_config` fleet config, cache shadow-key dispatch); tier mechanism lives in `cache-multi-tier-architecture.md` | `docs/developers/architecture/services/ai-gateway/response-cache-architecture.md` |
 | `packages/ai-gateway/internal/execution/estimator/**`, `metrics.CalculateCost`, price-per-million fields, cost stamping, cache savings UI | `docs/developers/architecture/services/ai-gateway/cost-estimation-architecture.md` |
 | `packages/ai-gateway/internal/policy/aiguard/**` — judge-model classification pipeline | `docs/developers/architecture/services/ai-gateway/aiguard-architecture.md` |
 | Forward-header allowlist (`packages/ai-gateway/internal/execution/forwardheader/**`) | `docs/developers/architecture/services/ai-gateway/forward-header-allowlist-architecture.md` |
@@ -64,10 +71,10 @@ If you are about to edit code in an area that is genuinely **not** covered by an
 | `packages/control-plane/internal/ai/**` — provider/model/credential CRUD, virtual-key approval workflow, routing-rule / quota / prompt-cache admin | `docs/developers/architecture/services/control-plane/cp-ai-providers-virtualkeys-architecture.md` |
 | `packages/control-plane/internal/governance/**` — kill-switch toggle, hook config, interception policy, AI-Guard snapshots, DSAR, exemptions, passthrough admin | `docs/developers/architecture/services/control-plane/cp-governance-compliance-admin-architecture.md` |
 | `packages/control-plane/internal/identity/iam/**`, `packages/shared/identity/iam/**`, `iamMW(...)`, `allowedActions`, NRN building | `docs/developers/architecture/services/control-plane/iam-identity-architecture.md` |
-| `packages/control-plane/internal/identity/authn/**` (SAML / OIDC), JIT user provisioning | `docs/developers/architecture/services/control-plane/idp-sso-architecture.md` |
-| `packages/control-plane/internal/identity/jwt/**`, JWKS polling, multi-issuer JWT validation | `docs/developers/architecture/services/control-plane/jwt-verifier-architecture.md` |
+| `packages/control-plane/internal/identity/{authserver/login,scim,sso,idptest}/**`, `identity/users/handler/identity_provider.go`, IdP + federated stores (`authserver/store/{idp_store,idp_oidc_config,idp_saml_config,saml_request_store,federated_store}.go`) — external IdP config + probe, SSO login (local / OIDC / SAML start + return legs), SCIM provisioning, agent SSO enroll, JIT user provisioning | `docs/developers/architecture/services/control-plane/idp-sso-architecture.md` |
+| `packages/control-plane/internal/identity/jwt/**`, JWKS polling, admin access-token verification + revocation | `docs/developers/architecture/services/control-plane/jwt-verifier-architecture.md` |
 | `packages/control-plane/internal/identity/authserver/**`, OAuth+PKCE flow, bearer issuance, refresh rotation | `docs/developers/architecture/services/control-plane/oauth-pkce-admin-auth-architecture.md` |
-| Organisation hierarchy, parent/ancestor path, tenant model, policy inheritance | `docs/developers/architecture/services/control-plane/tenancy-architecture.md` |
+| Organisation + project hierarchy, parent/ancestor path, policy inheritance (single-tenant; orgs are intra-deployment scope, not tenant isolation) | `docs/developers/architecture/services/control-plane/organization-hierarchy-architecture.md` |
 | `packages/ai-gateway/internal/platform/store/**` (vkSelectSQL), `packages/control-plane/internal/ai/virtualkeys/vkstore/**`, `traffic_event.org_id`/`org_name` population | `docs/developers/architecture/services/control-plane/vk-org-resolution.md` |
 
 ## Nexus Hub (`packages/nexus-hub/`)
@@ -117,12 +124,12 @@ If you are about to edit code in an area that is genuinely **not** covered by an
 | Audit event schema, `packages/shared/audit/**`, `packages/nexus-hub/internal/traffic/chain/**`, MQ audit sink, body storage with spillstore | `docs/developers/architecture/cross-cutting/observability/audit-pipeline-architecture.md` |
 | Admin mutation audit — which handlers emit which action / entityType | `docs/developers/architecture/cross-cutting/observability/admin-audit-log-coverage.md` |
 | Built-in Go alert rules, `AlertRule` rows, alerteval pipeline, channel fan-out | `docs/developers/architecture/cross-cutting/observability/alerting-architecture.md` |
-| `packages/shared/policy/pipeline/**`, `packages/nexus-hub/internal/observability/siem/**`, SIEM channel CRUD | `docs/developers/architecture/cross-cutting/observability/siem-bridge-architecture.md` |
+| `packages/nexus-hub/internal/observability/siem/**`, `packages/control-plane/internal/observability/siem/**`, SIEM bridge poll/checkpoint, sink + wire formats, `siem.config` admin surface | `docs/developers/architecture/cross-cutting/observability/siem-bridge-architecture.md` |
 | `packages/control-plane/internal/observability/opsmetrics/**`, `packages/nexus-hub/internal/observability/opsmetrics/**`, per-Thing stats rollup, quota rollup | `docs/developers/architecture/cross-cutting/observability/metrics-rollup-architecture.md` |
 | Adding / renaming a Prometheus metric (any `*.go` calling `promauto.New*`) | `docs/developers/architecture/cross-cutting/observability/prometheus-naming-architecture.md` |
 | `packages/shared/core/telemetry/**`, OTel setup, `traceparent` / `trace_id` propagation, span attribute conventions | `docs/developers/architecture/cross-cutting/observability/otel-tracing-architecture.md` |
 | `packages/shared/core/diag/**`, `packages/agent/internal/observability/diagnostics/**`, diag-mode shadow keys, silence rules | `docs/developers/architecture/cross-cutting/observability/diag-event-triage-architecture.md` |
-| `/runtime/*` endpoints, pprof gating, snapshot redaction | `docs/developers/architecture/cross-cutting/observability/runtime-introspection-architecture.md` |
+| `/debug/runtime` snapshot, `runtimeintrospect` sources, Hub introspection bridge, `/runtime/*` read API, snapshot redaction | `docs/developers/architecture/cross-cutting/observability/runtime-introspection-architecture.md` |
 | `tests/lib/`, `tests/integration-go/`, new smoke / protocol / AI-judge test, new test skill | `docs/developers/architecture/cross-cutting/observability/test-harness-architecture.md` |
 
 ## Cross-cutting — safety
@@ -151,7 +158,7 @@ If you are about to edit code in an area that is genuinely **not** covered by an
 | Any cache code (`packages/shared/storage/cacheconfig/**`, in-process LRU, Redis cache, IAM cache, cert cache, desired-state cache, response cache, quota counters) | `docs/developers/architecture/cross-cutting/storage/cache-multi-tier-architecture.md` |
 | `packages/shared/storage/spillstore/**`, S3 driver, presigned URL handlers, body overflow paths | `docs/developers/architecture/cross-cutting/storage/spillstore-architecture.md` |
 | `tools/db-migrate/schema.prisma`, manual scripts under `tools/db-migrate/manual-scripts/`, hand-maintained Go mirrors under `packages/shared/schemas/configtypes/**` | `docs/developers/architecture/cross-cutting/storage/db-migration-mechanics-architecture.md` |
-| Data retention CRUD, per-table purge jobs, `data_subject_request` rows, right-to-delete flow | `docs/developers/architecture/cross-cutting/storage/data-retention-purge-architecture.md` |
+| Retention config, per-table purge jobs, `dsar_request` rows, right-to-erasure flow | `docs/developers/architecture/cross-cutting/storage/data-retention-purge-architecture.md` |
 
 ## Cross-cutting — UI (Control Plane UI + Agent Dashboard)
 

@@ -27,7 +27,7 @@ When in doubt about adding a UI surface, config field, menu item, or code path: 
 
 Prefer:
 
-1. **Adapter / runtime auto-fills** over admin-facing config. Canonical pattern: Anthropic `max_tokens` default in `packages/ai-gateway/internal/providers/specs/anthropic/codec/codec.go:103-107` — adapter fills the protocol-required field from model capability when caller omits it.
+1. **Adapter / runtime auto-fills** over admin-facing config. Canonical pattern: Anthropic `max_tokens` default in `packages/ai-gateway/internal/providers/specs/anthropic/codec/codec.go` — adapter fills the protocol-required field from model capability when caller omits it.
 2. **Global settings** over per-route / per-rule overrides unless real divergence is documented.
 3. **One location per concept** over scattering across menus.
 4. **Extending an existing surface** over adding a new tab / page / route.

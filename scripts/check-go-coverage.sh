@@ -153,8 +153,9 @@ while IFS= read -r line; do
   fi
 
   if echo "$line" | grep -q '\[no test files\]'; then
-    # `?   IMPORT [no test files]`
-    pkg="$(echo "$line" | awk '{print $2}')"
+    # `?   IMPORT [no test files]` — extract via the github.com token so a
+    # leading-tab variant cannot slip past (see the coverage-line note below).
+    pkg="$(echo "$line" | grep -oE 'github\.com/[^[:space:]]+' | head -1)"
     if is_allowed "$pkg"; then
       OK_PKGS+=("$pkg (allowlisted; [no test files])")
     else
@@ -165,26 +166,23 @@ while IFS= read -r line; do
 
   if echo "$line" | grep -q 'coverage: \[no statements\]'; then
     # Pure type defs / doc-only — no logic to test.
-    pkg="$(echo "$line" | awk '{print $2}')"
+    pkg="$(echo "$line" | grep -oE 'github\.com/[^[:space:]]+' | head -1)"
     OK_PKGS+=("$pkg (no statements)")
     continue
   fi
 
   if echo "$line" | grep -q 'coverage: '; then
-    # Extract import path: usually field 2 of an `ok` line, but lines that begin
-    # with the package name + tab when build skipped a test deps.
-    pkg=""
-    if [[ "$line" == ok* ]]; then
-      pkg="$(echo "$line" | awk '{print $2}')"
-    else
-      # Standalone "coverage: X% of statements" line (from a FAILed test
-      # package): no import path on this line — already captured by the
-      # corresponding "FAIL\t<pkg>" line. Skip.
-      if [[ "$line" == coverage:* ]]; then
-        continue
-      fi
-      pkg="$(echo "$line" | awk -F'\t' '{print $1}')"
-    fi
+    # Extract the import path wherever it sits on the line. `go test -cover`
+    # emits several shapes depending on whether the package has test functions:
+    #   ok  \tIMPORT\tTIME\tcoverage: NN.N% of statements   (tested package)
+    #   \tIMPORT\t\tcoverage: 0.0% of statements             (no test functions)
+    # A bare "coverage: …" continuation line from a FAILed package carries no
+    # import path. Matching the `github.com/` token handles every shape and
+    # returns empty for the continuation line (skipped below). The previous
+    # `awk -F'\t' '{print $1}'` read an empty field on the leading-tab no-test
+    # shape, so every test-less package was silently dropped from the gate —
+    # letting un-tested, non-allowlisted packages pass unnoticed.
+    pkg="$(echo "$line" | grep -oE 'github\.com/[^[:space:]]+' | head -1)"
     pct="$(echo "$line" | sed -nE 's/.*coverage: ([0-9.]+)% of statements.*/\1/p')"
     if [[ -z "$pkg" || -z "$pct" ]]; then
       continue

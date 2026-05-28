@@ -1,7 +1,7 @@
 # Nexus Gateway
 
-[![CI](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/ci.yml)
-[![Go CI](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/go-ci.yml)
+[![CI](https://github.com/your-org/abc-nexus-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/your-org/abc-nexus-gateway/actions/workflows/ci.yml)
+[![Go CI](https://github.com/your-org/abc-nexus-gateway/actions/workflows/go-ci.yml/badge.svg?branch=main)](https://github.com/your-org/abc-nexus-gateway/actions/workflows/go-ci.yml)
 [![Coverage gate](https://img.shields.io/badge/coverage-%E2%89%A595%25%20per%20package-brightgreen)](./scripts/check-go-coverage.sh)
 [![Status: Pre-GA](https://img.shields.io/badge/status-Pre--GA%20%C2%B7%20active%20development-orange)](./CHANGELOG.md)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
@@ -174,6 +174,8 @@ admin@nexus.ai / admin123
 
 Additional seeded roles (`alice@nexus.ai`, `carol@nexus.ai`, `bob@nexus.ai`, `diana@nexus.ai`) are defined in `tools/db-migrate/seed/seed.ts`.
 
+Prefer the terminal? `nexus` (`packages/nexus-cli`) is a single Go binary that operates and observes the gateway from the command line — a Bubble Tea TUI (health overview, live traffic radar, event drill-down with an LLM "explain this event", SLO, cost, a chat playground, the kill switch and emergency passthrough, alerts and nodes, a k9s-style command palette, and an "Ask Nexus" natural-language bar that turns a plain-English question into a view jump or a data answer), a scriptable CLI (`nexus <noun> <verb> --output json`), and an MCP server (`nexus mcp serve`) that exposes the read/analyze tools to agents with an opt-in mitigate tier. It is a pure client over the same admin API + `/v1/*`, governed by the same IAM. See [docs/users/features/operator-toolkit.md](docs/users/features/operator-toolkit.md).
+
 ### Try it
 
 After the stack is up, walk through [`examples/01-hello-world/`](./examples/01-hello-world/) — a 3-minute curl-through-the-gateway demo that ends with you reading the resulting `traffic_event` Postgres row.
@@ -300,7 +302,7 @@ To build, sign, notarize, or package the macOS Agent (`.app` / `.pkg`), always i
 
 ## Acknowledgments
 
-- **Project Maintainer** — the original idea behind Nexus Gateway came from him, and he stayed hands-on throughout: code, tests, design reviews, architectural decisions.
+- **Steve** — the original idea behind Nexus Gateway came from him, and he stayed hands-on throughout: code, tests, design reviews, architectural decisions.
 - **The wider team** — engineers, code reviewers, QA, design folks, and the people running prod. The architecture decisions, design reviews, code-review catches, and prod incidents that shaped this codebase all came from team collaboration.
 - **[Claude Code](https://claude.com/claude-code)** — Anthropic's CLI assistant did the lion's share of the implementation work, side-by-side with the human maintainers.
 

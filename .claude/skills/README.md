@@ -12,9 +12,9 @@ adaptation guidance for forks lives at:
 
 The catalog explains:
 
-- What each of the 24 skills does
-- Which are tightly coupled to this repo's prod infra (`nexus.ai`)
-  and how to swap them for a fork
+- What each skill does
+- Which are tightly coupled to this repo's production infrastructure
+  (configured via `tests/.env.prod`) and how to swap them for a fork
 - When to write a new skill vs extend an existing one
 - The structural template every skill follows
 

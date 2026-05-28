@@ -10,7 +10,7 @@ discussions, or pull requests.**
 
 Report security issues privately by emailing:
 
-> **nexus@alphabitcore.com**
+> **security@alphabitcore.com**
 
 If you prefer encrypted communication, request our PGP public key at the same
 address before sending sensitive details.

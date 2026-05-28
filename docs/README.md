@@ -21,8 +21,7 @@ docs/
 ├── users/                ← admin / integrator / end-user surface
 │   ├── README.md
 │   ├── product/          ← overview, features, deployment models, competitive landscape
-│   ├── features/         ← per-UI-section docs (cp-ui, agent-ui) and cross-service flows
-│   └── ai-gateway-client-guide.md
+│   └── features/         ← per-UI-section docs (cp-ui, agent-ui) and cross-service flows
 ├── developers/           ← contributor surface
 │   ├── README.md
 │   ├── architecture/     ← system architecture

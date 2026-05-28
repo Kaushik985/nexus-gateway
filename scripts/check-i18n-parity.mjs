@@ -2,7 +2,8 @@
 /**
  * i18n key parity guard (S33, M4-5).
  *
- * Walks every locale file under packages/control-plane-ui/src/i18n/locales/<lang>/
+ * Walks every locale file under each source in LOCALE_SOURCES — the
+ * control-plane-ui, ui-shared, and agent-ui (Wails Dashboard) locale trees —
  * and confirms that the flattened key sets match across all locales.
  * Exits non-zero if any locale has missing or extra keys, with a precise
  * diff so the operator (or CI) can fix it in one pass.
@@ -42,6 +43,10 @@ const LOCALE_SOURCES = [
   {
     label: 'ui-shared',
     dir: join(REPO_ROOT, 'packages/ui-shared/src/i18n'),
+  },
+  {
+    label: 'agent-ui',
+    dir: join(REPO_ROOT, 'packages/agent/ui/frontend/src/i18n/locales'),
   },
 ];
 

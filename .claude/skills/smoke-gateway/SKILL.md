@@ -140,8 +140,7 @@ while pgrep -f 'python3 -u .*smoke-gateway.py' >/dev/null; do
       printf "  %s:%s\n" "$kw" "$(grep -c "$kw" /tmp/smoke-gateway-run.log 2>/dev/null)"
     done
     # Only check prod health when --target prod (skip for dev/local).
-    if grep -q -- '--target prod' /tmp/smoke-gateway-run.log 2>/dev/null \
-       || grep -q 'api.nexus.ai' /tmp/smoke-gateway-run.log 2>/dev/null; then
+    if grep -q -- '--target prod' /tmp/smoke-gateway-run.log 2>/dev/null; then
       echo "[prod ai-gw]"
       ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
         ${NEXUS_SSH_HOST} \

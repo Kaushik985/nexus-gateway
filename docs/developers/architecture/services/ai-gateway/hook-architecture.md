@@ -1,1 +1,70 @@
 # Hook architecture
+
+Compliance hooks are the policy layer that inspects each request and response and decides whether to approve, block, or rewrite it. They run as a priority-ordered pipeline shared by all three data-plane services — the AI Gateway, the Compliance Proxy, and the Agent — so a policy authored once enforces identically wherever traffic enters. The framework and all hook implementations live in `packages/shared/policy/hooks`, with the runner in `packages/shared/policy/pipeline`; the AI Gateway's `packages/ai-gateway/internal/policy/hooks` is only a contract-test mount point, not production code.
+
+## 1. HookConfig — the declarative unit
+
+Each hook instance is a `HookConfig` (`packages/shared/policy/hooks/core`): an `implementationId` selecting the code, a `priority` (lower runs first), an `enabled` flag, a `stage` (`request` / `response` / `connection`), a `failBehavior` (`fail-open` or `fail-closed`), an optional `timeoutMs`, an `applicableIngress` list (`ALL` / `AI_GATEWAY` / `COMPLIANCE_PROXY` / `AGENT`), an `applicableTrafficKinds` filter (default `["ai"]`), a `scope`, and a free-form `config` map. Operators author these rows on the Control Plane; the gateway loads them and compiles them into a pipeline.
+
+The framework ships eleven hook implementations, registered by `implementationId`: `keyword-filter`, `pii-detector`, `content-safety`, `rate-limiter`, `request-size-validator`, `ip-access-filter`, `data-residency`, `rulepack-engine`, `noop`, `webhook-forward`, and `quality-checker`.
+
+## 2. The Hook interface and applicability
+
+A `Hook` implements `Execute(ctx, *HookInput) (*HookResult, error)` plus `SupportsEndpoint` and `SupportsModality`, which are queried at build time so the pipeline is filtered before any request runs. An empty endpoint or modality always matches, so a request that has not yet been classified still passes through every hook. Three embeddable helpers cover the common cases:
+
+- **`ChatOnly`** — applies only to chat text traffic.
+- **`AnyEndpointAnyModality`** — runs on everything (rate limiter, IP filter, data-residency, request-size, webhook-forward, noop).
+- **`TextOnlyContentScanning`** — text scanners (PII, keyword, content-safety, quality, rulepack). It supports chat, embeddings, STT, TTS, image-generation, and video-generation inputs, but not batch or job endpoints. It carries a marker interface so the builder can skip it on the embedding **response** stage, where the payload is float vectors with no scannable text.
+
+Connection-stage hooks must additionally implement `ConnectionStageCompatible` — that stage has no body and forbids MODIFY-capable hooks.
+
+Hooks never receive raw provider JSON. The `HookInput` carries the canonical `NormalizedPayload` produced by the normalize layer (see [normalization-architecture.md](normalization-architecture.md)), along with request metadata, detected provider/model and API-key class/fingerprint, network context, accumulated upstream tags, the provider region, and endpoint/modality classification. Content scanners read text via `TextSegments()` (the payload's text projection).
+
+## 3. Decision vocabulary and onMatch
+
+A hook returns one of five decisions — `Approve`, `RejectHard`, `BlockSoft`, `Modify`, `Abstain`. Content-touching hooks do not hardcode that decision; they read it from an `onMatch` block in their config, which has two independent axes:
+
+- **`inflightAction`** — `approve` / `block-hard` / `block-soft` / `redact`, mapped to a decision by `DecisionForInflight` (`block-hard` → `RejectHard`, `redact` → `Modify`, and so on).
+- **`storageAction`** — `keep` / `redact` / `drop-content`, controlling what the audit record persists.
+
+When the `onMatch` block is absent the defaults are `block-hard` inflight, `redact` storage, and a `[REDACTED_<RULE_ID>]` replacement template — a match blocks the request and the content is not persisted unless an operator opts in. The `webhook-forward` hook re-derives its inflight default to `approve`, because the webhook's reply is itself the decision rather than a fixed block. Where multiple hooks disagree, the framework aggregates by strictness: `drop-content > redact > keep` for storage, and `RejectHard > BlockSoft > Modify > Approve > Abstain` for decisions.
+
+## 4. Resolving the pipeline
+
+`PolicyResolver` holds the current `HookConfig` snapshot behind an atomic pointer, so a config swap never blocks an in-flight resolve. `Swap` takes a defensive copy and reuses cached hook instances for rows whose content is unchanged, so a reload reconstructs only the hooks that actually changed. `resolve(stage, ingress)` filters the snapshot to enabled rows matching the stage and ingress, instantiates each via the registry (an unknown `implementationId` is logged once and skipped), rejects a connection-stage row that is not connection-compatible, and sorts the survivors by priority.
+
+`BuildPipeline` runs that resolution and then applies the endpoint and modality gates — dropping hooks that do not support the request's endpoint type or any of its modalities — plus the embedding-response gate that removes text scanners when the response stage carries embedding vectors. Each exclusion increments a skip metric. When nothing applies, it returns a nil pipeline and the caller skips the hook phase.
+
+## 5. Executing the pipeline
+
+A pipeline runs its hooks under a total timeout with a per-hook timeout — the AI Gateway sets these to 15 and 5 seconds (the per-hook value overridable per config via `timeoutMs`), and the framework falls back to 30 and 5 seconds when a caller leaves them unset. Every `Execute` call is wrapped so a panicking hook becomes an error rather than crashing the data plane. On an error or timeout the hook's `failBehavior` decides the outcome — `fail-closed` yields `RejectHard`, the default `fail-open` yields `Approve`. A nil result is treated as `Abstain`.
+
+The runner has two modes:
+
+- **Sequential** (the AI Gateway) — hooks run in priority order, short-circuiting on the first `RejectHard`. When a hook returns `Modify`, its transform spans are applied to the normalized payload before the next hook runs, so later hooks see the redacted content; emitted tags accumulate across hooks.
+- **Parallel** (the Compliance Proxy) — hooks run concurrently and cancel the rest on a `RejectHard`. Because parallel hooks cannot share evolving state, they neither apply MODIFY between hooks nor accumulate tags.
+
+`mergeResults` aggregates by priority order: the first `RejectHard` wins outright; otherwise any `BlockSoft` produces a soft block; otherwise a `Modify`; otherwise `Approve`. Tags are unioned, and the strictest storage action across hooks is carried onto the result. The AI Gateway enables two flags on its pipeline: `allowModify` (MODIFY passes through instead of being downgraded to APPROVE) and `clearSoftOnApprove` (a later APPROVE clears a pending soft block).
+
+## 6. Config flow
+
+`HookConfigCache` is the bridge from stored config to the resolver: a loader reads the `HookConfig` rows and `Swap`s them into the `PolicyResolver`. On the server-side data planes it reloads when the Hub pushes a config change (via the thing-client `OnConfigChanged` callback) with a TTL backstop; the Agent has no direct database access, so it is push-only. Before the swap, `rulepack.Enrich` binds each installed rule pack into the relevant hook's config under `_rulePackInstalls`, so the `rulepack-engine` hook evaluates packs without holding a database handle inside `Execute`.
+
+The AI Gateway invokes the pipeline at both the request and response stages: it builds a sequential pipeline for the stage, ingress, endpoint, and modality, enables `allowModify` and `clearSoftOnApprove`, and executes it against the `HookInput`.
+
+## 7. Relationship to AI-Guard
+
+A policy can defer a decision to the judge-model AI-Guard pipeline through the `webhook-forward` hook pointed at the AI Gateway's AI-Guard webhook endpoint. The webhook reply (`decision` / `reason` / `redactions`) is the suggestion, which `webhook-forward` reconciles against the hook's `onMatch.InflightAction` policy ceiling by strictness — an admin `block-hard` ceiling cannot be undercut by a permissive judge, and a judge reject cannot be undercut by a permissive ceiling; a mismatch stamps `ReasonAIGuardSuggestedVsPolicy`. Because this is an ordinary HTTP call from a hook, it works on every data plane, including the Agent. The AI-Guard classifier itself — its endpoints, backends, cache, and cost accounting — is covered in [aiguard-architecture.md](aiguard-architecture.md).
+
+## References
+
+- `packages/shared/policy/hooks/core/types.go` — `HookConfig`, `Hook` interface, applicability helpers, `HookInput`, decision aliases
+- `packages/shared/policy/hooks/core/onmatch.go` — `onMatch` parsing, decision mapping, strictness aggregation
+- `packages/shared/policy/hooks/builtins/builtins.go` — built-in hook registry
+- `packages/shared/policy/decision/types.go` — decision and action vocabulary
+- `packages/shared/policy/pipeline/policy.go` — `PolicyResolver`, `BuildPipeline`, ingress/endpoint/modality gates
+- `packages/shared/policy/pipeline/pipeline.go` — sequential/parallel execution, fail behavior, result merge
+- `packages/shared/policy/pipeline/config_cache.go` — `HookConfigCache` load and swap
+- `packages/shared/policy/rulepack/` — rule-pack store and config enrichment
+- `packages/ai-gateway/internal/ingress/proxy/proxy.go` — request- and response-stage pipeline invocation
+- `packages/ai-gateway/cmd/ai-gateway/wiring/hooks.go` — hook registry, config cache, and rule-pack wiring

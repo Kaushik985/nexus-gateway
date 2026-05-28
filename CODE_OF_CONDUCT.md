@@ -34,7 +34,7 @@ representing the project in public spaces.
 ## Enforcement
 
 Reports of unacceptable behaviour may be sent to the maintainers at
-**nexus@alphabitcore.com**. All reports will be reviewed and investigated
+**security@alphabitcore.com**. All reports will be reviewed and investigated
 promptly and fairly. Maintainers are obligated to respect the privacy and
 security of the reporter of any incident.
 

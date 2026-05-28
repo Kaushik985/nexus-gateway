@@ -26,7 +26,7 @@ Run the `iam-impact-review` skill verbatim. The 5 steps:
 
 1. UI `allowedActions` matches backend `iamMW(action)`.
 2. Decide resource carve-out (new resource type or reuse).
-3. If new resource: update `tools/db-migrate/seed/seed.ts` + `packages/control-plane/internal/iam/managed.go`.
+3. If new resource: update `tools/db-migrate/seed/seed.ts` + `packages/control-plane/internal/identity/iam/managed.go`.
 4. Sidebar + breadcrumb sweep.
 5. Record decisions in PR description.
 

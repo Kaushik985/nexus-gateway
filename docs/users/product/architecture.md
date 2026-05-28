@@ -30,7 +30,7 @@ Regardless of entry path, the platform shares one set of building blocks: the **
 
 ## Under the hood
 
-The backend services are written in Go and share a PostgreSQL database for persistent state, Redis for caching, and a message queue for asynchronous work. The admin console is a React application served by the Control Plane. Agents run on user devices and connect back to the Hub. For the developer-facing view of the same system, see the [architecture overview](../../developers/architecture/overview.md).
+The backend services are written in Go and share a PostgreSQL database for persistent state, a Valkey cache (Redis-wire-compatible) for caching, and a message queue for asynchronous work. The admin console is a React application served by the Control Plane. Agents run on user devices and connect back to the Hub. For the developer-facing view of the same system, see the [architecture overview](../../developers/architecture/overview.md).
 
 ## References
 

@@ -20,7 +20,7 @@ You are editing an area where adding / moving / renaming an **admin API endpoint
 1. **UI `allowedActions` and backend `iamMW(...)` reference the same action.** Drift = silent 403 (user sees menu item, click yields 403).
 2. **Decide resource carve-out.** Should the surface have its own resource type in `packages/shared/identity/iam/catalog_data.go`, or can it reuse `settings` / `observability` / etc.? Carve out when granting it shouldn't imply granting unrelated settings.
 3. **New resource → update both fixtures + seed.**
-   - `packages/control-plane/internal/iam/managed.go` (`NexusViewer` test fixture).
+   - `packages/control-plane/internal/identity/iam/managed.go` (`NexusViewer` test fixture).
    - `tools/db-migrate/seed/seed.ts` canonical policy block.
    - Missing either makes non-super-admin users lose visibility silently.
 4. **Path rename / move → sweep Sidebar + breadcrumbs.** `packages/control-plane-ui/src/components/ui/Sidebar/Sidebar.tsx` icon mapping. Dead `case` arms accumulate otherwise.

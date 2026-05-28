@@ -1,31 +1,28 @@
--- Backfill traffic_event.endpoint_type to the canonical
--- typology.EndpointKind vocabulary.
+-- E87: add + canonicalize traffic_event.endpoint_type.
 --
--- AI Gateway emits canonical typology.EndpointKind strings ("chat",
--- "embeddings", "stt", "tts", "image_generation", "batch") onto
--- audit.Record.EndpointType, which Hub db-writer persists verbatim into
--- traffic_event.endpoint_type. Pre-migration rows still carry the
--- former audit-string vocabulary for the chat family ("chat/completions",
--- "responses", "completions"); the embedding / stt / tts / image / batch
--- forms already match the canonical strings byte-for-byte and need no
--- rewrite.
+-- The original version of this migration only UPDATE'd endpoint_type,
+-- assuming an earlier migration had already added the column. No such
+-- migration ever existed, so on a real `prisma migrate deploy` (prod) the
+-- UPDATE failed with SQLSTATE 42703 (column does not exist). Local dev
+-- masked this because it builds the schema via `prisma db push` from
+-- schema.prisma (which also lacked the column) and never runs migrations.
+-- This migration now creates the column first, then normalizes any legacy
+-- values — making the add+canonicalize atomic and correct on every path.
 --
--- The chat-family collapse mirrors the AI Gateway path-segment classifier
--- (packages/shared/transport/typology/legacy.go KindFromPathSegment): all
--- three legacy segments resolve to EndpointKindChat in production code,
--- so this UPDATE preserves the existing per-row semantic while aligning
--- the stored string with the canonical vocabulary the admin Traffic UI
--- and analytics queries read.
---
--- The WHERE clause filters to legacy values so re-running the migration
--- is a no-op once every row carries the canonical string.
---
--- Performance: full-table scan with an index-less WHERE predicate;
--- on prod's ~10M-row table the UPDATE completes in ~5 minutes. Run during
--- a low-traffic deploy window. No accompanying CHECK constraint exists on
--- the column, so the rewrite is non-locking beyond the row updates
--- themselves.
+-- The column carries the canonical typology.EndpointKind vocabulary
+-- ("chat", "embeddings", "stt", "tts", "image_generation", "batch", ...),
+-- stamped by the producing service onto audit.Record.EndpointType and
+-- persisted by the Hub db-writer. Empty string for non-AI traffic
+-- (compliance-proxy / agent forwards) that does not classify a modality.
+ALTER TABLE "traffic_event"
+  ADD COLUMN IF NOT EXISTS "endpoint_type" TEXT NOT NULL DEFAULT '';
 
+-- Canonicalize any rows that carry the former audit-string vocabulary for
+-- the chat family. On a freshly-added column every row is '' so this is a
+-- no-op; it stays for idempotency and to document the canonical mapping
+-- (mirrors packages/shared/transport/typology KindFromPathSegment, where
+-- all three legacy segments resolve to EndpointKindChat). The WHERE clause
+-- keeps re-runs a no-op once every row carries a canonical string.
 UPDATE "traffic_event"
    SET "endpoint_type" = 'chat'
  WHERE "endpoint_type" IN ('chat/completions', 'responses', 'completions');

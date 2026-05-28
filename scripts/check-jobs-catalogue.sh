@@ -28,14 +28,10 @@ if [ ! -d "$JOBS_DIR" ]; then
   exit 1
 fi
 
-# Doc-rewrite escape hatch (2026-05-22 archive sweep removed every
-# architecture doc this script depends on; rewrite is queued). When the
-# doc is absent we silently skip — lockstep enforcement resumes the
-# moment the new file lands at the expected path. Re-enable strict mode
-# by deleting this block.
+# The catalogue doc is mandatory — a missing doc is a hard failure, not a skip.
 if [ ! -f "$DOC" ]; then
-  echo "⊘ jobs-catalogue lockstep skipped — doc absent (post 2026-05-22 archive sweep, awaiting rewrite)"
-  exit 0
+  echo "✗ check-jobs-catalogue: missing $DOC"
+  exit 1
 fi
 
 failed=0

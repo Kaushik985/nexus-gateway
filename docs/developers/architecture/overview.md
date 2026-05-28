@@ -40,6 +40,10 @@ Each service has its own front-door architecture doc that details its request fl
 - [compliance-proxy-architecture.md](services/compliance-proxy/compliance-proxy-architecture.md)
 - [agent-architecture.md](services/agent/agent-architecture.md)
 
+## Operator toolkit
+
+Alongside the five services and the web admin console, `nexus` (`packages/nexus-cli`) is a single Go binary that operates and observes the gateway from the terminal as a TUI, a scriptable CLI, and an MCP server for agents. It is a pure client over the existing admin API and `/v1/*` — it adds no backend endpoint and is governed by the same IAM as any other caller. See [nexus-operator-toolkit-architecture.md](nexus-operator-toolkit-architecture.md).
+
 ## Cross-cutting concerns
 
 Concerns that span services live under `cross-cutting/`: `foundation/` (the Thing model, configuration, the service-call framework, jobs, the message queue, endpoint typology), `storage/` (database and migrations), `observability/`, `safety/` (kill switch and related controls), `shared/`, and `ui/`.

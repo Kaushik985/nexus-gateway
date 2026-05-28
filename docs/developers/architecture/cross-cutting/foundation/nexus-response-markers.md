@@ -7,8 +7,6 @@ Anchor packages:
 - `packages/shared/traffic/markers.go` — the **single source of truth** for the marker allowlist (`ExposeHeaders`), the via-chain helper (`PrependVia`), the generic per-hop chain helper (`PrependChain`), the two CORS helpers (`SetExposeHeaders`, `MergeExposeHeaders`), and the canonical hook-outcome formatter (`FormatHookOutcome`).
 - `packages/ai-gateway/internal/ingress/proxy/proxy.go` — AI Gateway's direct `w.Header().Set(...)` call sites for every gateway-owned marker.
 - `packages/shared/transport/tlsbump/markerhook.go` + `markercontext.go` — the shared marker-injection layer used by Compliance Proxy (`identity="compliance-proxy"`) and the Agent's tlsbump path (`identity="agent"`).
-- `packages/agent/internal/network/proxy/marker.go` — `AgentMarker.injectInto`, the agent's MITM-relay-only injection helper.
-
 ## 1. Naming convention
 
 - **Both directions use mixed-case `X-Nexus-*`.** Request headers and response headers follow the same canonical mixed-case form (e.g. `X-Nexus-Request-Id`, `X-Nexus-Mode`, `X-Nexus-Hook`). HTTP header names are case-insensitive on the wire and Go's `http.Header.Set` / `Get` canonicalises automatically, but **all literal strings in the codebase use mixed-case** so code reads consistently with what observers see on the wire.
@@ -183,11 +181,17 @@ Three distinct code paths produce markers.
 
 When `*CPMarker` is absent (compliance disabled fast-path, or a CONNECT tunnel that never went through the inspector), only `X-Nexus-Via` is stamped — downstream consumers treat the absence of `X-Nexus-Hook` / `X-Nexus-Mode` / `X-Nexus-Domain-Rule` entries as "no inspection ran".
 
-### 6.3 Agent (MITM relay path) — `AgentMarker.injectInto`
+### 6.3 Agent — shared bump-path markers (`identity="agent"`)
 
-`packages/agent/internal/network/proxy/marker.go` exposes `AgentMarker{FlowID, HookOutcome}` and its `injectInto(h)` method, used by the agent's MITM relay before `serializeResponseHead` writes the headers. It prepends `agent` to the via chain, prepends `mitm` to `X-Nexus-Mode` via `PrependChain`, prepends the formatted hook outcome to `X-Nexus-Hook`, and sets `X-Nexus-Request-Id` to the flow ID (the single correlation header — see §1) when non-empty. `MergeExposeHeaders` is called for the relevant marker set.
-
-The MITM relay's synthetic 403 response (`packages/agent/internal/network/proxy/proxy.go`) is built from a literal string template that hardcodes `X-Nexus-Mode: mitm` (and the via, hook, request-id headers). This is the only place in the tree where the value `mitm` appears for the `X-Nexus-Mode` marker — the tlsbump path uses `inspect` / `deny` instead.
+The agent's inspect path runs through the same shared marker layer as the
+compliance proxy — `stampMarkers` in `packages/shared/transport/tlsbump/markerhook.go`
+— constructed with `WithIdentity("agent")` so `agent` is prepended to the
+`X-Nexus-Via` chain. It stamps the same canonical chain markers: the hook
+outcome on `X-Nexus-Hook`, the mode (`inspect` / `deny`) on `X-Nexus-Mode`, and
+`X-Nexus-Request-Id` for correlation (see §1), using the `traffic` chain helpers
+(`PrependVia` / `PrependChain`) so multi-hop values stay aligned 1:1 with the via
+chain. There is no agent-specific marker injector and no per-service header
+prefix — every hop writes the canonical `X-Nexus-*` headers.
 
 ## 7. Operations
 

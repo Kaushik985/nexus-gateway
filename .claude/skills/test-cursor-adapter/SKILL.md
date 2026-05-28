@@ -3,8 +3,8 @@ name: test-cursor-adapter
 description: >
   End-to-end synthetic test for the Cursor IDE Tier-1 protobuf normalizer
   (E46-S12). Sends a hand-rolled GetChatRequest protobuf to api2.cursor.sh
-  through the prod compliance proxy at `compliance.nexus.ai:3128` (or any
-  proxy the user supplies), then verifies the resulting
+  through the deployment's compliance proxy on `:3128` (the `--proxy` flag,
+  or any proxy the user supplies), then verifies the resulting
   traffic_event_normalized row shows `kind=ai-chat`,
   `detectedSpec=cursor`, `model=claude-sonnet-4-6`, `confidence≈0.95`, and
   three decoded user/assistant/user messages. Use when validating the
@@ -44,7 +44,7 @@ Flags:
 
 | Flag        | Default                                                       | Notes |
 |-------------|---------------------------------------------------------------|-------|
-| `--proxy`   | `compliance.nexus.ai:3128`                                    | Override for a different proxy. Local dev: `--proxy localhost:3128`. |
+| `--proxy`   | the deployment's compliance proxy on `:3128`                  | Override for a different proxy. Local dev: `--proxy localhost:3128`. |
 | `--target`  | `https://api2.cursor.sh/aiserver.v1.AiService/StreamUnifiedChatWithTools` | The path doesn't have to exist upstream — Cursor's server returns 404 but the proxy still MITMs + audits. |
 | `--secure`  | (off — defaults to TLS verify disabled)                       | The Nexus MITM cert is signed by our internal CA; certifi's bundle doesn't include it even when system trust does. Pass `--secure` only if you've added the Nexus root CA to Python's bundle. |
 | `--model`   | `claude-sonnet-4-6`                                           | Embedded in the synthetic ModelDetails sub-message; appears in the normalized payload's `model` field. |
@@ -69,7 +69,7 @@ prints something like `cursor-synth-1778838655`. Two checks:
 
 ### A. Control Plane UI
 
-1. Open `https://cp.nexus.ai/traffic`.
+1. Open the Control Plane Traffic page (`https://cp.<your-domain>/traffic`).
 2. Filter by `target_host=api2.cursor.sh:443` or grep for the trace id.
 3. Open the row. The Normalized panel should show:
    - **green Tier-1 badge**: `Tier 1 · cursor · 0.95`
@@ -86,7 +86,7 @@ Normalized tab.
 
 ```bash
 ssh -o StrictHostKeyChecking=no ${NEXUS_SSH_HOST} "
-  PGPASSWORD=VclwRVYAAadpVPJfY9hzd0cM psql -h localhost -U nexus -d nexus_gateway -c \
+  PGPASSWORD=$NEXUS_SSH_PGPASSWORD psql -h localhost -U $NEXUS_SSH_PGUSER -d $NEXUS_SSH_PGDB -c \
   \"SELECT te.id, te.target_host, te.status_code,
            ten.response_status, ten.request_status,
            ten.request_normalized->>'kind' AS kind,

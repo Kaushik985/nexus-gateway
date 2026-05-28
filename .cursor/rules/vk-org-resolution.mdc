@@ -1,16 +1,16 @@
 ---
 description: VirtualKey org resolution has TWO join chains (Project for application VKs, Owner for personal VKs); vkSelectSQL must COALESCE both or personal VKs silently return NULL org
 globs:
-  - packages/ai-gateway/internal/store/virtualkey.go
+  - packages/ai-gateway/internal/platform/store/virtualkey.go
   - packages/ai-gateway/internal/store/virtualkey_*.go
-  - packages/ai-gateway/internal/audit/audit.go
+  - packages/ai-gateway/internal/platform/audit/audit.go
   - packages/control-plane/internal/ai/virtualkeys/vkstore/virtual_key.go
   - packages/shared/audit/**
 ---
 
 # VK org resolution — two join chains (binding)
 
-`packages/ai-gateway/internal/store/virtualkey.go:vkSelectSQL` resolves `VirtualKey → Organization` through TWO independent chains:
+`packages/ai-gateway/internal/platform/store/virtualkey.go:vkSelectSQL` resolves `VirtualKey → Organization` through TWO independent chains:
 
 | VK type | Chain |
 |---|---|
@@ -52,7 +52,7 @@ Latent bugs in the personal-VK code path hide indefinitely when traffic is domin
 
 ## Tests
 
-String-level pins in `packages/ai-gateway/internal/store/virtualkey_sql_test.go` lock the COALESCE shape + both LEFT JOINs. Refactors that "simplify" the SQL trip these tests in CI.
+String-level pins in `packages/ai-gateway/internal/platform/store/virtualkey_sql_test.go` lock the COALESCE shape + both LEFT JOINs. Refactors that "simplify" the SQL trip these tests in CI.
 
 ## Sources
 

@@ -28,11 +28,30 @@ Each phase: 2-round self-audit + Chinese review summary + user approval before c
 
 **Memory anchors:** none yet (writing as E87-S1 lands).
 
+### E88 — Nexus Operator Toolkit (`nexus` TUI / CLI / MCP)
+
+**Status:** Phase 0 graduation 2026-05-28. Requirements + 4 stories locked in [docs/developers/specs/e88-nexus-operator-toolkit.md](./specs/e88-nexus-operator-toolkit.md). Design source: [docs/superpowers/specs/2026-05-28-nexus-tui-design.md](../superpowers/specs/2026-05-28-nexus-tui-design.md).
+
+**Goal:** One Go binary `nexus` (new module `packages/nexus-cli/`), three faces over one `core`:
+- **TUI** (Bubble Tea) — health overview, live radar, traffic drill-down + trace/waterfall, SLO, cost, chat playground, simulator, kill-switch toggle.
+- **CLI** (Cobra) — every capability as `nexus <noun> <verb> --output json`.
+- **MCP** (`nexus mcp serve`) — observe/analyze/simulate tools; mitigate off by default.
+
+One IAM, no carve-outs: all three faces reach the gateway only through the existing admin API + `/v1/*`. **v1 adds zero new backend endpoints** (every capability maps to an existing route) → no OpenAPI, no IAM drift.
+
+**Stories:** E88-S1 core (auth PKCE + admin-key, profiles, keychain, typed client) · E88-S2 CLI · E88-S3 TUI · E88-S4 MCP.
+
+**Why:** No terminal-native, scriptable, agent-embeddable surface exists today for the operate/observe/verify loop; operators fall back to the web UI or raw `cp_curl`. The toolkit gives SRE a ≤2-keystroke path from health → failing request → mitigate → verify, gives developers a request-experiment lab, and gives partner platforms an MCP integration governed by the same IAM as every other caller.
+
+**Program docs:** [docs/handoffs/nexus-operator-toolkit/](../handoffs/nexus-operator-toolkit/) (PLAN.md + HANDOFF.md).
+
+**Memory anchors:** none yet (writing as E88-S1 lands).
+
 ## Queued
 
 (none — A-Q docs-backfill program is the active focus; new epics added here as they get filed)
 
 ## Reserved epic-number ranges
 
-- E80-E89: cross-cutting refactors (E85 ✅ unit-test coverage 95%, E86 ✅ E2E coverage, E87 endpoint typology)
+- E80-E89: cross-cutting refactors (E85 ✅ unit-test coverage 95%, E86 ✅ E2E coverage, E87 endpoint typology, E88 operator toolkit)
 - E90-E99: open for next program

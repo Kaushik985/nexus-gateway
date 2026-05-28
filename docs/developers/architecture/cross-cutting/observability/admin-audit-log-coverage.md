@@ -72,11 +72,11 @@ Schema in `tools/db-migrate/schema.prisma`:
 
 Indexes on `timestamp`, `actorId`, `entityType`, `nexusRequestId`, `clientRequestId`, `sequenceNumber`.
 
-The hash chain is the cryptographic spine: each row's `previousHash` equals the prior row's `integrityHash`, and the prior row's `integrityHash` is computed under a `pg_advisory_xact_lock` shared between the two writer paths so the chain cannot fork even when both writers commit concurrently.
+The hash chain is the cryptographic spine: each row's `previousHash` equals the prior row's `integrityHash`, and the prior row's `integrityHash` is computed under a `pg_advisory_xact_lock` shared across every writer path so the chain cannot fork even when multiple writers commit concurrently. Every `AdminAuditLog` row joins the one chain — there is no parallel non-chained row class.
 
 ## 5. Emit pattern
 
-There are three places an `AdminAuditLog` row originates from:
+An `AdminAuditLog` row originates from one of these places:
 
 ### 5.1 CP handlers → MQ → Hub batch writer (the common path)
 
@@ -111,6 +111,10 @@ On any failure (Begin / Insert / Commit), the entire batch is NAK'd back to the 
 ### 5.4 Direct `audit.Entry{}` literal
 
 The two sites described in §3 — `RevokeDeviceInternal` and the password login emitter — produce the same wire format as `EntryFor` but skip the EchoContext-driven actor lookup.
+
+### 5.5 Hub system-job writer (semantic-cache reindex)
+
+`packages/nexus-hub/internal/jobs/defs/semanticcacheflush/job.go` stamps an `AdminAuditLog` row after a blue/green vector-index swap. The reindex job runs on the scheduler outside any caller transaction, so `writeAuditRow` opens its own short transaction, takes the same advisory lock, runs `chain.NextHash`, and inserts the row with a synthetic actor (`hub-job` / `Hub Scheduler`, `actorRole="system"`), `EntityType="semantic_cache_config"`, `Action="semantic-cache.reindex"`, and the old/new index names plus fingerprints in `AfterState`. Like every other writer it joins the single chain; `actorRole="system"` only labels scheduler-written rows for the UI and has no effect on chain linkage. Audit-write failures are logged at WARN and never fail the reindex, which has already committed by this point.
 
 ## 6. Coverage map
 
@@ -203,7 +207,24 @@ Admin-facing endpoints in `packages/control-plane/internal/traffic/handler/traff
 
 Store implementation: `packages/control-plane/internal/traffic/store/trafficstore/traffic_event.go` (`ListAdminAuditLogs`, `ExportAdminAuditLogs`).
 
-Chain integrity is verified by `audit-chain-verify` (scheduled job in `packages/nexus-hub/internal/jobs/defs/audit/audit_chain_verify.go`).
+Chain integrity is verified by `audit-chain-verify` (scheduled job in `packages/nexus-hub/internal/jobs/defs/audit/audit_chain_verify.go`). It walks the chain in `sequenceNumber` order every tick (default hourly, runs on start). On the first row whose `previousHash` no longer links to the running head, or whose `integrityHash` does not recompute from its stored `hashInput`, it stops and emits the structured `event=audit_chain_break` error log carrying `first_bad_sequence_number`, plus the `audit_chain.break_detected_total` counter — the surface SREs alert on.
+
+### 8.1 Acknowledging a benign orphan
+
+A break is not always tampering. A row written before its writer was wired into the chain — e.g. an early build of the semantic-cache reindex job (§5.5) that inserted its row without `chain.NextHash`, leaving `previousHash` / `integrityHash` / `hashInput` empty — leaves a permanent, benign discontinuity. Because the verifier reports the **first** break and stops, an un-handled orphan masks verification of every later row, so genuine tampering after it would go undetected.
+
+`VerifyChainAcked` takes a set of acknowledged orphan sequence numbers, loaded from the Hub `system_metadata` key `audit_chain.acked_orphans` (a JSON array of `{seq, reason, ackedBy, ackedAt}` records; job-internal operational state, not part of the 4-layer admin config). For an acknowledged seq the walk does **not** report a break: it adopts that row's stored `integrityHash` as the running head (empty → treated as genesis, so the next correctly-chained row re-anchors) and keeps verifying. Every row that is **not** acknowledged is still fully linkage- and integrity-checked, so tampering both before and after the orphan is still caught. The exception is targeted and audited — never automatic, and the stored chain hashes are never rewritten. A corrupt or unreadable blob fails toward detection: the verifier walks the full chain and keeps alerting rather than silently skipping rows.
+
+Acknowledging an orphan is an operator action, not a code change — upsert the `system_metadata` row (the new Hub binary that reads the key must be deployed first):
+
+```sql
+INSERT INTO system_metadata (key, value, updated_at, updated_by)
+VALUES ('audit_chain.acked_orphans',
+        '[{"seq":<seq>,"reason":"<investigation note>","ackedBy":"<operator>","ackedAt":"<date>"}]'::jsonb,
+        now(), 'audit-chain-incident')
+ON CONFLICT (key) DO UPDATE
+  SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by;
+```
 
 ## 9. Retention
 
@@ -213,12 +234,11 @@ Daily purge driven by `packages/nexus-hub/internal/jobs/defs/retention/data_rete
 DELETE FROM "AdminAuditLog" WHERE timestamp < now() - retentionDays
 ```
 
-Default `AdminAuditLogDays = 365`, overridable via:
+Default `AdminAuditLogDays = 365`, set in the Nexus Hub `RetentionConfig`
+(`packages/nexus-hub/internal/config/config.go`) and overridable via the
+`NEXUS_HUB_RETENTION_ADMIN_AUDIT_DAYS` environment variable.
 
-- yaml: `scheduler.retention.adminAuditLogDays` in `packages/control-plane/control-plane.config.yaml` (and `dev` / `prod` siblings).
-- env: `NEXUS_HUB_RETENTION_ADMIN_AUDIT_DAYS`.
-
-Setting the value to `0` (or negative) disables the purge — operators retaining indefinitely for compliance can do so without code changes. The job also purges `traffic_event`, `traffic_event_payload`, and `metric_rollup_1h` independently; one table's failure does not block the others. See `data-retention-purge-architecture.md` for the broader retention model.
+Setting the value to `0` (or negative) disables the purge — operators retaining indefinitely for compliance can do so without code changes. The job also purges `traffic_event` and `traffic_event_payload` independently; one table's failure does not block the others. See `data-retention-purge-architecture.md` for the broader retention model.
 
 ## 10. Failure mode
 

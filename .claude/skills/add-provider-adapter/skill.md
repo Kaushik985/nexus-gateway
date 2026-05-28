@@ -97,11 +97,11 @@ func init() {
 }
 ```
 
-Add the constant to `packages/shared/traffic/adapters/providers.go`. **Don't call `Lookup` with a typo-prone string literal.**
+Add the adapter under `packages/shared/traffic/adapters/api/<provider>/` and register its ID constant alongside the existing adapters. **Don't call `Lookup` with a typo-prone string literal.**
 
 ### 6. Seed provider + initial models
 
-`tools/db-migrate/seed/seed.ts` — add a `Provider` row + per-`Model` entries with pricing + capabilities. If your provider is in the prod-data baseline, also update `tools/db-migrate/seed/prod-data.sql`.
+`tools/db-migrate/seed/seed.ts` — add a `Provider` row + per-`Model` entries with pricing + capabilities. If your provider is in the seed baseline, also update `tools/db-migrate/seed/data/seed-baseline.sql`.
 
 ### 7. Map provider errors to `ErrorClass`
 

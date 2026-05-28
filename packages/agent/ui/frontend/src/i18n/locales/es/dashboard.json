@@ -257,7 +257,9 @@
       "action": "Acción",
       "status": "Estado",
       "tags": "Etiquetas",
-      "compliance": "Hook"
+      "compliance": "Hook",
+      "method": "Método",
+      "path": "Ruta"
     },
     "detail": {
       "title": "Detalles del evento",
@@ -266,6 +268,11 @@
       "fieldProcess": "Proceso",
       "fieldTarget": "Destino",
       "fieldStatus": "Estado",
+      "fieldMethod": "Método",
+      "fieldPath": "Ruta / URL",
+      "fieldDestIp": "IP:Puerto de destino",
+      "fieldBytes": "Bytes (entrada / salida)",
+      "fieldProvider": "Proveedor / Modelo de IA",
       "hooksTitle": "Pipeline de Hooks",
       "hookId": "Hook",
       "hookStage": "Etapa",
@@ -275,7 +282,17 @@
       "hooksParseError": "El payload del pipeline de hooks no es analizable.",
       "waterfall": {
         "title": "Desglose por fase"
-      }
+      },
+      "fieldTime": "Hora",
+      "fieldAction": "Acción",
+      "fieldHookDecision": "Decisión del hook",
+      "fieldLatency": "Latencia",
+      "payloadsTitle": "Payloads",
+      "payloadRequest": "Cuerpo de la solicitud",
+      "payloadResponse": "Cuerpo de la respuesta",
+      "payloadSpilled": "Cuerpo grande almacenado en spill ({{size}}) — véalo en el Control Plane.",
+      "payloadEmpty": "No capturado (captura de payload deshabilitada o cuerpo enviado al almacén remoto).",
+      "payloadDecodeError": "No se pudo decodificar el payload base64."
     },
     "waterfall": {
       "reqHooks": "Hooks de petición",
@@ -371,7 +388,9 @@
       "agentResumed": "Reanudado",
       "agentSsoLogin": "Sesión iniciada",
       "agentSsoLogout": "Sesión cerrada"
-    }
+    },
+    "prevPage": "Anterior",
+    "nextPage": "Siguiente"
   },
   "stats": {
     "title": "Estadísticas",
@@ -475,7 +494,9 @@
       "inflight": "Reiniciando daemon…",
       "success": "Reinicio del daemon solicitado. Estará disponible en ~10 segundos.",
       "blocked": "Reinicio bloqueado: {{error}}",
-      "failed": "Reinicio fallido: {{error}}"
+      "failed": "Reinicio fallido: {{error}}",
+      "clicked": "Reinicio del daemon pulsado — confirme para continuar…",
+      "cancelled": "Reinicio del daemon cancelado"
     },
     "copyBundle": {
       "button": "Copiar paquete de soporte",
@@ -608,6 +629,7 @@
   },
   "trafficDetail": {
     "tabRaw": "Sin procesar",
-    "tabNormalized": "Normalizado"
+    "tabNormalized": "Normalizado",
+    "tabNormalizedDisabled": "Sin payload normalizado para este evento (tráfico no IA o flujo sin interceptar)."
   }
 }

@@ -1,6 +1,6 @@
 // Coverage for adapter_types.go (IsValidAdapterType) and handler.go helpers
 // (New / errJSON / internalServerError / actorFromContext / parsePagination /
-// incrementConfigVersion / isSuperAdmin).
+// incrementConfigVersion).
 package providers
 
 import (
@@ -13,10 +13,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v4"
 	"github.com/pashagolub/pgxmock/v4"
 
-	auth "github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/authn"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/store"
 )
@@ -44,6 +44,40 @@ func TestIsValidAdapterType(t *testing.T) {
 		if IsValidAdapterType(v) {
 			t.Errorf("IsValidAdapterType(%q) = true; want false", v)
 		}
+	}
+}
+
+// conflictForUniqueViolation: every provider-create unique index must map to
+// its own machine code so the UI can point at the offending field. The
+// regression this guards: a Credential_name_key collision used to surface as
+// PROVIDER_NAME_EXISTS, so changing the provider name never cleared the error.
+func TestConflictForUniqueViolation(t *testing.T) {
+	tests := []struct {
+		name        string
+		constraint  string
+		provider    string
+		wantCode    string
+		msgContains string
+	}{
+		{"provider name interpolated", "Provider_name_key", "deepseek", "PROVIDER_NAME_EXISTS", "'deepseek'"},
+		{"provider name no name", "Provider_name_key", "", "PROVIDER_NAME_EXISTS", "that name"},
+		{"path prefix", "Provider_pathPrefix_key", "deepseek", "PROVIDER_PATH_EXISTS", "path prefix"},
+		{"credential name", "Credential_name_key", "deepseek", "CREDENTIAL_NAME_EXISTS", "credential"},
+		{"model code", "Model_code_key", "deepseek", "MODEL_CODE_EXISTS", "code"},
+		{"model natural key", "Model_providerId_providerModelId_key", "deepseek", "MODEL_ALREADY_REGISTERED", "providerModelId"},
+		{"unknown constraint falls back", "Some_other_key", "deepseek", "CONFLICT", "unique value"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg, code := conflictForUniqueViolation(
+				&pgconn.PgError{Code: "23505", ConstraintName: tc.constraint}, tc.provider)
+			if code != tc.wantCode {
+				t.Errorf("code = %q; want %q", code, tc.wantCode)
+			}
+			if !strings.Contains(msg, tc.msgContains) {
+				t.Errorf("msg = %q; want contains %q", msg, tc.msgContains)
+			}
+		})
 	}
 }
 
@@ -221,81 +255,6 @@ func TestIncrementConfigVersion_SetErrorLoggedNotPropagated(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "increment agent config version") {
 		t.Errorf("expected error log; got: %s", buf.String())
-	}
-}
-
-func TestIsSuperAdmin_NilAuth(t *testing.T) {
-	h := newHandler(nil, nil, &auditSpy{}, nil, nil, nil, ProxyConfig{})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := anonEchoCtx(req, rec)
-	if h.isSuperAdmin(c, nil) {
-		t.Error("nil AdminAuth must not be super-admin")
-	}
-}
-
-func TestIsSuperAdmin_DBErrorYieldsFalse(t *testing.T) {
-	mock, db := newMockStore(t)
-	mock.ExpectQuery(`FROM "IamGroupMembership" m\s+JOIN "IamGroup"`).
-		WithArgs("nexus_user", "u-1").
-		WillReturnError(errors.New("planner err"))
-	h := newHandler(db, nil, &auditSpy{}, nil, nil, nil, ProxyConfig{})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c, _ := echoCtx(req, rec, "u-1")
-	aa := &auth.AdminAuth{KeyID: "u-1", AuthPrincipalType: "admin_user"}
-	if h.isSuperAdmin(c, aa) {
-		t.Error("DB error must surface as false")
-	}
-}
-
-func TestIsSuperAdmin_GroupHit(t *testing.T) {
-	mock, db := newMockStore(t)
-	mock.ExpectQuery(`FROM "IamGroupMembership" m\s+JOIN "IamGroup"`).
-		WithArgs("nexus_user", "u-1").
-		WillReturnRows(pgxmock.NewRows([]string{"name"}).
-			AddRow("viewers").AddRow("super-admins"))
-	h := newHandler(db, nil, &auditSpy{}, nil, nil, nil, ProxyConfig{})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c, _ := echoCtx(req, rec, "u-1")
-	aa := &auth.AdminAuth{KeyID: "u-1", AuthPrincipalType: "admin_user"}
-	if !h.isSuperAdmin(c, aa) {
-		t.Error("super-admins group membership must yield true")
-	}
-}
-
-func TestIsSuperAdmin_NoMembership(t *testing.T) {
-	mock, db := newMockStore(t)
-	mock.ExpectQuery(`FROM "IamGroupMembership" m\s+JOIN "IamGroup"`).
-		WithArgs("nexus_user", "u-1").
-		WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("viewers"))
-	h := newHandler(db, nil, &auditSpy{}, nil, nil, nil, ProxyConfig{})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c, _ := echoCtx(req, rec, "u-1")
-	aa := &auth.AdminAuth{KeyID: "u-1", AuthPrincipalType: "admin_user"}
-	if h.isSuperAdmin(c, aa) {
-		t.Error("non-super group memberships must yield false")
-	}
-}
-
-func TestIsSuperAdmin_AdminUserTypeNormalisesToNexusUser(t *testing.T) {
-	// Principal type "admin_user" is rewritten to "nexus_user" before the
-	// store lookup — regression guard so the membership query keys on the
-	// table partition the seed populates.
-	mock, db := newMockStore(t)
-	mock.ExpectQuery(`FROM "IamGroupMembership"`).
-		WithArgs("nexus_user", "u-1").
-		WillReturnRows(pgxmock.NewRows([]string{"name"}).AddRow("super-admins"))
-	h := newHandler(db, nil, &auditSpy{}, nil, nil, nil, ProxyConfig{})
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c, _ := echoCtx(req, rec, "u-1")
-	aa := &auth.AdminAuth{KeyID: "u-1", AuthPrincipalType: "admin_user"}
-	_ = h.isSuperAdmin(c, aa)
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Errorf("expected nexus_user arg: %v", err)
 	}
 }
 

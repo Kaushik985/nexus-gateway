@@ -52,8 +52,7 @@ type RoutesDeps struct {
 	Ctx               context.Context
 }
 
-// InitRoutes builds the admin handler, mounts all admin/internal/my routes,
-// and starts the exemption materializer background goroutine.
+// InitRoutes builds the admin handler and mounts all admin/internal/my routes.
 // Readiness checks are registered separately via InitReadiness/NewReadinessHandler.
 func InitRoutes(e *echo.Echo, d RoutesDeps) (*handler.AdminHandler, error) {
 	cfg := d.Cfg
@@ -168,7 +167,7 @@ func InitRoutes(e *echo.Echo, d RoutesDeps) (*handler.AdminHandler, error) {
 
 	// AI Gateway simulator — bypasses AdminAuth, enforces VK credential itself.
 	e.POST("/api/admin/ai-gateway-simulator/forward",
-		aigwsim.New(aigwsim.Deps{Audit: d.AuditWriter, Logger: d.Logger}).AIGatewaySimulatorForward)
+		aigwsim.New(aigwsim.Deps{Logger: d.Logger}).AIGatewaySimulatorForward)
 
 	// Internal Hub→CP routes.
 	internalGroup := e.Group("/api/internal", rstokenauth.Middleware(cfg.Auth.InternalServiceToken))

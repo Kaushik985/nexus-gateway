@@ -52,9 +52,6 @@ func TestInitSemantic_nilRdb(t *testing.T) {
 	if deps.Writer != nil {
 		t.Error("expected nil Writer when rdb=nil (degraded mode)")
 	}
-	if deps.BudgetTracker != nil {
-		t.Error("expected nil BudgetTracker when rdb=nil (degraded mode)")
-	}
 }
 
 // TestInitSemantic_withRedisClient verifies that a *redis.Client yields
@@ -69,9 +66,6 @@ func TestInitSemantic_withRedisClient(t *testing.T) {
 	}
 	if deps.Writer == nil {
 		t.Error("expected non-nil Writer with valid *redis.Client")
-	}
-	if deps.BudgetTracker == nil {
-		t.Error("expected non-nil BudgetTracker with valid *redis.Client")
 	}
 	if deps.IndexLifecycle == nil {
 		t.Error("expected non-nil IndexLifecycle")

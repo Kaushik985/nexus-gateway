@@ -70,14 +70,14 @@ type MetricsRecorder interface {
 	// pressure and error rates.
 	RecordTrafficExtract(ingressFormat, direction, outcome string)
 
-	// RecordEstimate increments nexus_aigw_estimate_requests_total and
-	// observes nexus_aigw_estimate_duration_seconds. Called once per
+	// RecordEstimate increments nexus_estimate_requests_total and
+	// observes nexus_estimate_duration_seconds. Called once per
 	// /v1/estimate compareTarget so dashboards have one fan-in.
 	RecordEstimate(ingress, model, provider string, duration time.Duration)
 	// RecordEstimateCompare increments
-	// nexus_aigw_estimate_compare_requests_total (1) and
-	// nexus_aigw_estimate_compare_targets_total (N) and observes
-	// nexus_aigw_estimate_compare_duration_seconds. Called once per
+	// nexus_estimate_compare_requests_total (1) and
+	// nexus_estimate_compare_targets_total (N) and observes
+	// nexus_estimate_compare_duration_seconds. Called once per
 	// top-level /v1/estimate request.
 	RecordEstimateCompare(ingress string, targetCount int, duration time.Duration)
 }
@@ -95,12 +95,4 @@ type SemanticReaderAPI interface {
 // substitute a no-op stub.
 type SemanticWriterAPI interface {
 	Write(ctx context.Context, req semantic.WriteRequest) (semantic.WriteResult, error)
-}
-
-// BudgetTrackerAPI is the narrow interface the proxy handler uses to enforce
-// per-route daily embedding cost ceilings.  Production wires *budget.Tracker;
-// tests may substitute a stub that always allows or always denies.
-type BudgetTrackerAPI interface {
-	Allow(ctx context.Context, routeID string, ceilingUSD float64) (allowed bool, currentSpend float64, err error)
-	Add(ctx context.Context, routeID string, usd float64) error
 }

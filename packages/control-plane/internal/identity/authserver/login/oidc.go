@@ -30,87 +30,6 @@ type OIDCDeps struct {
 	AuthCodes *store.AuthCodeStore
 }
 
-// resolveOIDCIdP picks the IdentityProvider row this login flow targets.
-// Priority:
-//  1. Explicit `idp_id` query param (multi-IdP friendly — the method-
-//     picker step on the SPA passes whichever row the user clicked).
-//  2. Sole enabled OIDC row (back-compat for single-IdP deployments,
-//     no UX disruption when there's only one).
-//
-// Returns a structured error string suitable for the response body
-// when no resolution is possible.
-func resolveOIDCIdP(ctx context.Context, idps *store.IdPStore, idpID string) (*store.IdentityProvider, string) {
-	if idpID != "" {
-		idp, err := idps.GetByID(ctx, idpID)
-		if err != nil {
-			return nil, "oidc_not_configured"
-		}
-		if idp.Type != "oidc" || !idp.Enabled {
-			return nil, "oidc_not_configured"
-		}
-		return idp, ""
-	}
-	list, err := idps.ListEnabled(ctx)
-	if err != nil {
-		return nil, errInternal
-	}
-	var oidcs []store.IdentityProvider
-	for i := range list {
-		if list[i].Type == "oidc" {
-			oidcs = append(oidcs, list[i])
-		}
-	}
-	switch len(oidcs) {
-	case 0:
-		return nil, "oidc_not_configured"
-	case 1:
-		return &oidcs[0], ""
-	default:
-		return nil, "idp_id_required"
-	}
-}
-
-// OIDCBeginHandler returns GET /authserver/oidc/begin?authctx=<authctx>&idp_id=<idp_id>.
-// It validates the pending authctx, resolves the chosen IdP, stamps its
-// id onto the pending entry so the callback can look up the same
-// config, then returns the upstream authorization URL.
-func OIDCBeginHandler(d OIDCDeps) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx := c.Request().Context()
-		authctx := c.QueryParam("authctx")
-		if authctx == "" || !d.Pending.Has(authctx) {
-			return c.JSON(http.StatusBadRequest, errorResponse{Error: errAuthctxExpired})
-		}
-
-		idp, resolveErr := resolveOIDCIdP(ctx, d.IdPs, c.QueryParam("idp_id"))
-		if resolveErr != "" {
-			return c.JSON(http.StatusBadRequest, errorResponse{Error: resolveErr})
-		}
-		cfg := store.DecodeOIDCConfig(idp)
-		if cfg == nil || cfg.AuthorizeURL == "" || cfg.ClientID == "" {
-			return c.JSON(http.StatusBadRequest, errorResponse{Error: "oidc_not_configured"})
-		}
-
-		if !d.Pending.SetIdPID(authctx, idp.ID) {
-			return c.JSON(http.StatusBadRequest, errorResponse{Error: errAuthctxExpired})
-		}
-
-		u, err := url.Parse(cfg.AuthorizeURL)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, errorResponse{Error: errInternal})
-		}
-		q := u.Query()
-		q.Set("response_type", "code")
-		q.Set("client_id", cfg.ClientID)
-		q.Set("redirect_uri", cfg.RedirectURI)
-		q.Set("scope", "openid profile email")
-		q.Set("state", authctx)
-		u.RawQuery = q.Encode()
-
-		return c.JSON(http.StatusOK, map[string]string{"authorizationUrl": u.String()})
-	}
-}
-
 // OIDCCallbackHandler returns GET /authserver/oidc/callback?code=<code>&state=<authctx>.
 // It exchanges the code for an ID token, verifies it against the IdP-
 // specific JWKS, JIT-provisions the user if needed, mints an
@@ -142,7 +61,9 @@ func OIDCCallbackHandler(d OIDCDeps) echo.HandlerFunc {
 			return c.JSON(http.StatusInternalServerError, errorResponse{Error: errInternal})
 		}
 		cfg := store.DecodeOIDCConfig(idp)
-		if cfg == nil || cfg.TokenURL == "" {
+		// Reject a disabled IdP: disabling it must invalidate in-flight logins,
+		// not just hide it from the picker (parity with the SAML ACS handler).
+		if cfg == nil || cfg.TokenURL == "" || !idp.Enabled {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "oidc_not_configured"})
 		}
 

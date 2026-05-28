@@ -740,3 +740,37 @@ func TestExecute_EmbeddingsBridgeTranslate_SkipsToNextTarget(t *testing.T) {
 		t.Fatalf("first attempt must carry 'hub translate' error; got %q", result.Attempts[0].Error)
 	}
 }
+
+// TestExecute_ResponsesNative_KeepsResponsesWireShape covers the E56 fix
+// (executor.go executeInner): a /v1/responses request whose target NATIVELY
+// serves the Responses API must keep WireShape=openai-responses (so BuildURL
+// targets /v1/responses) and forward the verbatim Responses body — NOT be
+// rewritten to openai-chat. The bug sent the input-only Responses body to
+// /v1/chat/completions → upstream 400 "Missing required parameter: 'messages'".
+func TestExecute_ResponsesNative_KeepsResponsesWireShape(t *testing.T) {
+	adapter := &mockAdapter{format: provcore.FormatOpenAI, responses: []scripted{
+		{resp: &provcore.Response{StatusCode: 200, Body: []byte(`{"object":"response","output":[]}`)}},
+	}}
+	reg := newRegistry(t, adapter)
+	res := okResolver()
+	// Real bridge: TargetNativelyServesResponsesAPI(FormatOpenAI)==true (package
+	// map, codec-independent), so the native-responses passthrough branch fires.
+	bridge := canonicalbridge.New(map[provcore.Format]provcore.SchemaCodec{})
+	exec := New(reg, res, nil, bridge)
+
+	base := provcore.Request{
+		WireShape:  typology.WireShapeOpenAIResponses,
+		BodyFormat: provcore.FormatOpenAIResponses,
+		Body:       []byte(`{"model":"gpt-4o","input":"hi"}`),
+	}
+	result := exec.Execute(context.Background(), []routingcore.RoutingTarget{target(providerSlug)}, base, configtypes.DefaultRetryPolicy())
+	if result.Error != nil {
+		t.Fatalf("unexpected error: %v", result.Error)
+	}
+	if adapter.lastReq.WireShape != typology.WireShapeOpenAIResponses {
+		t.Fatalf("native /v1/responses must keep WireShape=openai-responses (BuildURL→/v1/responses); got %q → would hit /v1/chat/completions (E56)", adapter.lastReq.WireShape)
+	}
+	if string(adapter.lastReq.Body) != string(base.Body) {
+		t.Fatalf("native responses body must be forwarded verbatim; got %s", adapter.lastReq.Body)
+	}
+}

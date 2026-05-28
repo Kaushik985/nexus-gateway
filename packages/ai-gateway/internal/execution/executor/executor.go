@@ -268,7 +268,17 @@ func (e *TargetExecutor) executeInner(
 		// wire for both the primary and every failover target, across all
 		// chat-kind ingresses (openai-chat, anthropic /v1/messages, gemini).
 		ingressKind := typology.KindFromWireShape(base.WireShape)
-		if e.bridge != nil {
+		// Native /v1/responses passthrough: when the TARGET itself serves the
+		// Responses API, the request stays Responses-shape end-to-end. Responses
+		// is chat-kind (KindFromWireShape→Chat), so without this guard the rewrite
+		// below would flip req.WireShape to openai-chat → BuildURL targets
+		// /v1/chat/completions and the verbatim Responses body (input, no messages)
+		// 400s with "Missing required parameter: messages" (E56). This mirrors the
+		// proxy-level needsCanonicalization=false rule and the egress
+		// native-passthrough skip — all three sites must agree.
+		nativeResponses := base.WireShape == typology.WireShapeOpenAIResponses &&
+			e.bridge != nil && e.bridge.TargetNativelyServesResponsesAPI(callTarget.Format)
+		if e.bridge != nil && !nativeResponses {
 			switch ingressKind {
 			case typology.EndpointKindChat:
 				req.WireShape = e.bridge.ChatWireShapeForTarget(callTarget.Format)
@@ -288,8 +298,14 @@ func (e *TargetExecutor) executeInner(
 		case usePrepared:
 			req.Body = prepared.body
 			req.BodyFormat = callTarget.Format
+		case nativeResponses:
+			// Keep the verbatim Responses-shape body for /v1/responses native
+			// passthrough — do NOT canonicalize to chat (would lose the
+			// Responses request shape the upstream /v1/responses expects).
+			req.Body = base.Body
+			req.BodyFormat = base.BodyFormat
 		case e.bridge != nil && base.BodyFormat != callTarget.Format && ingressKind == typology.EndpointKindChat:
-			wireBody, terr := e.bridge.IngressChatToWire(base.BodyFormat, callTarget.Format, base.Body, callTarget)
+			wireBody, terr := e.bridge.IngressChatToWire(base.BodyFormat, callTarget.Format, base.Body, callTarget, base.Stream)
 			if terr != nil {
 				attempts = append(attempts, Attempt{Target: target, Error: fmt.Sprintf("hub translate: %v", terr)})
 				continue

@@ -3,7 +3,6 @@
 package platform
 
 import (
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/darwin"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/darwin/bundles"
 )
@@ -13,8 +12,8 @@ import (
 type DarwinPlatform = darwin.DarwinPlatform
 
 // NewPlatform creates the macOS platform shim.
-func NewPlatform(addr string, relayClient *relay.Client) Platform {
-	return darwin.NewPlatform(addr, relayClient)
+func NewPlatform(addr string) Platform {
+	return darwin.NewPlatform(addr)
 }
 
 // InspectBundles returns the macOS bundle version stamps for the host app

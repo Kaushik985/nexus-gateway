@@ -16,7 +16,7 @@ var (
 
 // RegisterMetrics initialises Prometheus metrics for the traffic layer.
 // Must be called once at startup with the service's namespace
-// (e.g. "nexus_compliance_proxy"). Subsequent calls are no-ops; the first
+// (e.g. "nexus"). Subsequent calls are no-ops; the first
 // namespace wins. Uses sync.Once to prevent duplicate registration panics
 // and to guard against accidental overwrites.
 func RegisterMetrics(namespace string) {

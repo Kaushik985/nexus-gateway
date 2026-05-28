@@ -55,8 +55,9 @@ make agent-test               # go test -race -count=1 ./...
 
 ## Architecture references
 
-- `docs/developers/architecture/services/agent/agent-internals-sibling-pairs-architecture.md` —
-  the cross-platform internal/ layout.
+- `docs/developers/architecture/services/agent/agent-architecture.md` —
+  service overview, process lifecycle, and the subsystem index into the
+  per-concern agent docs.
 - `docs/developers/architecture/services/agent/agent-macos-platform-architecture.md` — Swift NE + tray.
 - `docs/developers/architecture/services/agent/agent-windows-platform-architecture.md` — WinDivert glue.
 - `docs/developers/architecture/services/agent/agent-linux-platform-architecture.md` — netfilter.

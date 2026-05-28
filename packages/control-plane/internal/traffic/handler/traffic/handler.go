@@ -70,7 +70,7 @@ func New(d Deps) *Handler {
 		h.dsar = dsarstore.New(d.Pool)
 		h.metrics = ms
 		h.compliance = compliancestore.New(d.Pool, ms)
-		h.meta = systemmetastore.NewFromPool(d.Pool)
+		h.meta = systemmetastore.New(d.Pool)
 	}
 	return h
 }

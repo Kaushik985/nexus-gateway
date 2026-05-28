@@ -100,7 +100,7 @@ final class QUICFallbackBundles {
     }
 }
 
-/// Tiny one-shot guard used by peekSNIThenRelay's race between the
+/// Tiny one-shot guard used by peekSNIThenDecide's race between the
 /// 500 ms timeout dispatch and the actual readData callback. Whoever
 /// calls tryFire() first wins; the loser must drop its work.
 final class TimeoutGuard {

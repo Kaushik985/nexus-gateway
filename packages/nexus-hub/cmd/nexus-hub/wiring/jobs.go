@@ -170,7 +170,6 @@ func InitScheduler(
 		TrafficEventDays:        cfg.Scheduler.Retention.TrafficEventDays,
 		TrafficEventPayloadDays: cfg.Scheduler.Retention.TrafficEventPayloadDays,
 		AdminAuditLogDays:       cfg.Scheduler.Retention.AdminAuditLogDays,
-		MetricRollupDays:        cfg.Scheduler.Retention.MetricRollupDays,
 	}, cfg.Scheduler.Intervals.DataRetention, logger))
 	sched.Register(defjobs_rollup.NewRollupRetention(pool, defjobs_rollup.RollupRetentionConfig{
 		Rollup5mDays:  cfg.Scheduler.Retention.Rollup5mDays,

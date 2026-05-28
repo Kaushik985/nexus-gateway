@@ -449,6 +449,87 @@ func TestCacheHit_OriginAcrossFormats_BridgeError_ServesEntryBytes(t *testing.T)
 	}
 }
 
+// TestCacheHit_ResponsesCross_StoredCanonical_ReshapesToOutput is the B1
+// regression: a CROSS-format /v1/responses request canonicalises to chat before
+// caching, so the stored body is canonical chat (`choices[]`) yet the entry is
+// tagged OriginWireShape=openai-responses (same tag native passthrough uses for
+// a responses-shape body). The HIT reader must detect the canonical body and
+// re-encode it to the /v1/responses reader's `output[]` — NOT serve `choices[]`
+// verbatim to a Responses SDK.
+func TestCacheHit_ResponsesCross_StoredCanonical_ReshapesToOutput(t *testing.T) {
+	cacheOpt, cleanup := withCache(t)
+	defer cleanup()
+
+	body := []byte(`{"model":"gpt-4o","input":"responses cross cache"}`)
+	deps := makeOpenAIDeps(t, "", emptyHookCache(t), cacheOpt)
+
+	// Cross-format responses entry: CANONICAL chat body, tagged responses.
+	entry := &cache.ResponseEntry{
+		Provider:          "openai",
+		Model:             "gpt-4o",
+		CanonicalResponse: json.RawMessage(crossIngressCachedChatBody),
+		Usage:             provcore.Usage{PromptTokens: iPtr(4), CompletionTokens: iPtr(5), TotalTokens: iPtr(9)},
+		CachedAt:          time.Now().UTC(),
+		OriginWireShape:   typology.WireShapeOpenAIResponses,
+	}
+	seedResponseEntry(t, deps, "gpt-4o", body, entry)
+
+	h := NewHandler(deps).ServeProxy(Ingress{WireShape: typology.WireShapeOpenAIResponses, BodyFormat: provcore.FormatOpenAIResponses})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer vk")
+	w := httptest.NewRecorder()
+	h(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d; body=%s", w.Code, w.Body.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v; body=%s", err, w.Body.String())
+	}
+	if _, has := got["output"]; !has {
+		t.Errorf("responses-cross HIT must reshape canonical→output[]; got %s", w.Body.String())
+	}
+	if _, has := got["choices"]; has {
+		t.Errorf("canonical choices[] leaked to a /v1/responses caller on HIT; body=%s", w.Body.String())
+	}
+}
+
+// TestCacheHit_ResponsesNative_StoredResponsesShape_Verbatim verifies the other
+// side: a NATIVE /v1/responses entry stores responses-shape (`output[]`, no
+// `choices`); a /v1/responses reader receives it verbatim (no re-encode that
+// would strip output[].content[].text).
+func TestCacheHit_ResponsesNative_StoredResponsesShape_Verbatim(t *testing.T) {
+	cacheOpt, cleanup := withCache(t)
+	defer cleanup()
+
+	body := []byte(`{"model":"gpt-4o","input":"responses native cache"}`)
+	deps := makeOpenAIDeps(t, "", emptyHookCache(t), cacheOpt)
+
+	entry := &cache.ResponseEntry{
+		Provider:          "openai",
+		Model:             "gpt-4o",
+		CanonicalResponse: json.RawMessage(crossIngressCachedResponsesBody),
+		Usage:             provcore.Usage{PromptTokens: iPtr(4), CompletionTokens: iPtr(5), TotalTokens: iPtr(9)},
+		CachedAt:          time.Now().UTC(),
+		OriginWireShape:   typology.WireShapeOpenAIResponses,
+	}
+	seedResponseEntry(t, deps, "gpt-4o", body, entry)
+
+	h := NewHandler(deps).ServeProxy(Ingress{WireShape: typology.WireShapeOpenAIResponses, BodyFormat: provcore.FormatOpenAIResponses})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(string(body)))
+	req.Header.Set("Authorization", "Bearer vk")
+	w := httptest.NewRecorder()
+	h(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d; body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"output"`) || strings.Contains(w.Body.String(), `"choices"`) {
+		t.Errorf("responses-native HIT must serve responses-shape output[] verbatim; got %s", w.Body.String())
+	}
+}
+
 // TestCacheHit_LegacyUntaggedEntry_FallsBackToOldBehavior verifies the
 // legacy entry path. An entry with empty OriginWireShape (untagged
 // write) preserves the pre-fix reshape semantics: the gate runs only

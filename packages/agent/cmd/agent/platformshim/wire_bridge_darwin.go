@@ -16,9 +16,10 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/api"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/darwin"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/paths"
+	"github.com/AlphaBitCore/nexus-gateway/packages/agent/cmd/agent/wiring"
 	agentproxy "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/proxy"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
-	localfsspill "github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/localfs"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillsweep"
 	normalizecore "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/normalize/core"
 	streampolicy "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming/policy"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/tlsbump"
@@ -98,11 +99,18 @@ func WireDarwinBridge(ctx context.Context, plat api.Platform, args DarwinBridgeA
 	if upErr != nil {
 		logger.Warn("bridge: tlsbump.NewUpstreamTransportWith failed; raw-relay path stays active", "error", upErr)
 	} else if args.AgentPipeline != nil {
-		spillRoot := filepath.Join(paths.StateDir, "spill")
-		spill, spillErr := localfsspill.New(localfsspill.Options{Root: spillRoot})
+		// Same encrypted localfs store the audit drain reads back from
+		// (wiring.NewLocalSpillStore is the single keyed construction point).
+		spill, spillErr := wiring.NewLocalSpillStore()
 		if spillErr != nil {
 			logger.Warn("bridge: localfs spillstore init failed; oversize bodies will truncate",
-				"root", spillRoot, "error", spillErr)
+				"error", spillErr)
+		} else {
+			// Sweep the agent's local spill dir so its retention horizon and
+			// total-size cap are enforced (hardcoded localfs, default horizon).
+			go spillsweep.Run(context.Background(), spill, spillsweep.Options{
+				Retention: spillsweep.DefaultRetention,
+			}, logger)
 		}
 
 		bridgeDeps := &agentproxy.BridgeDeps{

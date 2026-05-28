@@ -241,9 +241,10 @@ func classifyImpl(
 	// Step 5: call backend with timeout.
 	timeout := time.Duration(cfg.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
-		// Matches the ai_guard_config.timeout_ms schema default (30s) so that
-		// callers who forget to populate RuntimeConfig fall back to the same
-		// budget operators see in the admin UI.
+		// Generous fallback for callers that left RuntimeConfig.TimeoutMs
+		// unset. A populated config carries its own timeout_ms (the stored
+		// default is 5s); this branch only fires when no config value
+		// reached the classify call at all.
 		timeout = 30 * time.Second
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)

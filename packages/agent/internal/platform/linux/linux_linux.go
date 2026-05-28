@@ -24,12 +24,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/proxy"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	agentTLS "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/tls"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/api"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/paths"
 	nexushttp "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/http"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/traffic"
 )
 
 const (
@@ -50,7 +48,6 @@ type LinuxPlatform struct {
 	sem            chan struct{} // bounds concurrent connection handlers
 	tlsEngine      *agentTLS.Engine
 	addr           string
-	relayClient    *relay.Client
 	reconciler     *Reconciler
 	upstreamDialer *net.Dialer
 
@@ -76,7 +73,7 @@ func (p *LinuxPlatform) InterceptionMode() api.InterceptionMode {
 }
 
 // NewPlatform creates a new Linux platform shim.
-func NewPlatform(addr string, relayClient *relay.Client) api.Platform {
+func NewPlatform(addr string) api.Platform {
 	if addr == "" {
 		addr = defaultLinAddr
 	}
@@ -84,7 +81,6 @@ func NewPlatform(addr string, relayClient *relay.Client) api.Platform {
 		done:           make(chan struct{}),
 		sem:            make(chan struct{}, maxConcurrentConns),
 		addr:           addr,
-		relayClient:    relayClient,
 		upstreamDialer: MarkedDialer(),
 	}
 }
@@ -288,16 +284,6 @@ func (p *LinuxPlatform) handleConn(ctx context.Context, clientConn net.Conn) {
 
 	var bytesIn, bytesOut int64
 	bumpStatus := ""
-	var hookDecision, hookReason, hookReasonCode string
-	var complianceTags []string
-	var detectedProvider, detectedModel, apiKeyClass, apiKeyFingerprint string
-	var promptTokens, completionTokens *int
-	var usageExtractionStatus string
-	var payloadRequest, payloadResponse []byte
-	// Per-flow upstream phase sink. Populated by the relay's tracing
-	// transport during MITMRelay; read at OnFlowComplete time. Nil for
-	// flows that never reached the relay (passthrough / inspect-fallback).
-	var phaseSink *traffic.PhaseSink
 	// intercept_ms = time the agent spent on its own intercept work
 	// (SO_ORIGINAL_DST + SNI peek + PID resolve + decision) before handing
 	// off to upstream. Stamped just before the first upstream operation
@@ -385,83 +371,24 @@ func (p *LinuxPlatform) handleConn(ctx context.Context, clientConn net.Conn) {
 	// NE bridge); writing a flow-level row here would double-audit.
 	if auditor, ok := p.handler.(api.FlowAuditor); ok && !bumpedViaTLSBump {
 		auditor.OnFlowComplete(api.FlowResult{
-			FlowID:                intercepted.FlowID,
-			SrcIP:                 intercepted.SrcIP,
-			DstHost:               dstHost,
-			DstIP:                 dstIP,
-			DstPort:               dstPort,
-			Process:               procMeta,
-			Decision:              decision,
-			BytesIn:               bytesIn,
-			BytesOut:              bytesOut,
-			DurationMs:            int(time.Since(startedAt).Milliseconds()),
-			BumpStatus:            bumpStatus,
-			StartedAt:             startedAt,
-			HookDecision:          hookDecision,
-			HookReason:            hookReason,
-			HookReasonCode:        hookReasonCode,
-			ComplianceTags:        complianceTags,
-			Provider:              detectedProvider,
-			Model:                 detectedModel,
-			ApiKeyClass:           apiKeyClass,
-			ApiKeyFingerprint:     apiKeyFingerprint,
-			PromptTokens:          promptTokens,
-			CompletionTokens:      completionTokens,
-			UsageExtractionStatus: usageExtractionStatus,
-			PayloadRequest:        payloadRequest,
-			PayloadResponse:       payloadResponse,
-			// Latency phase breakdown. nil pointers when phaseSink is nil
-			// (passthrough / inspect-fallback paths that skip the relay)
-			// or when the upstream call never produced bytes.
-			UpstreamTtfbMs:  phaseSinkTtfb(phaseSink),
-			UpstreamTotalMs: phaseSinkTotal(phaseSink),
-			// Codec-layer / response-inspector breakdowns.
-			ResponseHooksMs:  phaseSinkBreakdownInt(phaseSink, "response_hooks_ms"),
-			LatencyBreakdown: mergeInterceptMs(phaseSinkBreakdownAll(phaseSink), startedAt, interceptDoneAt),
+			FlowID:          intercepted.FlowID,
+			SrcIP:           intercepted.SrcIP,
+			DstHost:         dstHost,
+			DstIP:           dstIP,
+			DstPort:         dstPort,
+			Process:         procMeta,
+			Decision:        decision,
+			BytesIn:         bytesIn,
+			BytesOut:        bytesOut,
+			DurationMs:      int(time.Since(startedAt).Milliseconds()),
+			BumpStatus:      bumpStatus,
+			StartedAt:       startedAt,
+			// A Linux raw relay has no distinct upstream call to time, so
+			// UpstreamTtfbMs/TotalMs stay nil; LatencyBreakdown carries the
+			// agent's own intercept overhead (intercept_ms).
+			LatencyBreakdown: mergeInterceptMs(nil, startedAt, interceptDoneAt),
 		})
 	}
-}
-
-// phaseSinkBreakdownInt extracts a single named extras key as *int.
-func phaseSinkBreakdownInt(ps *traffic.PhaseSink, key string) *int {
-	if ps == nil {
-		return nil
-	}
-	m := ps.Breakdown()
-	if m == nil {
-		return nil
-	}
-	v, ok := m[key]
-	if !ok {
-		return nil
-	}
-	return &v
-}
-
-// phaseSinkBreakdownAll returns the full extras map (everything codec /
-// inspector code stamped). nil when empty.
-func phaseSinkBreakdownAll(ps *traffic.PhaseSink) map[string]int {
-	if ps == nil {
-		return nil
-	}
-	return ps.Breakdown()
-}
-
-// phaseSinkTtfb returns ps.TtfbMs() with a nil-receiver guard so the
-// FlowResult builder above stays a single expression per field.
-func phaseSinkTtfb(ps *traffic.PhaseSink) *int {
-	if ps == nil {
-		return nil
-	}
-	return ps.TtfbMs()
-}
-
-// phaseSinkTotal returns ps.TotalMs() with a nil-receiver guard.
-func phaseSinkTotal(ps *traffic.PhaseSink) *int {
-	if ps == nil {
-		return nil
-	}
-	return ps.TotalMs()
 }
 
 // mergeInterceptMs stamps intercept_ms (the agent's own intercept overhead —

@@ -253,7 +253,7 @@ func (h *AdminHandler) RegisterAdminRoutes(g *echo.Group) {
 	// Compliance + agent exemption admin API.
 	// R8-B1 4th sub-cluster — handler/exemption/ subpackage owns the
 	// full exemption surface (compliance grants + request approve/reject
-	// + employee submit + agent admin + materializer).
+	// + employee submit + agent admin).
 	if h.Exemption != nil {
 		h.Exemption.RegisterRoutes(g, iamMW)
 	}

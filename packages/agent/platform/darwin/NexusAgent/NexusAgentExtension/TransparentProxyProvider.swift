@@ -44,8 +44,8 @@ class NexusProxyProvider: NETransparentProxyProvider {
     ]
 
     /// Serial dispatch queue used for time-bounded callbacks
-    /// (peekSNIThenRelay timeout, future watchdogs). Separate from
-    /// AgentIPCClient's queue so an IPC hang can't starve our timeouts.
+    /// (peekSNIThenDecide SNI-peek timeout, future watchdogs). Separate
+    /// from AgentIPCClient's queue so an IPC hang can't starve our timeouts.
     private let queue = DispatchQueue(label: "com.nexus-gateway.agent.proxy", qos: .userInitiated)
 
     /// Active flow tracking for byte counting and duration.
@@ -245,8 +245,8 @@ class NexusProxyProvider: NETransparentProxyProvider {
         // E55 self-intercept guard: NE intercepts ALL outbound traffic
         // including the agent daemon's own connections.
         //
-        // 2026-05-23: experiment with claim+direct-relay (openAndRelay)
-        // failed — NE's createTCPConnection in self-intercept context
+        // A claim + direct-relay approach for daemon self-traffic was
+        // tried and abandoned — NE's createTCPConnection in self-intercept context
         // returns "read: errno 403" during TLS handshake, breaking
         // both daemon's bootstrap to Hub AND tlsbump's upstream
         // forward (browser → chatgpt.com → bridge → daemon HTTP
@@ -401,8 +401,8 @@ class NexusProxyProvider: NETransparentProxyProvider {
     ///
     /// Lifecycle: open the NE flow → readData first chunk → on TLS
     /// ClientHello extract SNI → requestDecision with the resolved
-    /// host → applyDecision drives the bridge / passthrough / deny
-    /// path; the peeked bytes are forwarded onwards by the chosen
+    /// host → applyDecisionAfterPeek drives the bridge / passthrough /
+    /// deny path; the peeked bytes are forwarded onwards by the chosen
     /// path so we don't lose any handshake data.
     ///
     /// Fail-safe: 500ms timeout (server-speaks-first protocols never
@@ -478,11 +478,11 @@ class NexusProxyProvider: NETransparentProxyProvider {
     }
 
     /// dispatchDecision fires the daemon decision request and routes
-    /// the resulting decision into applyDecision. Called by
+    /// the resulting decision into applyDecisionAfterPeek. Called by
     /// peekSNIThenDecide after either SNI extraction or 500ms
     /// timeout. The optional peeked bytes are the TLS ClientHello we
-    /// already pulled off the flow — applyDecision passes them to the
-    /// bridge / passthrough handler so they get forwarded to the
+    /// already pulled off the flow — applyDecisionAfterPeek passes them
+    /// to the bridge / passthrough handler so they get forwarded to the
     /// remote without being lost.
     private func dispatchDecision(flowId: String,
                                   flow: NEAppProxyTCPFlow,
@@ -500,14 +500,13 @@ class NexusProxyProvider: NETransparentProxyProvider {
         }
     }
 
-    /// applyDecisionAfterPeek is applyDecision's counterpart for the
-    /// post-SNI-peek code path. The differences from applyDecision:
-    /// (a) the NE flow is already open (peekSNIThenDecide opened it),
-    /// (b) the first chunk has already been read off the flow and is
-    /// passed in via peeked — the chosen relay path must forward it
-    /// to the remote first before resuming the normal read loop, or
-    /// the upstream sees a TCP connection that never sent a
-    /// ClientHello.
+    /// applyDecisionAfterPeek routes a daemon decision onto the deny /
+    /// inspect / passthrough relay path. By the time it runs: (a) the NE
+    /// flow is already open (peekSNIThenDecide opened it), and (b) the
+    /// first chunk has already been read off the flow and is passed in
+    /// via peeked — the chosen relay path must forward it to the remote
+    /// first before resuming the normal read loop, or the upstream sees
+    /// a TCP connection that never sent a ClientHello.
     private func applyDecisionAfterPeek(flowId: String,
                                         flow: NEAppProxyTCPFlow,
                                         host: String,
@@ -524,8 +523,8 @@ class NexusProxyProvider: NETransparentProxyProvider {
 
         case "inspect":
             // Inspect path → bridge. The peeked TLS ClientHello bytes
-            // need to reach the bridge (so MITMRelay's TLS terminator
-            // sees them). Open bridge connection, write BRIDGE header,
+            // need to reach the bridge (so the Go bump pipeline's TLS
+            // terminator sees them). Open bridge connection, write BRIDGE header,
             // immediately replay peeked bytes, then bidir relay.
             // INFO level so operators can audit "what's being intercepted"
             // without enabling debug logs.
@@ -546,11 +545,11 @@ class NexusProxyProvider: NETransparentProxyProvider {
         }
     }
 
-    /// relayInspectViaBridgePostPeek mirrors openAndRelayViaBridge but
-    /// does NOT open the flow (peekSNIThenDecide already did) and
-    /// replays the peeked ClientHello bytes immediately after writing
-    /// the BRIDGE header so the Go-side MITMRelay's TLS terminator
-    /// sees the full handshake.
+    /// relayInspectViaBridgePostPeek connects the inspect path to the Go
+    /// bump bridge. The NE flow is already open (peekSNIThenDecide opened
+    /// it), so it writes the BRIDGE header, replays the peeked ClientHello
+    /// bytes immediately after, then relays bidirectionally — so the
+    /// Go-side bump pipeline's TLS terminator sees the full handshake.
     private func relayInspectViaBridgePostPeek(flowId: String, flow: NEAppProxyTCPFlow, host: String, port: Int, peeked: Data?) {
         let isIPv6 = host.contains(":")
         let hostPart = isIPv6 ? "[\(host)]" : host
@@ -609,219 +608,6 @@ class NexusProxyProvider: NETransparentProxyProvider {
             relayFlowToRemote(flowId: flowId, flow: flow, remote: remoteConn)
         }
         relayRemoteToFlow(flowId: flowId, flow: flow, remote: remoteConn)
-    }
-
-    // MARK: - Decision Application
-
-    private func applyDecision(flowId: String, flow: NEAppProxyTCPFlow, host: String, port: Int, decision: String) {
-        switch decision {
-        case "deny":
-            logger.info("applyDecision: DENY flow=\(flowId) → \(host):\(port) (closing with HTTP 403 sentinel)")
-            updateBumpStatus(flowId: flowId, status: "")
-            flow.closeReadWithError(NSError(domain: "NexusAgent", code: 403,
-                userInfo: [NSLocalizedDescriptionKey: "Blocked by policy"]))
-            flow.closeWriteWithError(nil)
-            completeFlow(flowId: flowId)
-
-        case "inspect":
-            // E55: redirect inspect flows to the Go MITM bridge on
-            // 127.0.0.1:9443. Bridge speaks the existing
-            // proxy.MITMRelay pipeline (TLS termination + HTTP parse +
-            // hooks + audit stamping). When bridge isn't reachable
-            // (early-boot race / port not bound / Linux-style YAML
-            // disabled it), fall through to legacy raw-relay so we
-            // never lose the user's flow — same fail-open behaviour as
-            // BUMP_FAILED_PASSTHROUGH on the linux/windows path.
-            logger.debug("applyDecision: INSPECT flow=\(flowId) → \(host):\(port) → 127.0.0.1:9443 (E55 bridge)")
-            updateBumpStatus(flowId: flowId, status: "BUMP_SUCCESS")
-            openAndRelayViaBridge(flowId: flowId, flow: flow, host: host, port: port)
-
-        default: // "passthrough"
-            logger.debug("applyDecision: PASSTHROUGH flow=\(flowId) → \(host):\(port) (decision=\(decision); raw TCP relay)")
-            updateBumpStatus(flowId: flowId, status: "")
-            openAndRelay(flowId: flowId, flow: flow, host: host, port: port)
-        }
-    }
-
-    /// E55 inspect path: open the NE flow, connect to the Go bridge
-    /// at 127.0.0.1:9443, write the BRIDGE header, then relay bytes
-    /// bidirectionally — exactly the same shape as openAndRelay
-    /// except the "remote" is loopback. The Go side does TLS
-    /// termination + HTTP parse + hook execution + audit stamping
-    /// using the bytes we forward.
-    ///
-    /// Header format (binding contract with bridge.parseHeader):
-    ///   `BRIDGE <host>:<port> <flowId>\n`
-    ///
-    /// Fail-open: if bridge connect fails (port not bound / refused),
-    /// we fall back to the legacy openAndRelay direct-to-remote path
-    /// + stamp BUMP_FAILED_PASSTHROUGH so the audit row carries the
-    /// reason and the user's flow keeps working.
-    private func openAndRelayViaBridge(flowId: String, flow: NEAppProxyTCPFlow, host: String, port: Int) {
-        flow.open(withLocalEndpoint: nil) { [weak self] error in
-            guard let self else { return }
-            if let error = error {
-                let nsErr = error as NSError
-                self.logger.error("openAndRelayViaBridge: flow.open FAILED for flow=\(flowId, privacy: .public) → \(host, privacy: .public):\(port) — domain=\(nsErr.domain) code=\(nsErr.code)")
-                self.updateBumpStatus(flowId: flowId, status: "BUMP_FAILED_PASSTHROUGH")
-                // Reset the claimed flow so the browser retries immediately
-                // instead of hanging for ~75 s on SYN timeout. See companion
-                // comment in peekSNIThenDecide.
-                flow.closeReadWithError(nsErr)
-                flow.closeWriteWithError(nil)
-                self.completeFlow(flowId: flowId)
-                return
-            }
-
-            // IPv6 hosts must be bracketed in the BRIDGE header so the
-            // Go-side parser can split host:port unambiguously.
-            let isIPv6 = host.contains(":")
-            let hostPart = isIPv6 ? "[\(host)]" : host
-            let header = "BRIDGE \(hostPart):\(port) \(flowId)\n"
-            guard let headerData = header.data(using: .utf8) else {
-                self.logger.error("openAndRelayViaBridge: BRIDGE header utf8 encode failed for flow=\(flowId, privacy: .public)")
-                self.fallbackToDirect(flowId: flowId, flow: flow, host: host, port: port)
-                return
-            }
-
-            let bridgeEndpoint = NWHostEndpoint(hostname: "127.0.0.1", port: "9443")
-            let bridgeConn = self.createTCPConnection(to: bridgeEndpoint, enableTLS: false, tlsParameters: nil, delegate: nil)
-
-            // Write the BRIDGE header first. On success start the
-            // peek-SNI-then-relay loop with bridgeConn as remote;
-            // bridge.parseHeader consumes the header line, then hands
-            // the remaining bytes (the TLS ClientHello) to MITMRelay.
-            bridgeConn.write(headerData) { [weak self] writeErr in
-                guard let self else { return }
-                if let writeErr = writeErr {
-                    self.logger.error("openAndRelayViaBridge: BRIDGE header write FAILED for flow=\(flowId, privacy: .public) — \(writeErr.localizedDescription) — falling back to direct relay")
-                    bridgeConn.cancel()
-                    self.fallbackToDirect(flowId: flowId, flow: flow, host: host, port: port)
-                    return
-                }
-                self.logger.debug("openAndRelayViaBridge: BRIDGE header sent for flow=\(flowId, privacy: .public); arming bidir relay through 127.0.0.1:9443")
-                self.peekSNIThenRelay(flowId: flowId, flow: flow, remote: bridgeConn)
-                self.relayRemoteToFlow(flowId: flowId, flow: flow, remote: bridgeConn)
-            }
-        }
-    }
-
-    /// Fail-open fallback when the E55 bridge is unreachable.
-    /// Reuses the legacy raw-relay path. Stamps BUMP_FAILED_PASSTHROUGH
-    /// so the audit row tells the operator why the user's inspect
-    /// flow ended up uninspected.
-    private func fallbackToDirect(flowId: String, flow: NEAppProxyTCPFlow, host: String, port: Int) {
-        self.updateBumpStatus(flowId: flowId, status: "BUMP_FAILED_PASSTHROUGH")
-        let remoteHost = NWHostEndpoint(hostname: host, port: String(port))
-        let remoteConn = self.createTCPConnection(to: remoteHost, enableTLS: false, tlsParameters: nil, delegate: nil)
-        self.peekSNIThenRelay(flowId: flowId, flow: flow, remote: remoteConn)
-        self.relayRemoteToFlow(flowId: flowId, flow: flow, remote: remoteConn)
-    }
-
-    /// Open the flow and establish a TCP connection to the remote server, then
-    /// relay data bidirectionally: flow (app outbound) → remote, and remote → flow (app inbound).
-    /// Used by the passthrough path. The inspect path goes through openAndRelayViaBridge.
-    private func openAndRelay(flowId: String, flow: NEAppProxyTCPFlow, host: String, port: Int) {
-        // Open the NE flow first (required before reading/writing).
-        flow.open(withLocalEndpoint: nil) { [weak self] error in
-            if let error = error {
-                let nsErr = error as NSError
-                self?.logger.error("openAndRelay: flow.open FAILED for flow=\(flowId) → \(host):\(port) — domain=\(nsErr.domain) code=\(nsErr.code) localized=\(error.localizedDescription)")
-                self?.updateBumpStatus(flowId: flowId, status: "BUMP_FAILED_PASSTHROUGH")
-                // Reset the claimed flow; see companion comment in
-                // peekSNIThenDecide. Without this the browser sits on
-                // its SYN for ~75 s.
-                flow.closeReadWithError(nsErr)
-                flow.closeWriteWithError(nil)
-                self?.completeFlow(flowId: flowId)
-                return
-            }
-
-            // Connect to the actual remote server.
-            let remoteHost = NWHostEndpoint(hostname: host, port: String(port))
-            guard let remoteConn = self?.createTCPConnection(to: remoteHost, enableTLS: false, tlsParameters: nil, delegate: nil) else {
-                self?.logger.error("openAndRelay: createTCPConnection returned nil for flow=\(flowId) → \(host):\(port) — provider self may have been deallocated mid-flight")
-                // Same fail-open shape: flow is opened but we cannot create
-                // an upstream socket — reset so the browser retries.
-                flow.closeReadWithError(NSError(domain: "NexusAgent", code: -1, userInfo: [NSLocalizedDescriptionKey: "upstream socket unavailable"]))
-                flow.closeWriteWithError(nil)
-                self?.completeFlow(flowId: flowId)
-                return
-            }
-
-            // Direction 1: app → remote, with one-shot SNI peek on
-            // the very first chunk before falling into the normal relay
-            // loop. SNI lets us recover the real hostname (e.g.
-            // "chatgpt.com") for callers that pre-resolved DNS and
-            // therefore left NEAppProxyFlow.remoteHostname nil.
-            self?.peekSNIThenRelay(flowId: flowId, flow: flow, remote: remoteConn)
-            // Direction 2: remote → app (read from remote, write to flow)
-            self?.relayRemoteToFlow(flowId: flowId, flow: flow, remote: remoteConn)
-        }
-    }
-
-    /// One-shot reader: peek the flow's first chunk, try to extract a
-    /// TLS SNI hostname, notify the daemon, then forward the same
-    /// chunk to remote and re-arm the normal app→remote relay loop.
-    /// On non-TLS / empty / parse-fail flows we just forward the
-    /// chunk and continue normally — SNI extraction is best-effort.
-    ///
-    /// SAFETY: bounded by a 500 ms timeout. Non-TLS protocols where the
-    /// client speaks first (HTTPS, gRPC) emit ClientHello within
-    /// microseconds of TCP handshake. Protocols where the SERVER speaks
-    /// first (SSH, SMTP, IMAP, plain HTTP after redirect) never emit a
-    /// ClientHello-shaped first chunk — without the timeout the read
-    /// hangs forever and the connection appears broken to the app.
-    /// On timeout we abandon the SNI peek and fall straight into the
-    /// normal app→remote relay; the audit row just won't carry an SNI
-    /// hostname for that flow.
-    private func peekSNIThenRelay(flowId: String, flow: NEAppProxyTCPFlow, remote: NWTCPConnection) {
-        let timeoutFired = TimeoutGuard()
-        queue.asyncAfter(deadline: .now() + .milliseconds(500)) { [weak self] in
-            guard let self else { return }
-            if timeoutFired.tryFire() {
-                self.logger.debug("peekSNIThenRelay: 500 ms timeout for flow=\(flowId, privacy: .public) — falling through to plain relay (likely server-speaks-first protocol)")
-                self.relayFlowToRemote(flowId: flowId, flow: flow, remote: remote)
-            }
-        }
-
-        flow.readData(completionHandler: { [weak self] data, error in
-            guard let self else { return }
-            // If the timeout already won the race, do not double-arm
-            // the relay loop or write to remote (the loop is already
-            // pulling from the flow and would race with us).
-            guard timeoutFired.tryFire() else {
-                self.logger.debug("peekSNIThenRelay: read completed AFTER 500 ms timeout for flow=\(flowId, privacy: .public) — discarding")
-                return
-            }
-            if let error = error {
-                self.logger.debug("App→Remote first-read done for \(flowId): \(error.localizedDescription)")
-                remote.cancel()
-                return
-            }
-            guard let data = data, !data.isEmpty else {
-                // App closed before sending anything — send FIN.
-                remote.writeClose()
-                return
-            }
-
-            if let sni = SNIParser.extractSNI(from: data) {
-                self.logger.info("SNI extracted for flow=\(flowId): \(sni, privacy: .public)")
-                self.ipcClient.notifyFlowHost(flowId: flowId, hostname: sni)
-            }
-
-            self.addBytesOut(flowId: flowId, count: Int64(data.count))
-
-            remote.write(data) { [weak self] writeError in
-                guard let self else { return }
-                if let writeError = writeError {
-                    self.logger.debug("App→Remote first-write error for \(flowId): \(writeError.localizedDescription)")
-                    return
-                }
-                // Hand off to the normal relay loop for subsequent chunks.
-                self.relayFlowToRemote(flowId: flowId, flow: flow, remote: remote)
-            }
-        })
     }
 
     /// Read data from the app (via flow.readData) and forward to the remote server.

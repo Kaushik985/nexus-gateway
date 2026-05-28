@@ -63,8 +63,14 @@ func InspectBundles() BundleVersions {
 // false VERSION MISMATCH warnings while the actual running provider
 // is the newest. Prefer the directory whose Info.plist has the latest
 // mtime so the inventory matches what macOS actually loaded.
+// systemExtensionsRoot is the macOS staging dir for approved system
+// extensions. A package var (not a const) so tests can point it at a
+// temp tree to exercise the match / read-error branches without a real
+// installed extension.
+var systemExtensionsRoot = "/Library/SystemExtensions"
+
 func findLiveExtensionInfoPlist() string {
-	const root = "/Library/SystemExtensions"
+	root := systemExtensionsRoot
 	const target = "com.nexus-gateway.agent.extension.systemextension/Contents/Info.plist"
 
 	entries, err := os.ReadDir(root)

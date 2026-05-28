@@ -38,17 +38,12 @@ type VirtualKey struct {
 	ProjectName      *string
 	UserDisplayName  *string
 	// OrganizationTimezone — IANA TZ from the joined Organization.
-	// Drives business-rule semantics like monthly quota windows
-	// and "yesterday" analytics. Empty when no project/org binding
-	// (e.g. system-level VK rows).
+	// Carried onto traffic_event as origin_tz to drive org-local analytics
+	// calendar windows ("yesterday" / "this month" attribution). Quota
+	// period keys are computed in UTC, not org-local. Empty when no
+	// project/org binding (e.g. system-level VK rows).
 	OrganizationTimezone *string
 }
-
-// orgFromVKChain returns the org_id resolution priority documented for
-// vkSelectSQL: prefer the application-VK path (Project → Organization)
-// when present; otherwise fall back to the personal-VK path
-// (NexusUser.organizationId). Caller-side mirror of the SQL COALESCE so
-// downstream packages don't have to repeat the precedence rule.
 
 // AllowedModelRef constrains which models a VK can access.
 // ModelID supports globs (e.g. "gpt-*").

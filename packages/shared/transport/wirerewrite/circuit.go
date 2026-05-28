@@ -10,9 +10,11 @@ const (
 	defaultCBWindow    = 60 * time.Second
 )
 
-// circuitBreaker trips open after threshold errors within window, then
-// stays open until an explicit reset (triggered by a config Reload). This
-// avoids silently corrupting upstream bytes after a recurring rule failure.
+// circuitBreaker trips open after threshold errors within window, then stays
+// open for the rest of the process: a config Reload preserves the breaker (its
+// error history survives the config change), so a tripped rule recovers only on
+// a process restart. This avoids silently corrupting upstream bytes after a
+// recurring rule failure.
 type circuitBreaker struct {
 	mu        sync.Mutex
 	errors    []time.Time
@@ -48,7 +50,9 @@ func (cb *circuitBreaker) recordError() {
 	}
 }
 
-// reset clears the error history and closes the circuit. Called on Reload.
+// reset clears the error history and closes the circuit. Test-only: the
+// production Reload path deliberately preserves breakers (so error history
+// survives a config change) rather than resetting them.
 func (cb *circuitBreaker) reset() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()

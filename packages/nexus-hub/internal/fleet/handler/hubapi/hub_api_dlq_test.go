@@ -68,10 +68,20 @@ func TestListDLQ_NilPoolReturns503(t *testing.T) {
 	}
 }
 
+// countRows builds the single-column COUNT(*) result pgxmock hands back
+// to the QueryRow Scan in ListDLQ.
+func countRows(total int) *pgxmock.Rows {
+	return pgxmock.NewRows([]string{"count"}).AddRow(total)
+}
+
 func TestListDLQ_HappyPath(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 
+	// ListDLQ runs COUNT first (no subject filter → no args), then the
+	// page query with (limit, offset). Default limit 50, offset 0.
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM traffic_event_dlq`).
+		WillReturnRows(countRows(1))
 	rows := pgxmock.NewRows([]string{
 		"id", "msg_id", "subject", "delivery_count", "last_error",
 		"first_seen_at", "dlq_inserted_at", "payload_size",
@@ -80,8 +90,8 @@ func TestListDLQ_HappyPath(t *testing.T) {
 		"msg-1", "nexus.event.gateway", 5, "23505 duplicate key",
 		fixedTime(2026, 5, 26, 10, 0), fixedTime(2026, 5, 26, 10, 5), 1234,
 	)
-	mock.ExpectQuery(`FROM traffic_event_dlq`).
-		WithArgs(50).
+	mock.ExpectQuery(`ORDER BY dlq_inserted_at DESC LIMIT \$1 OFFSET \$2`).
+		WithArgs(50, 0).
 		WillReturnRows(rows)
 
 	h := &HubAPI{DLQPool: mock, Logger: silentDLQLogger()}
@@ -105,17 +115,24 @@ func TestListDLQ_HappyPath(t *testing.T) {
 	if resp.Rows[0].LastError != "23505 duplicate key" {
 		t.Errorf("lastError = %q, want known err string", resp.Rows[0].LastError)
 	}
-	// Page is not full (1 row, limit 50) → no nextCursor expected.
-	if resp.NextCursor != "" {
-		t.Errorf("NextCursor = %q, want empty on partial page", resp.NextCursor)
+	// total drives the offset-pagination footer.
+	if resp.Total != 1 {
+		t.Errorf("total = %d, want 1", resp.Total)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }
 
-func TestListDLQ_SubjectFilterAndCursor(t *testing.T) {
+func TestListDLQ_SubjectFilterAndOffset(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 
-	// 2 rows returned with limit=2 → response should carry NextCursor.
+	// COUNT carries the subject filter as $1; the page query carries
+	// (subject, limit, offset) so the footer total agrees with the slice.
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM traffic_event_dlq`).
+		WithArgs("nexus.event.compliance").
+		WillReturnRows(countRows(7))
 	rows := pgxmock.NewRows([]string{
 		"id", "msg_id", "subject", "delivery_count", "last_error",
 		"first_seen_at", "dlq_inserted_at", "payload_size",
@@ -124,13 +141,13 @@ func TestListDLQ_SubjectFilterAndCursor(t *testing.T) {
 			fixedTime(2026, 5, 26, 11, 0), fixedTime(2026, 5, 26, 11, 5), 100).
 		AddRow("id-b", "m-b", "nexus.event.compliance", 6, "err-b",
 			fixedTime(2026, 5, 26, 10, 0), fixedTime(2026, 5, 26, 10, 5), 200)
-	mock.ExpectQuery(`FROM traffic_event_dlq.*subject = \$1.*dlq_inserted_at < \$2`).
-		WithArgs("nexus.event.compliance", pgxmock.AnyArg(), 2).
+	mock.ExpectQuery(`subject = \$1.*ORDER BY dlq_inserted_at DESC LIMIT \$2 OFFSET \$3`).
+		WithArgs("nexus.event.compliance", 2, 2).
 		WillReturnRows(rows)
 
 	h := &HubAPI{DLQPool: mock, Logger: silentDLQLogger()}
 	c, w := echoTestContext(t, http.MethodGet,
-		"/api/hub/dlq?subject=nexus.event.compliance&limit=2&cursor=2026-05-26T12:00:00Z", "")
+		"/api/hub/dlq?subject=nexus.event.compliance&limit=2&offset=2", "")
 	if err := h.ListDLQ(c); err != nil {
 		t.Fatalf("ListDLQ: %v", err)
 	}
@@ -142,23 +159,38 @@ func TestListDLQ_SubjectFilterAndCursor(t *testing.T) {
 	if len(resp.Rows) != 2 {
 		t.Fatalf("rows = %d, want 2", len(resp.Rows))
 	}
-	// Page IS full → NextCursor must be set (caller can fetch next page).
-	if resp.NextCursor == "" {
-		t.Error("NextCursor empty on full page")
+	if resp.Total != 7 {
+		t.Errorf("total = %d, want 7", resp.Total)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations (offset/subject not forwarded as expected): %v", err)
 	}
 }
 
-func TestListDLQ_InvalidCursor(t *testing.T) {
+func TestListDLQ_InvalidOffsetDefaultsToZero(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 
+	// A non-numeric offset is ignored → the page query runs with offset 0.
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM traffic_event_dlq`).
+		WillReturnRows(countRows(0))
+	mock.ExpectQuery(`ORDER BY dlq_inserted_at DESC LIMIT \$1 OFFSET \$2`).
+		WithArgs(50, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "msg_id", "subject", "delivery_count", "last_error",
+			"first_seen_at", "dlq_inserted_at", "payload_size",
+		}))
+
 	h := &HubAPI{DLQPool: mock, Logger: silentDLQLogger()}
-	c, w := echoTestContext(t, http.MethodGet, "/api/hub/dlq?cursor=not-a-timestamp", "")
+	c, w := echoTestContext(t, http.MethodGet, "/api/hub/dlq?offset=not-a-number", "")
 	if err := h.ListDLQ(c); err != nil {
 		t.Fatalf("ListDLQ: %v", err)
 	}
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }
 
@@ -166,14 +198,15 @@ func TestListDLQ_LimitCapped(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 
-	rows := pgxmock.NewRows([]string{
-		"id", "msg_id", "subject", "delivery_count", "last_error",
-		"first_seen_at", "dlq_inserted_at", "payload_size",
-	})
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM traffic_event_dlq`).
+		WillReturnRows(countRows(0))
 	// limit=99999 from caller → capped at 200.
-	mock.ExpectQuery(`FROM traffic_event_dlq`).
-		WithArgs(200).
-		WillReturnRows(rows)
+	mock.ExpectQuery(`ORDER BY dlq_inserted_at DESC LIMIT \$1 OFFSET \$2`).
+		WithArgs(200, 0).
+		WillReturnRows(pgxmock.NewRows([]string{
+			"id", "msg_id", "subject", "delivery_count", "last_error",
+			"first_seen_at", "dlq_inserted_at", "payload_size",
+		}))
 
 	h := &HubAPI{DLQPool: mock, Logger: silentDLQLogger()}
 	c, w := echoTestContext(t, http.MethodGet, "/api/hub/dlq?limit=99999", "")
@@ -188,11 +221,33 @@ func TestListDLQ_LimitCapped(t *testing.T) {
 	}
 }
 
-func TestListDLQ_QueryError(t *testing.T) {
+func TestListDLQ_CountQueryError(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
 
-	mock.ExpectQuery(`FROM traffic_event_dlq`).WillReturnError(errors.New("conn refused"))
+	// The COUNT runs first; its failure short-circuits to 500.
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM traffic_event_dlq`).
+		WillReturnError(errors.New("conn refused"))
+
+	h := &HubAPI{DLQPool: mock, Logger: silentDLQLogger()}
+	c, w := echoTestContext(t, http.MethodGet, "/api/hub/dlq", "")
+	if err := h.ListDLQ(c); err != nil {
+		t.Fatalf("ListDLQ: %v", err)
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", w.Code)
+	}
+}
+
+func TestListDLQ_PageQueryError(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+
+	// COUNT succeeds, the page query fails → 500.
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM traffic_event_dlq`).
+		WillReturnRows(countRows(3))
+	mock.ExpectQuery(`ORDER BY dlq_inserted_at DESC LIMIT \$1 OFFSET \$2`).
+		WillReturnError(errors.New("conn refused"))
 
 	h := &HubAPI{DLQPool: mock, Logger: silentDLQLogger()}
 	c, w := echoTestContext(t, http.MethodGet, "/api/hub/dlq", "")

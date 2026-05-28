@@ -12,8 +12,17 @@ import (
 // Source is a named contributor to a service's runtime snapshot.
 // Convention for Name(): "config.<key>" for thingclient config_keys,
 // "cache.<category>" for configcache categories, "runtime.<area>"
-// for ad-hoc state. Snapshot() must be O(in-memory state) — no DB
-// or network calls — and must redact secrets.
+// for ad-hoc state. Snapshot() must redact secrets.
+//
+// Two classes of Source exist, split by where the authoritative state lives:
+//   - Thing-local sources (config.*, cache.*, process-local runtime.*) read
+//     in-memory state only — no DB or network call. The whole point is to show
+//     what the running process actually applied, so re-deriving the value from
+//     a store would hide a parse/apply bug rather than expose it.
+//   - System-of-record sources (the Hub's fleet-wide thing_registry,
+//     diag_mode_windows, alerts.*) query their authoritative store directly,
+//     because that state lives only there and the process holds no copy. These
+//     must stay bounded admin reads under the handler's request timeout.
 type Source interface {
 	Name() string
 	Snapshot(ctx context.Context) (any, error)

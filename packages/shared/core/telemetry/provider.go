@@ -16,6 +16,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -71,6 +72,15 @@ func Init(ctx context.Context, cfg Config, logger *slog.Logger) (*SwappableTrace
 	s := &SwappableTracerProvider{logger: logger}
 	s.current.Store(st)
 	otel.SetTracerProvider(s)
+
+	// Register the W3C TraceContext + Baggage propagator globally so the
+	// HTTP middleware's Extract and the outbound otelhttp transports actually
+	// carry trace context across service boundaries. Without this the global
+	// propagator is a no-op and every server span starts as a fresh root.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 
 	logger.Info("telemetry provider initialized",
 		"enabled", cfg.Enabled,
@@ -164,6 +174,7 @@ func newProvider(ctx context.Context, cfg Config, logger *slog.Logger) (*provide
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sampler),
+		sdktrace.WithIDGenerator(requestIDGenerator{}),
 	)
 
 	return &providerState{

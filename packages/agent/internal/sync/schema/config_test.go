@@ -80,6 +80,19 @@ func TestDefaults(t *testing.T) {
 	if cfg.DefaultAction != "passthrough" {
 		t.Errorf("expected passthrough, got %s", cfg.DefaultAction)
 	}
+	// LocalBodyCapture defaults to true (unset → always-on local capture).
+	if cfg.LocalBodyCapture == nil || !*cfg.LocalBodyCapture {
+		t.Errorf("LocalBodyCapture should default to true, got %v", cfg.LocalBodyCapture)
+	}
+}
+
+func TestDefaults_LocalBodyCaptureExplicitFalsePreserved(t *testing.T) {
+	f := false
+	cfg := &AgentConfig{HubHTTPURL: "https://hub.example.com", LocalBodyCapture: &f}
+	applyDefaults(cfg)
+	if cfg.LocalBodyCapture == nil || *cfg.LocalBodyCapture {
+		t.Errorf("explicit LocalBodyCapture=false must be preserved, got %v", cfg.LocalBodyCapture)
+	}
 }
 
 func TestManager_SwapNotifiesSubscribers(t *testing.T) {

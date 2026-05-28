@@ -254,8 +254,12 @@ func (s *Store) CreateProviderWithChildren(
 		if keyID == "" {
 			keyID = "v1"
 		}
-		var c credstore.Credential
-		err = tx.QueryRow(ctx, fmt.Sprintf(`
+		// Bind via credstore's single-sourced scanner: RETURNING
+		// CredMetadataColumns yields all 30 credential columns, and an inline
+		// Scan list here silently drifted to 14 destinations as columns were
+		// added (circuit-breaker + health fields), making every credential
+		// insert fail at scan and roll the whole provider create back.
+		insertedCred, err = credstore.ScanCredentialRow(tx.QueryRow(ctx, fmt.Sprintf(`
 			INSERT INTO "Credential" (id, name, "providerId", "encryptedKey", "encryptionIv", "encryptionTag",
 				"encryption_key_id", enabled, "rotationState", "createdAt", "updatedAt")
 			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
@@ -263,15 +267,10 @@ func (s *Store) CreateProviderWithChildren(
 		`, credstore.CredMetadataColumns),
 			credential.Name, pr.ID, credential.EncryptedKey, credential.EncryptionIV, credential.EncryptionTag,
 			keyID, credential.Enabled, credential.RotationState,
-		).Scan(
-			&c.ID, &c.Name, &c.ProviderID, &c.Enabled, &c.RotationState,
-			&c.LastRotatedAt, &c.LastUsedAt, &c.LastSuccessAt, &c.LastFailureAt,
-			&c.LastFailureReason, &c.TotalUsageCount, &c.ExpiresAt, &c.CreatedAt, &c.UpdatedAt,
-		)
+		))
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("insert credential: %w", err)
 		}
-		insertedCred = &c
 	}
 
 	if err := tx.Commit(ctx); err != nil {

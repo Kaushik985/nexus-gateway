@@ -375,7 +375,15 @@ func (e *geminiStreamEncoder) Write(_ context.Context, chunk provcore.Chunk) ([]
 		}
 	}
 	if chunk.ReasoningDelta != "" {
-		parts = append(parts, map[string]any{"text": chunk.ReasoningDelta})
+		// Tag reasoning as a Gemini thought part (`thought:true`) to match the
+		// non-stream egress (spec_gemini/ingress/hub_ingress.go) AND to keep the
+		// stream symmetric with the gemini stream DECODER, which routes
+		// thought:true parts back to ReasoningDelta. Without the tag, a
+		// cross-format reasoning delta (DeepSeek/OpenAI reasoning_content,
+		// Anthropic thinking) leaks into the visible answer text instead of the
+		// reasoning channel, and a gemini→…→gemini round-trip loses the thought
+		// classification.
+		parts = append(parts, map[string]any{"text": chunk.ReasoningDelta, "thought": true})
 	}
 	if len(parts) == 0 {
 		return nil, nil

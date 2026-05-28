@@ -15,7 +15,7 @@ import (
 const (
 	dataRetentionJobID          = "data-retention"
 	dataRetentionJobName        = "Data Retention Purge"
-	dataRetentionJobDescription = "Deletes audit and rollup rows older than the configured retention period each day."
+	dataRetentionJobDescription = "Deletes traffic_event, traffic_event_payload, and AdminAuditLog rows older than the configured retention period each day."
 )
 
 // DataRetentionConfig holds per-table retention in days. Zero or negative
@@ -25,11 +25,13 @@ const (
 // request/response body blobs are bulky. It purges traffic_event_payload
 // rows directly; the ON DELETE CASCADE from traffic_event → traffic_event_payload
 // means the longer traffic_event purge also wipes any surviving payload rows.
+//
+// The metric_rollup_* tier chain is owned by the rollup-retention job; this job
+// does not touch it.
 type DataRetentionConfig struct {
 	TrafficEventDays        int
 	TrafficEventPayloadDays int
 	AdminAuditLogDays       int
-	MetricRollupDays        int
 }
 
 // DataRetentionJob purges aged audit and rollup rows. Runs once per day.
@@ -85,16 +87,14 @@ func (j *DataRetentionJob) Run(ctx context.Context) error {
 	p, errP := purge("traffic_event_payload", `DELETE FROM traffic_event_payload WHERE created_at < $1`, j.cfg.TrafficEventPayloadDays)
 	a, errA := purge("traffic_event", `DELETE FROM traffic_event WHERE timestamp < $1`, j.cfg.TrafficEventDays)
 	b, errB := purge("AdminAuditLog", `DELETE FROM "AdminAuditLog" WHERE timestamp < $1`, j.cfg.AdminAuditLogDays)
-	c, errC := purge("metric_rollup_1h", `DELETE FROM metric_rollup_1h WHERE "bucketStart" < $1`, j.cfg.MetricRollupDays)
 
-	if a+b+c+p > 0 {
+	if a+b+p > 0 {
 		j.logger.Info("retention purge",
 			slog.Int64("traffic_events", a),
 			slog.Int64("traffic_event_payloads", p),
 			slog.Int64("admin_audit_logs", b),
-			slog.Int64("metric_rollups", c),
 		)
 	}
 
-	return errors.Join(errP, errA, errB, errC)
+	return errors.Join(errP, errA, errB)
 }

@@ -32,6 +32,7 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming"
 	streampolicy "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming/policy"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/tlsbump"
+	"github.com/google/uuid"
 )
 
 // ProxyConfig holds all optional dependencies and tuning knobs for ProxyServer.
@@ -50,7 +51,6 @@ type ProxyConfig struct {
 
 	// Compliance kernel
 	CompliancePipeline *compliance.PolicyResolver
-	DomainSnapshot     *atomic.Pointer[traffic.DomainSnapshot]
 	AuditEmitter       *compliance.AuditEmitter
 	StreamingConfig    streaming.LiveConfig
 	PerHookTimeout     time.Duration
@@ -127,7 +127,6 @@ type ProxyServer struct {
 
 	// Compliance kernel
 	compliancePipeline *compliance.PolicyResolver
-	domainSnapshot     *atomic.Pointer[traffic.DomainSnapshot]
 	auditEmitter       *compliance.AuditEmitter
 	// streamingTuning is the hot-swappable bundle of streaming-mode tunables:
 	// mode string + per-hook timeout + total timeout. Each CONNECT loads via
@@ -207,7 +206,6 @@ func NewProxyServer(
 		shutdownCord:             cfg.ShutdownCord,
 		pinningTracker:           cfg.PinningTracker,
 		compliancePipeline:       cfg.CompliancePipeline,
-		domainSnapshot:           cfg.DomainSnapshot,
 		auditEmitter:             cfg.AuditEmitter,
 		streamingConfig:          cfg.StreamingConfig,
 		parallelHooks:            cfg.ParallelHooks,
@@ -338,16 +336,17 @@ func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Seed the inbound nexus request id into the request context so any
-	// outbound httpclient call made while processing this CONNECT can log
-	// (and, when opted in, propagate) it. When the upstream chain did not
-	// stamp one we leave it empty — the compliance-proxy itself does not
-	// mint per-CONNECT ids today; this preserves existing behaviour while
-	// still propagating any id supplied by ai-gateway / agent.
+	// Seed the nexus request id into the request context so any outbound
+	// httpclient call made while processing this CONNECT can log (and, when
+	// opted in, propagate) it. Honor an id supplied by an upstream Nexus
+	// service (ai-gateway / agent); mint a UUID only when none was supplied
+	// so every CONNECT carries a correlation id.
 	reqID := r.Header.Get("X-Nexus-Request-Id")
-	if reqID != "" {
-		r = r.WithContext(nexushttp.WithRequestID(r.Context(), reqID))
+	if reqID == "" {
+		reqID = uuid.New().String()
+		r.Header.Set("X-Nexus-Request-Id", reqID)
 	}
+	r = r.WithContext(nexushttp.WithRequestID(r.Context(), reqID))
 
 	// Parse host and port. Default to port 443 if not specified.
 	host, port, err := net.SplitHostPort(r.Host)
@@ -550,7 +549,6 @@ func (p *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Upstream:              p.upstream,
 		PinningTracker:        p.pinningTracker,
 		CompliancePipeline:    p.compliancePipeline,
-		DomainSnapshot:        p.domainSnapshot,
 		AuditEmitter:          p.auditEmitter,
 		StreamingTuning:       forward.StreamingTuning{PerHookTimeout: st.PerHookTimeout, TotalTimeout: st.TotalTimeout},
 		StreamingConfig:       p.streamingConfig,

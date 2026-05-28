@@ -50,6 +50,17 @@ type AgentConfig struct {
 	// Local SQLite queue persists every flow regardless; this knob only
 	// gates the Hub upload path. Default empty / unknown maps to "processed".
 	TrafficUploadLevel string `yaml:"trafficUploadLevel"`
+	// LocalBodyCapture controls whether the agent captures + stores request
+	// and response bodies locally (small inline in SQLite, oversize in the
+	// local spill store), INDEPENDENT of the Hub-pushed payload_capture
+	// config. Default true: the agent is a local, low-volume device and users
+	// expect to see what their own AI traffic contained in the agent UI. The
+	// Hub payload_capture config governs only whether those captured bodies are
+	// UPLOADED to Hub/S3 — not whether they are captured locally. Size params
+	// (inline cutoff / read caps) still follow the Hub config when pushed, else
+	// the local default. *bool distinguishes "unset in YAML" (nil → default
+	// true) from "explicitly false".
+	LocalBodyCapture *bool `yaml:"localBodyCapture"`
 	// ThemeID names the theme pack the agent Dashboard should render
 	// with — admin sets fleet-wide via CP UI, propagated via the
 	// agent_settings shadow. Empty means "fall through to the agent
@@ -72,7 +83,7 @@ type AgentConfig struct {
 	// MitmBridgeAddr is the loopback bind address for the macOS NE →
 	// Go MITM bridge listener. When non-empty, the daemon listens for
 	// `BRIDGE host:port flowId\n` framed connections and hands them to
-	// the existing proxy.MITMRelay pipeline so the macOS NE inspect
+	// the proxy.BumpFlow pipeline (shared/tlsbump) so the macOS NE inspect
 	// path gains TLS termination + HTTP parse + hook execution + body
 	// capture (parity with Linux/Windows). Default empty = listener
 	// disabled.
@@ -244,6 +255,13 @@ func applyDefaults(cfg *AgentConfig) {
 	if cfg.QuitAllowed == nil {
 		t := true
 		cfg.QuitAllowed = &t
+	}
+	// LocalBodyCapture defaults to true — the agent always captures bodies
+	// locally so users can inspect their own AI traffic; Hub config only gates
+	// upload. *bool distinguishes unset (nil → true) from explicit false.
+	if cfg.LocalBodyCapture == nil {
+		t := true
+		cfg.LocalBodyCapture = &t
 	}
 	// Cert-pin exemption defaults
 	if cfg.ExemptionFailureThreshold == 0 {

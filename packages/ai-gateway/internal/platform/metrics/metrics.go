@@ -176,7 +176,7 @@ func (r *Recorder) RecordEstimateCompare(ingress string, targetCount int, durati
 }
 
 // RecordReasoningPassthrough increments the
-// nexus_aigw_reasoning_passthrough_total counter. provider is the
+// nexus_reasoning_passthrough_total counter. provider is the
 // adapter slug ("anthropic" / "gemini" today); action is one of
 // "injected" or "skipped_malformed". Safe to call on a nil recorder.
 func (r *Recorder) RecordReasoningPassthrough(provider, action string) {

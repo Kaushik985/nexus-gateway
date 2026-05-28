@@ -1,12 +1,15 @@
 package queue
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/event"
+	sharedaudit "github.com/AlphaBitCore/nexus-gateway/packages/shared/audit"
 )
 
 func newTestQueue(t *testing.T) *Queue {
@@ -280,6 +283,148 @@ func TestRecord_PayloadBodiesRoundtrip(t *testing.T) {
 	if string(got[0].PayloadResponse) != string(respBody) {
 		t.Errorf("response roundtrip mismatch:\n got %q\nwant %q",
 			got[0].PayloadResponse, respBody)
+	}
+}
+
+func TestRecord_SpillRefsRoundtrip(t *testing.T) {
+	// Oversize bodies spilled to the local store keep only a SpillRef on the
+	// audit row. The ref (JSON-encoded) must persist into request_spill_ref /
+	// response_spill_ref and decode back unchanged through DrainBatch so the
+	// drain step can read the local body and upload it to S3.
+	q := newTestQueue(t)
+
+	e := makeEvent("spill-1")
+	e.RequestSpillRef = &sharedaudit.SpillRef{
+		Backend: "localfs", Key: "2026-05-27/spill-1-request.bin",
+		Size: 700000, SHA256: "deadbeef", ContentType: "application/json",
+	}
+	e.ResponseSpillRef = &sharedaudit.SpillRef{
+		Backend: "localfs", Key: "2026-05-27/spill-1-response.bin", Size: 900000,
+	}
+	if err := q.Record(e); err != nil {
+		t.Fatalf("record failed: %v", err)
+	}
+
+	got, err := q.DrainBatch(10)
+	if err != nil {
+		t.Fatalf("drain failed: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("drain returned %d events, want 1", len(got))
+	}
+	if got[0].RequestSpillRef == nil || got[0].ResponseSpillRef == nil {
+		t.Fatalf("spill refs lost on roundtrip: req=%v resp=%v",
+			got[0].RequestSpillRef, got[0].ResponseSpillRef)
+	}
+	if got[0].RequestSpillRef.Key != e.RequestSpillRef.Key ||
+		got[0].RequestSpillRef.Backend != "localfs" ||
+		got[0].RequestSpillRef.Size != 700000 ||
+		got[0].RequestSpillRef.ContentType != "application/json" {
+		t.Errorf("request spill ref roundtrip mismatch: got %+v want %+v",
+			got[0].RequestSpillRef, e.RequestSpillRef)
+	}
+	if got[0].ResponseSpillRef.Key != e.ResponseSpillRef.Key {
+		t.Errorf("response spill ref key mismatch: got %q want %q",
+			got[0].ResponseSpillRef.Key, e.ResponseSpillRef.Key)
+	}
+	// Inline body columns stay empty when the body spilled.
+	if len(got[0].PayloadRequest) != 0 || len(got[0].PayloadResponse) != 0 {
+		t.Errorf("spill path should leave inline payload empty")
+	}
+}
+
+func TestEventByID_FullDetail(t *testing.T) {
+	q := newTestQueue(t)
+	pt, ct := 11, 22
+	ttfb, total, rh, resph := 30, 120, 5, 8
+	e := makeEvent("detail-1")
+	e.Method = http.MethodPost
+	e.Path = "/v1/chat/completions"
+	e.StatusCode = 200
+	e.ProviderName = "openai"
+	e.ModelName = "gpt-4o"
+	e.ApiKeyClass = "personal"
+	e.ApiKeyFingerprint = "fp-1"
+	e.UsageExtractionStatus = "ok"
+	e.PromptTokens = &pt
+	e.CompletionTokens = &ct
+	e.ComplianceTags = []string{"detector:pii"}
+	e.DomainRuleID = "dom-1"
+	e.PathAction = "PROCESS"
+	e.UpstreamTtfbMs = &ttfb
+	e.UpstreamTotalMs = &total
+	e.RequestHooksMs = &rh
+	e.ResponseHooksMs = &resph
+	e.LatencyBreakdown = map[string]int{"intercept_ms": 2}
+	e.HooksPipeline = json.RawMessage(`[{"hook":"pii"}]`)
+	e.PayloadRequest = []byte("inline req body")
+	e.NormalizedRequest = json.RawMessage(`{"model":"gpt-4o"}`)
+	e.NormalizedResponse = json.RawMessage(`{"id":"c-1"}`)
+	e.ResponseSpillRef = &sharedaudit.SpillRef{Backend: "localfs", Key: "d/detail-1-response.bin", Size: 900000}
+	if err := q.Record(e); err != nil {
+		t.Fatalf("record failed: %v", err)
+	}
+	got, err := q.EventByID("detail-1")
+	if err != nil {
+		t.Fatalf("EventByID failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("EventByID returned nil for an existing id")
+	}
+	if got.Method != http.MethodPost || got.Path != "/v1/chat/completions" || got.StatusCode != 200 {
+		t.Errorf("request line mismatch: %s %s %d", got.Method, got.Path, got.StatusCode)
+	}
+	if got.PromptTokens == nil || *got.PromptTokens != 11 || got.CompletionTokens == nil || *got.CompletionTokens != 22 {
+		t.Errorf("token roundtrip mismatch: %v %v", got.PromptTokens, got.CompletionTokens)
+	}
+	if got.UpstreamTtfbMs == nil || got.UpstreamTotalMs == nil || got.RequestHooksMs == nil || got.ResponseHooksMs == nil {
+		t.Error("latency pointers should survive detail roundtrip")
+	}
+	if got.LatencyBreakdown["intercept_ms"] != 2 {
+		t.Errorf("latency breakdown mismatch: %v", got.LatencyBreakdown)
+	}
+	if len(got.HooksPipeline) == 0 || len(got.ComplianceTags) != 1 {
+		t.Errorf("hooks pipeline / tags lost: %q %v", got.HooksPipeline, got.ComplianceTags)
+	}
+	if got.DomainRuleID != "dom-1" || got.PathAction != "PROCESS" {
+		t.Errorf("classification inputs lost: %s %s", got.DomainRuleID, got.PathAction)
+	}
+	if string(got.PayloadRequest) != "inline req body" {
+		t.Errorf("inline body mismatch: %q", got.PayloadRequest)
+	}
+	if string(got.NormalizedRequest) != `{"model":"gpt-4o"}` || string(got.NormalizedResponse) != `{"id":"c-1"}` {
+		t.Errorf("normalized mismatch: %q %q", got.NormalizedRequest, got.NormalizedResponse)
+	}
+	if got.ResponseSpillRef == nil || got.ResponseSpillRef.Key != "d/detail-1-response.bin" {
+		t.Errorf("spill ref not returned in detail: %+v", got.ResponseSpillRef)
+	}
+}
+
+func TestEventByID_NotFound(t *testing.T) {
+	q := newTestQueue(t)
+	got, err := q.EventByID("does-not-exist")
+	if err != nil {
+		t.Fatalf("EventByID should not error on unknown id: %v", err)
+	}
+	if got != nil {
+		t.Errorf("EventByID should return nil for unknown id, got %+v", got)
+	}
+}
+
+func TestRecord_NoSpillRefStoresNULL(t *testing.T) {
+	// Inline / no-capture rows must leave the spill columns NULL → decode to
+	// nil so the drain step skips the S3 upload path entirely.
+	q := newTestQueue(t)
+	if err := q.Record(makeEvent("nospill")); err != nil {
+		t.Fatalf("record failed: %v", err)
+	}
+	got, err := q.DrainBatch(10)
+	if err != nil {
+		t.Fatalf("drain failed: %v", err)
+	}
+	if got[0].RequestSpillRef != nil || got[0].ResponseSpillRef != nil {
+		t.Errorf("no-spill row should decode to nil refs, got req=%v resp=%v",
+			got[0].RequestSpillRef, got[0].ResponseSpillRef)
 	}
 }
 

@@ -65,11 +65,11 @@ func TestNormalizeBackfill_UpsertExecError(t *testing.T) {
 
 	rawReq := []byte(`{"model":"gpt-4o"}`)
 	rows := pgxmock.NewRows([]string{
-		"id", "path", "endpoint_type", "adapter_type", "model",
+		"id", "path", "adapter_type", "model",
 		"request_content_type", "response_content_type",
 		"inline_request_body", "inline_response_body",
 	}).AddRow(
-		"evt-err", "/v1/chat/completions", "chat", "openai", "gpt-4o",
+		"evt-err", "/v1/chat/completions", "openai", "gpt-4o",
 		ptrStr("application/json"), ptrStr("application/json"),
 		inlineBodyEnvelope(t, rawReq), nil,
 	)

@@ -47,28 +47,33 @@ type dlqRow struct {
 	PayloadSize   int       `json:"payloadSize"`
 }
 
-// dlqListResponse pairs the row slice with an opaque cursor. The cursor
-// is the dlq_inserted_at timestamp of the last row in the page; clients
-// pass it back as ?cursor= to fetch the next page. Empty cursor means
-// "no more rows" so the UI's pagination control disables the next button.
+// dlqListResponse pairs the page's row slice with the total row count
+// matching the subject filter. Offset-based: clients render a standard
+// page footer (row range, page count, First/Prev/Next/Last) from
+// total + the offset/limit they sent. This matches every other admin
+// list surface (jobs, nodes, audit) so the UI binds the shared
+// ListPagination control rather than a bespoke cursor footer.
 type dlqListResponse struct {
-	Rows       []dlqRow `json:"rows"`
-	NextCursor string   `json:"nextCursor,omitempty"`
+	Rows  []dlqRow `json:"rows"`
+	Total int      `json:"total"`
 }
 
-// ListDLQ handles GET /api/hub/dlq?subject=X&limit=N&cursor=ISO8601.
+// ListDLQ handles GET /api/hub/dlq?subject=X&limit=N&offset=M.
 //
 // Returns rows from traffic_event_dlq ordered by dlq_inserted_at DESC
-// (newest first — matches the "what just broke?" admin workflow). The
-// btree index `traffic_event_dlq_inserted_at_idx` covers this sort so
-// the page LIMIT does not scan the whole table.
+// (newest first — matches the "what just broke?" admin workflow) plus
+// the total count matching the filter. The btree index
+// `traffic_event_dlq_inserted_at_idx` covers the sort.
 //
 //   - subject (optional) filters to one MQ subject (e.g.
 //     "nexus.event.compliance"). Empty matches all subjects.
 //   - limit (optional, default 50, max 200) caps page size.
-//   - cursor (optional) is the dlqInsertedAt ISO8601 timestamp of the
-//     last row in the previous page. The query then selects rows with
-//     dlq_inserted_at < cursor.
+//   - offset (optional, default 0) skips that many rows for the page.
+//
+// Offset pagination (rather than keyset) is fine here: the DLQ is a
+// small, bounded table (dead letters; near-empty in a healthy system),
+// so COUNT(*) and OFFSET stay cheap, and offset gives the operator the
+// same page-number / total-count footer as the rest of the admin UI.
 //
 // Returns 503 service_unavailable when the DLQ pool is not wired (test
 // setups, broken boot).
@@ -89,20 +94,39 @@ func (h *HubAPI) ListDLQ(c echo.Context) error {
 			}
 		}
 	}
-	var cursor time.Time
-	if raw := c.QueryParam("cursor"); raw != "" {
-		t, err := time.Parse(time.RFC3339Nano, raw)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, echo.Map{
-				"error": "invalid_cursor",
-				"hint":  "cursor must be an RFC3339 timestamp from a previous nextCursor",
-			})
+	offset := 0
+	if raw := c.QueryParam("offset"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+			offset = n
 		}
-		cursor = t
 	}
 
-	// Build the query with optional subject + cursor filters. Both are
-	// indexed (msg_id_idx, inserted_at_idx) so combining them stays fast.
+	// The optional subject filter is shared by both the COUNT and the
+	// page query so the footer's total agrees with the rows returned.
+	// subject is indexed (msg_id_idx covers the table) so the filter
+	// stays cheap.
+	where := " WHERE 1=1"
+	args := []any{}
+	n := 1
+	if subject != "" {
+		where += fmt.Sprintf(" AND subject = $%d", n)
+		args = append(args, subject)
+		n++
+	}
+
+	ctx := c.Request().Context()
+
+	// Total matching the filter — drives the offset-pagination footer.
+	var total int
+	if err := h.DLQPool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM traffic_event_dlq`+where, args...,
+	).Scan(&total); err != nil {
+		h.logger().Error("dlq: count query failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{
+			"error": "db_error",
+		})
+	}
+
 	const baseSQL = `
 SELECT
     id::text,
@@ -115,24 +139,14 @@ SELECT
     LENGTH(payload) AS payload_size
 FROM traffic_event_dlq
 `
-	where := " WHERE 1=1"
-	args := []any{}
-	n := 1
-	if subject != "" {
-		where += fmt.Sprintf(" AND subject = $%d", n)
-		args = append(args, subject)
-		n++
-	}
-	if !cursor.IsZero() {
-		where += fmt.Sprintf(" AND dlq_inserted_at < $%d", n)
-		args = append(args, cursor)
-		n++
-	}
-	order := " ORDER BY dlq_inserted_at DESC LIMIT $" + strconv.Itoa(n)
-	args = append(args, limit)
+	pageSQL := baseSQL + where +
+		" ORDER BY dlq_inserted_at DESC LIMIT $" + strconv.Itoa(n) +
+		" OFFSET $" + strconv.Itoa(n+1)
+	// Copy args so appending the page bounds never mutates the slice the
+	// COUNT query already consumed.
+	pageArgs := append(append([]any{}, args...), limit, offset)
 
-	ctx := c.Request().Context()
-	rows, err := h.DLQPool.Query(ctx, baseSQL+where+order, args...)
+	rows, err := h.DLQPool.Query(ctx, pageSQL, pageArgs...)
 	if err != nil {
 		h.logger().Error("dlq: list query failed", "error", err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{
@@ -156,15 +170,7 @@ FROM traffic_event_dlq
 		out = append(out, r)
 	}
 
-	resp := dlqListResponse{Rows: out}
-	if len(out) == limit {
-		// Page is full → caller may want the next page. The cursor is
-		// the inserted-at timestamp of the last row (DESC order, so the
-		// "oldest" row in the current page). RFC3339Nano so sub-second
-		// resolution isn't lost across the round-trip.
-		resp.NextCursor = out[len(out)-1].DLQInsertedAt.UTC().Format(time.RFC3339Nano)
-	}
-	return c.JSON(http.StatusOK, resp)
+	return c.JSON(http.StatusOK, dlqListResponse{Rows: out, Total: total})
 }
 
 // RetryDLQ handles POST /api/hub/dlq/:id/retry.

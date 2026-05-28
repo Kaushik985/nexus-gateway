@@ -21,12 +21,10 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/proxy"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/relay"
 	agentTLS "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/network/tls"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/api"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/catrust"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/paths"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/traffic"
 )
 
 const defaultWinAddr = "127.0.0.1:19080"
@@ -69,7 +67,6 @@ type WindowsPlatform struct {
 	sem         chan struct{} // bounds concurrent connection handlers
 	tlsEngine   *agentTLS.Engine
 	addr        string
-	relayClient *relay.Client
 
 	// NexusWFP client when the kernel driver loaded successfully;
 	// nil in SystemProxyFallback mode. handleConn branches on this
@@ -106,7 +103,7 @@ func (p *WindowsPlatform) InterceptionMode() api.InterceptionMode {
 }
 
 // NewPlatform creates a new Windows platform shim.
-func NewPlatform(addr string, relayClient *relay.Client) api.Platform {
+func NewPlatform(addr string) api.Platform {
 	if addr == "" {
 		addr = defaultWinAddr
 	}
@@ -114,7 +111,6 @@ func NewPlatform(addr string, relayClient *relay.Client) api.Platform {
 		done:        make(chan struct{}),
 		sem:         make(chan struct{}, maxConcurrentConns),
 		addr:        addr,
-		relayClient: relayClient,
 	}
 }
 
@@ -358,16 +354,6 @@ func (p *WindowsPlatform) handleConn(ctx context.Context, clientConn net.Conn) {
 
 	var bytesIn, bytesOut int64
 	bumpStatus := ""
-	var hookDecision, hookReason, hookReasonCode string
-	var complianceTags []string
-	var detectedProvider, detectedModel, apiKeyClass, apiKeyFingerprint string
-	var promptTokens, completionTokens *int
-	var usageExtractionStatus string
-	var payloadRequest, payloadResponse []byte
-	// Per-flow upstream phase sink (mirrors linux.go). Populated by the
-	// relay's tracing transport when MITMRelay runs; nil for passthrough /
-	// inspect-fallback paths.
-	var phaseSink *traffic.PhaseSink
 	var interceptDoneAt time.Time
 	// bumpedViaTLSBump is set when the inspect path ran through
 	// proxy.BumpFlow (shared/tlsbump), which emits its own per-HTTP-request
@@ -473,77 +459,23 @@ func (p *WindowsPlatform) handleConn(ctx context.Context, clientConn net.Conn) {
 	// emitted per-HTTP-request rows (mirrors the macOS NE bridge).
 	if auditor, ok := p.handler.(api.FlowAuditor); ok && !bumpedViaTLSBump {
 		auditor.OnFlowComplete(api.FlowResult{
-			FlowID:                intercepted.FlowID,
-			SrcIP:                 intercepted.SrcIP,
-			DstHost:               dstHost,
-			DstPort:               dstPort,
-			Process:               procMeta,
-			Decision:              decision,
-			BytesIn:               bytesIn,
-			BytesOut:              bytesOut,
-			DurationMs:            int(time.Since(startedAt).Milliseconds()),
-			BumpStatus:            bumpStatus,
-			StartedAt:             startedAt,
-			HookDecision:          hookDecision,
-			HookReason:            hookReason,
-			HookReasonCode:        hookReasonCode,
-			ComplianceTags:        complianceTags,
-			Provider:              detectedProvider,
-			Model:                 detectedModel,
-			ApiKeyClass:           apiKeyClass,
-			ApiKeyFingerprint:     apiKeyFingerprint,
-			PromptTokens:          promptTokens,
-			CompletionTokens:      completionTokens,
-			UsageExtractionStatus: usageExtractionStatus,
-			PayloadRequest:        payloadRequest,
-			PayloadResponse:       payloadResponse,
-			UpstreamTtfbMs:   phaseSinkTtfbWindows(phaseSink),
-			UpstreamTotalMs:  phaseSinkTotalWindows(phaseSink),
-			ResponseHooksMs:  phaseSinkBreakdownIntWindows(phaseSink, "response_hooks_ms"),
-			LatencyBreakdown: mergeInterceptMsWindows(phaseSinkBreakdownAllWindows(phaseSink), startedAt, interceptDoneAt),
+			FlowID:          intercepted.FlowID,
+			SrcIP:           intercepted.SrcIP,
+			DstHost:         dstHost,
+			DstPort:         dstPort,
+			Process:         procMeta,
+			Decision:        decision,
+			BytesIn:         bytesIn,
+			BytesOut:        bytesOut,
+			DurationMs:      int(time.Since(startedAt).Milliseconds()),
+			BumpStatus:      bumpStatus,
+			StartedAt:       startedAt,
+			// A Windows raw relay has no distinct upstream call to time, so
+			// UpstreamTtfbMs/TotalMs stay nil; LatencyBreakdown carries the
+			// agent's own intercept overhead (intercept_ms).
+			LatencyBreakdown: mergeInterceptMsWindows(nil, startedAt, interceptDoneAt),
 		})
 	}
-}
-
-// phaseSinkBreakdownIntWindows mirrors the linux.go helper to keep both
-// platforms' OnFlowComplete builders symmetric.
-func phaseSinkBreakdownIntWindows(ps *traffic.PhaseSink, key string) *int {
-	if ps == nil {
-		return nil
-	}
-	m := ps.Breakdown()
-	if m == nil {
-		return nil
-	}
-	v, ok := m[key]
-	if !ok {
-		return nil
-	}
-	return &v
-}
-
-func phaseSinkBreakdownAllWindows(ps *traffic.PhaseSink) map[string]int {
-	if ps == nil {
-		return nil
-	}
-	return ps.Breakdown()
-}
-
-// phaseSinkTtfbWindows mirrors the linux.go helper to keep both platforms'
-// OnFlowComplete builders single-expression per field with nil-receiver
-// guard.
-func phaseSinkTtfbWindows(ps *traffic.PhaseSink) *int {
-	if ps == nil {
-		return nil
-	}
-	return ps.TtfbMs()
-}
-
-func phaseSinkTotalWindows(ps *traffic.PhaseSink) *int {
-	if ps == nil {
-		return nil
-	}
-	return ps.TotalMs()
 }
 
 // mergeInterceptMsWindows stamps intercept_ms onto the breakdown map. See

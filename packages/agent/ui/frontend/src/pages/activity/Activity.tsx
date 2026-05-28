@@ -70,8 +70,8 @@ export function Activity() {
               {offset + 1}–{Math.min(offset + events.length, total)} of {total}
             </span>
             <div className={page.row}>
-              <Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>Previous</Button>
-              <Button variant="ghost" disabled={!hasMore} onClick={() => setOffset(offset + PAGE_SIZE)}>Next</Button>
+              <Button variant="ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>{t('dashboard:activity.prevPage')}</Button>
+              <Button variant="ghost" disabled={!hasMore} onClick={() => setOffset(offset + PAGE_SIZE)}>{t('dashboard:activity.nextPage')}</Button>
             </div>
           </div>
         </>

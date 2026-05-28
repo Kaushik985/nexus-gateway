@@ -93,7 +93,7 @@ func MountCoreRoutes(mux *http.ServeMux, deps RouteDeps) http.Handler {
 	hookcore.RegisterRegexCacheMetrics(prometheus.DefaultRegisterer)
 	mux.Handle("GET /metrics", promhttp.Handler())
 
-	trafficReg := traffic.NewAdapterRegistry("nexus_ai_gateway")
+	trafficReg := traffic.NewAdapterRegistry("nexus")
 	adapters.RegisterBuiltins(trafficReg)
 	trafficReg.Freeze()
 
@@ -145,11 +145,10 @@ func MountCoreRoutes(mux *http.ServeMux, deps RouteDeps) http.Handler {
 		LatencyDetail:          deps.Config.Observability.LatencyDetail,
 		Logger:                 deps.Logger,
 		// L2 semantic cache fields are nil-safe; the proxy skips L2 gracefully
-		// when SemanticReader/SemanticWriter/BudgetTracker are nil.
+		// when SemanticReader/SemanticWriter are nil.
 		FreshnessDetector:   deps.Semantic.Detector,
 		SemanticReader:      deps.Semantic.Reader,
 		SemanticWriter:      deps.Semantic.Writer,
-		BudgetTracker:       deps.Semantic.BudgetTracker,
 		SemanticConfigCache: deps.Semantic.ConfigCache,
 	}
 
@@ -254,7 +253,6 @@ func MountCoreRoutes(mux *http.ServeMux, deps RouteDeps) http.Handler {
 		},
 		5*time.Second, 30*time.Second, "AI_GATEWAY", deps.Logger,
 	)(h)
-	h = middleware.RequestID(h)
 	h = middleware.Logger(deps.Logger)(h)
 	h = middleware.Recovery(deps.Logger)(h)
 	if deps.Config.CORS.Enabled {
@@ -279,5 +277,10 @@ func MountCoreRoutes(mux *http.ServeMux, deps RouteDeps) http.Handler {
 		slog.Info("CORS enabled", "origins", deps.Config.CORS.AllowedOrigins)
 	}
 	h = telemetry.HTTPTrace("nexus-ai-gateway")(h)
+	// RequestID wraps outside HTTPTrace so the X-Nexus-Request-Id is on the
+	// request context before the server span is created: the tracer's
+	// IDGenerator derives the span's trace id from it, keeping the OTel trace
+	// id and the audit trace_id one and the same value.
+	h = middleware.RequestID(h)
 	return h
 }

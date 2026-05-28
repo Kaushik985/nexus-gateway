@@ -66,6 +66,18 @@ func (n *OpenAIResponsesNormalizer) Normalize(_ context.Context, raw []byte, met
 	if len(raw) == 0 {
 		return zeroPayloadForKind(meta), fmt.Errorf("openai-responses: empty body: %w", core.ErrUnsupported)
 	}
+	// Streaming /v1/responses egress is captured as the raw Responses-API SSE
+	// event stream the client received (`event: response.output_text.delta` …
+	// terminated by `response.completed` carrying the full response object).
+	// Fold it into the assembled non-streaming response object BEFORE both the
+	// decode below AND the Tier-1 confidence score, so a streamed row
+	// normalizes identically to a non-streamed one. openai_chat folds its own
+	// SSE the same way — without this the JSON decode trips on the leading
+	// `event:` (`invalid character 'e'`) and the row falls through to the chat
+	// normalizer with empty content + usage.
+	if meta.Direction == core.DirectionResponse && (meta.Stream || looksLikeResponsesEventStream(raw)) {
+		raw = foldResponsesSSE(raw)
+	}
 	var p core.NormalizedPayload
 	var err error
 	switch meta.Direction {
@@ -422,4 +434,76 @@ func (n *OpenAIResponsesNormalizer) normalizeResponse(raw []byte, meta core.Meta
 		out.Usage = u
 	}
 	return out, nil
+}
+
+// looksLikeResponsesEventStream reports whether the captured bytes are an
+// OpenAI Responses-API SSE stream. Unlike Chat (which leads with `data:`),
+// the Responses stream leads with an `event: response.*` framing line, so both
+// prefixes are accepted. Used as a fallback when the audit envelope lost the
+// text/event-stream Content-Type.
+func looksLikeResponsesEventStream(raw []byte) bool {
+	probe := raw
+	if len(probe) > 64 {
+		probe = probe[:64]
+	}
+	s := strings.TrimLeft(string(probe), " \r\n\t")
+	return strings.HasPrefix(s, "event:") || strings.HasPrefix(s, "data:")
+}
+
+// foldResponsesSSE collapses a Responses-API SSE event stream into the final
+// assembled response JSON so normalizeResponse decodes it like a non-streaming
+// body. The terminal event (response.completed / .incomplete / .failed) carries
+// the complete response object (output[], usage, status, model) in its
+// `response` field — that is authoritative and present on every complete
+// capture. When the capture is truncated before the terminal event, the
+// accumulated response.output_text.delta fragments are synthesised into a
+// minimal response object so the assistant text is never lost (usage is absent
+// in that fallback path).
+func foldResponsesSSE(raw []byte) []byte {
+	var (
+		terminal json.RawMessage
+		deltas   strings.Builder
+	)
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var ev struct {
+			Type     string          `json:"type"`
+			Delta    string          `json:"delta"`
+			Response json.RawMessage `json:"response"`
+		}
+		if json.Unmarshal([]byte(payload), &ev) != nil {
+			continue
+		}
+		switch ev.Type {
+		case "response.completed", "response.incomplete", "response.failed":
+			if len(ev.Response) > 0 {
+				terminal = ev.Response
+			}
+		case "response.output_text.delta":
+			deltas.WriteString(ev.Delta)
+		}
+	}
+	if len(terminal) > 0 {
+		return terminal
+	}
+	// Truncated capture: synthesise from the accumulated output_text deltas.
+	synth, _ := json.Marshal(map[string]any{
+		"status": "completed",
+		"output": []any{map[string]any{
+			"type": "message",
+			"role": "assistant",
+			"content": []any{map[string]any{
+				"type": "output_text",
+				"text": deltas.String(),
+			}},
+		}},
+	})
+	return synth
 }

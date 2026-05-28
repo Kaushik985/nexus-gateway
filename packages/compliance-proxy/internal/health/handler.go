@@ -51,7 +51,7 @@ type ShadowProbe interface {
 // probe is optional. When non-nil, /readyz additionally requires the shadow
 // to have reported at least once AND age <= StaleAfter; a non-nil registerer
 // also registers the Prometheus gauge
-// compliance_proxy_shadow_last_report_age_seconds, which is sampled from
+// nexus_shadow_last_report_age_seconds, which is sampled from
 // the probe on every scrape.
 //
 // Passing nil for probe reduces /readyz to the same liveness check as
@@ -126,7 +126,7 @@ func NewHandler(readiness *atomic.Bool, probe ShadowProbe, reg prometheus.Regist
 	if probe != nil && reg != nil {
 		gauge := prometheus.NewGaugeFunc(
 			prometheus.GaugeOpts{
-				Namespace: "compliance_proxy",
+				Namespace: "nexus",
 				Name:      "shadow_last_report_age_seconds",
 				Help:      "Seconds since the last successful shadow_report. 0 when no report has been sent yet.",
 			},

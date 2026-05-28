@@ -149,7 +149,7 @@ func echoCtx(req *http.Request, rec *httptest.ResponseRecorder, userID string) (
 }
 
 // anonEchoCtx is echoCtx without an attached admin auth — exercises the
-// nil-auth branches of actorFromContext / isSuperAdmin.
+// nil-auth branch of actorFromContext.
 func anonEchoCtx(req *http.Request, rec *httptest.ResponseRecorder) echo.Context {
 	e := echo.New()
 	return e.NewContext(req, rec)
@@ -265,19 +265,6 @@ func makeCredentialRow(now time.Time) []any {
 // append.
 func makeCredentialEncryptedRow(now time.Time, keyID string) []any {
 	return append(makeCredentialRow(now), "enc-key-blob", "enc-iv", "enc-tag", keyID)
-}
-
-// makeProviderInsertWithChildrenCredRow returns the 14-column row shape that
-// CreateProviderWithChildren scans back for the inline credential — note
-// this is a DIFFERENT projection than credMetadataColumns (only 14 cols).
-func makeProviderInsertWithChildrenCredRow(now time.Time) []any {
-	rotState := "none"
-	failReason := "n/a"
-	return []any{
-		"cred-1", "test-cred", "prov-1", true, &rotState,
-		&now, &now, &now, &now,
-		&failReason, 0, &now, now, now,
-	}
 }
 
 // newTestVault returns a Vault with a deterministic 32-byte key for tests

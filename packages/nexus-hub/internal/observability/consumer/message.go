@@ -11,6 +11,12 @@ import (
 // events on MQ. Uses pointer types for nullable DB columns — nil values
 // become SQL NULL. All three producers (ai-gateway, compliance-proxy, agent
 // via Hub) serialize events into this struct.
+//
+// MUST stay JSON-tag-aligned with the producer/wire mq.TrafficEventMessage
+// (packages/shared/transport/mq/messages.go). The two are separate structs by
+// design (pointer-for-NULL here vs value+omitempty there), but a tag present
+// on the producer and missing here is silently dropped on unmarshal. Enforced
+// by TestTrafficEventMessage_NoStructDrift.
 type TrafficEventMessage struct {
 	ID                string    `json:"id"`
 	Source            string    `json:"source"`
@@ -22,6 +28,11 @@ type TrafficEventMessage struct {
 	TargetHost *string `json:"targetHost,omitempty"`
 	Method     *string `json:"method,omitempty"`
 	Path       *string `json:"path,omitempty"`
+	// EndpointType is the canonical typology.EndpointKind ("chat",
+	// "embeddings", ...) stamped by the producer (ai-gateway) onto the wire.
+	// Empty for non-classified forwards (compliance-proxy / agent). Persisted
+	// verbatim onto traffic_event.endpoint_type by the db-writer.
+	EndpointType string `json:"endpointType,omitempty"`
 	// TargetMethod / TargetPath are the HTTP method and path actually sent to
 	// upstream. Differs from Method/Path on AI gateway cross-format routes;
 	// same as Method/Path for compliance-proxy and agent transparent traffic.

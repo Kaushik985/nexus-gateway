@@ -1,7 +1,6 @@
 package wiring
 
 import (
-	"sync/atomic"
 	"testing"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/compliance-proxy/cmd/compliance-proxy/config"
@@ -11,7 +10,6 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/pipeline"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/domain"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/traffic"
 	streampolicy "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming/policy"
 )
 
@@ -21,7 +19,6 @@ func TestInitProxyServer_ComplianceEnabledWithResolver(t *testing.T) {
 	d := buildMinimalListenerDeps(t)
 	d.Cfg.Compliance.Enabled = true
 	d.ComplianceResolver = pipeline.NewPolicyResolver(nil, builtins.Registry, testLogger())
-	d.DomainSnapshot = &atomic.Pointer[traffic.DomainSnapshot]{}
 	d.AuditEmitter = nil
 	d.StreamingPolicyStore = streampolicy.NewStore(streampolicy.DefaultPolicy())
 
@@ -58,10 +55,8 @@ func TestInitProxyServerFull_ComplianceEnabledPath(t *testing.T) {
 	}
 	certRes := buildCertResult(t)
 	resolver := pipeline.NewPolicyResolver(nil, builtins.Registry, testLogger())
-	domainSnap := &atomic.Pointer[traffic.DomainSnapshot]{}
 	compRes := ComplianceResult{
-		Resolver:       resolver,
-		DomainSnapshot: domainSnap,
+		Resolver: resolver,
 	}
 
 	cfg := &config.Config{}

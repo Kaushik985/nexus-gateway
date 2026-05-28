@@ -361,27 +361,3 @@ func (r *PolicyResolver) HasHooks(stage string) bool {
 	}
 	return false
 }
-
-// stripAIGuardForAgent returns cfg with the "ai_guard" key removed when the
-// pipeline is being built for ingress=AGENT. For other ingresses the input
-// map is returned unchanged. The helper does not mutate its input.
-//
-// On agent ingress, hooks that would normally escalate to AI Guard silently
-// degrade to rule-only evaluation. A warning banner on the Hooks admin page
-// communicates this limitation to operators.
-func stripAIGuardForAgent(cfg map[string]any, ingress string) map[string]any {
-	if ingress != "AGENT" {
-		return cfg
-	}
-	if _, has := cfg["ai_guard"]; !has {
-		return cfg
-	}
-	out := make(map[string]any, len(cfg))
-	for k, v := range cfg {
-		if k == "ai_guard" {
-			continue
-		}
-		out[k] = v
-	}
-	return out
-}

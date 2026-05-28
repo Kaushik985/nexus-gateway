@@ -16,7 +16,11 @@
 package localfs
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -52,6 +56,13 @@ type Options struct {
 	PerObjectCap int64         // 0 ⇒ DefaultPerObjectCapBytes
 	TotalSizeCap int64         // 0 ⇒ DefaultTotalSizeCapBytes
 	Retention    time.Duration // 0 ⇒ DefaultRetention
+	// EncryptionKey, when non-nil, enables at-rest AES-256-GCM encryption of
+	// every spilled object (32 bytes, mandatory length when set). Callers that
+	// hold sensitive plaintext (the agent spills decrypted request/response
+	// bodies) MUST set it so a lost disk / backup never exposes the bodies —
+	// matching the SQLCipher protection on the inline-body path. Nil = plaintext
+	// on disk (acceptable only for non-sensitive / dev-fallback stores).
+	EncryptionKey []byte
 }
 
 // Store implements `spillstore.SpillStore` rooted at a local directory.
@@ -60,6 +71,12 @@ type Store struct {
 	perObjectCap int64
 	totalCap     int64
 	retention    time.Duration
+	// aead, when non-nil, seals every object at rest with AES-256-GCM. Built
+	// once at New from the 32-byte EncryptionKey. SpillRef.Size / SHA256 always
+	// describe the PLAINTEXT so Hub + the pre-sign uploader (which hash the
+	// plaintext they PUT) stay consistent; the on-disk file is
+	// [nonce][GCM ciphertext+tag].
+	aead cipher.AEAD
 
 	// sweepMu serializes Sweep with itself; concurrent Put/Get/Delete
 	// continue to execute under their own per-file mutex on the OS.
@@ -84,12 +101,55 @@ func New(opts Options) (*Store, error) {
 	if opts.Retention <= 0 {
 		opts.Retention = DefaultRetention
 	}
+	var aead cipher.AEAD
+	if len(opts.EncryptionKey) > 0 {
+		if len(opts.EncryptionKey) != 32 {
+			return nil, fmt.Errorf("localfs: EncryptionKey must be 32 bytes (AES-256), got %d", len(opts.EncryptionKey))
+		}
+		// With the 32-byte length validated above, aes.NewCipher and
+		// cipher.NewGCM are infallible (NewCipher only errors on a bad key
+		// length; GCM supports every AES block), so the errors are dropped.
+		block, _ := aes.NewCipher(opts.EncryptionKey)
+		aead, _ = cipher.NewGCM(block)
+	}
 	return &Store{
 		root:         opts.Root,
 		perObjectCap: opts.PerObjectCap,
 		totalCap:     opts.TotalSizeCap,
 		retention:    opts.Retention,
+		aead:         aead,
 	}, nil
+}
+
+// seal AES-256-GCM-seals plaintext with a fresh random nonce prepended.
+// crypto/rand.Read never returns an error on supported platforms (it panics
+// internally if the OS RNG is unavailable), so seal is infallible here.
+func (s *Store) seal(plaintext []byte) []byte {
+	nonce := make([]byte, s.aead.NonceSize())
+	_, _ = rand.Read(nonce)
+	return s.aead.Seal(nonce, nonce, plaintext, nil)
+}
+
+// open reverses seal: splits the prepended nonce and GCM-opens.
+func (s *Store) open(sealed []byte) ([]byte, error) {
+	ns := s.aead.NonceSize()
+	if len(sealed) < ns {
+		return nil, errors.New("localfs: sealed object shorter than nonce")
+	}
+	return s.aead.Open(nil, sealed[:ns], sealed[ns:], nil)
+}
+
+// readCapped reads up to cap bytes and reports whether the source had more
+// (truncation). Used by the encrypted Put path, which must buffer the whole
+// plaintext to seal it in one shot.
+func readCapped(r io.Reader, cap int64) ([]byte, bool, error) {
+	buf, err := io.ReadAll(io.LimitReader(r, cap))
+	if err != nil {
+		return nil, false, err
+	}
+	var probe [1]byte
+	n, _ := io.ReadFull(r, probe[:])
+	return buf, n > 0, nil
 }
 
 // Backend implements SpillStore.
@@ -144,21 +204,46 @@ func (s *Store) Put(ctx context.Context, content io.Reader, size int64, opts spi
 		_ = os.Remove(tmpPath) // no-op if rename succeeded
 	}()
 
-	hasher := sha256.New()
-	limited := io.LimitReader(content, s.perObjectCap)
-	tee := io.TeeReader(limited, hasher)
-	written, err := io.Copy(tmp, tee)
-	if err != nil {
-		_ = tmp.Close()
-		return audit.SpillRef{}, fmt.Errorf("localfs.Put: copy: %w", err)
-	}
-	// Detect truncation by peeking one byte past the cap. If the upstream
-	// reader still has data we know we clipped at perObjectCap and stamp
-	// Truncated=true so the audit row reflects it.
+	var written int64
+	var sum []byte
 	truncated := false
-	var probe [1]byte
-	if n, _ := io.ReadFull(content, probe[:]); n > 0 {
-		truncated = true
+	if s.aead != nil {
+		// Encrypted path: the whole plaintext must be buffered to seal it in
+		// one GCM shot. SHA256 + Size describe the PLAINTEXT (Hub/uploader
+		// hash the plaintext they PUT); the on-disk file is nonce+ciphertext.
+		plain, trunc, rerr := readCapped(content, s.perObjectCap)
+		if rerr != nil {
+			_ = tmp.Close()
+			return audit.SpillRef{}, fmt.Errorf("localfs.Put: read: %w", rerr)
+		}
+		truncated = trunc
+		written = int64(len(plain))
+		h := sha256.Sum256(plain)
+		sum = h[:]
+		sealed := s.seal(plain)
+		if _, werr := tmp.Write(sealed); werr != nil {
+			_ = tmp.Close()
+			return audit.SpillRef{}, fmt.Errorf("localfs.Put: write: %w", werr)
+		}
+	} else {
+		// Plaintext path (no key): stream straight to disk in constant memory.
+		hasher := sha256.New()
+		limited := io.LimitReader(content, s.perObjectCap)
+		tee := io.TeeReader(limited, hasher)
+		w, cerr := io.Copy(tmp, tee)
+		if cerr != nil {
+			_ = tmp.Close()
+			return audit.SpillRef{}, fmt.Errorf("localfs.Put: copy: %w", cerr)
+		}
+		written = w
+		// Detect truncation by peeking one byte past the cap. If the upstream
+		// reader still has data we know we clipped at perObjectCap and stamp
+		// Truncated=true so the audit row reflects it.
+		var probe [1]byte
+		if n, _ := io.ReadFull(content, probe[:]); n > 0 {
+			truncated = true
+		}
+		sum = hasher.Sum(nil)
 	}
 	if err := tmp.Close(); err != nil {
 		return audit.SpillRef{}, fmt.Errorf("localfs.Put: close tmp: %w", err)
@@ -171,7 +256,7 @@ func (s *Store) Put(ctx context.Context, content io.Reader, size int64, opts spi
 		Backend:     BackendName,
 		Key:         key,
 		Size:        written,
-		SHA256:      hex.EncodeToString(hasher.Sum(nil)),
+		SHA256:      hex.EncodeToString(sum),
 		ContentType: opts.ContentType,
 		Truncated:   truncated,
 	}, nil
@@ -190,7 +275,22 @@ func (s *Store) Get(ctx context.Context, ref audit.SpillRef) (io.ReadCloser, err
 		}
 		return nil, fmt.Errorf("localfs.Get: %w", err)
 	}
-	return f, nil
+	if s.aead == nil {
+		return f, nil // plaintext: stream straight from disk
+	}
+	// Encrypted: read the sealed file, GCM-open, hand back the plaintext.
+	// (The drain reads the whole body into memory for the pre-sign upload
+	// regardless, so buffering here does not change the memory profile.)
+	sealed, rerr := io.ReadAll(f)
+	_ = f.Close()
+	if rerr != nil {
+		return nil, fmt.Errorf("localfs.Get: read: %w", rerr)
+	}
+	plain, oerr := s.open(sealed)
+	if oerr != nil {
+		return nil, fmt.Errorf("localfs.Get: decrypt: %w", oerr)
+	}
+	return io.NopCloser(bytes.NewReader(plain)), nil
 }
 
 // Delete implements SpillStore.

@@ -193,6 +193,27 @@ type Queryer interface {
 // INSERT as the columns, and read-only access policies prevent post-insert
 // column updates in production.
 func VerifyChain(ctx context.Context, q Queryer) (badSeq int64, err error) {
+	return VerifyChainAcked(ctx, q, nil)
+}
+
+// VerifyChainAcked is VerifyChain with an explicit set of acknowledged orphan
+// sequence numbers.
+//
+// An acknowledged orphan is a row that was investigated and recorded
+// out-of-band (Hub system_metadata key audit_chain.acked_orphans) as a benign,
+// non-tamper discontinuity — canonically an audit row that a pre-fix background
+// job inserted WITHOUT going through NextHash, leaving previousHash /
+// integrityHash / hashInput empty. For such a seq the walk does NOT report a
+// break: it adopts the row's stored integrityHash as the running head
+// (normalised — empty/NULL becomes a genesis head so the next correctly-chained
+// row re-anchors), then keeps walking.
+//
+// Every row whose seq is NOT in ackedOrphans is still fully linkage- and
+// integrity-checked, so tampering before AND after the orphan is still caught.
+// This is a targeted, audited exception — never a relaxation of the chain rule,
+// and never automatic: only sequence numbers an operator explicitly recorded
+// reach the skip branch. A nil/empty set makes this identical to VerifyChain.
+func VerifyChainAcked(ctx context.Context, q Queryer, ackedOrphans map[int64]struct{}) (badSeq int64, err error) {
 	rows, err := q.Query(ctx, `
         SELECT "sequenceNumber", "previousHash", "integrityHash", "hashInput"
           FROM "AdminAuditLog"
@@ -213,6 +234,14 @@ func VerifyChain(ctx context.Context, q Queryer) (badSeq int64, err error) {
 		)
 		if err := rows.Scan(&seq, &storedPrev, &storedInteg, &hashInput); err != nil {
 			return 0, fmt.Errorf("scan row: %w", err)
+		}
+
+		if _, acked := ackedOrphans[seq]; acked {
+			// Acknowledged benign orphan: do not validate it; adopt its stored
+			// integrityHash (empty/NULL → genesis) as the running head so the
+			// next row re-anchors and the rest of the chain stays verified.
+			prevHash = normalizeHead(storedInteg)
+			continue
 		}
 
 		// previousHash linkage: must equal the running chain head (NULL on
@@ -240,6 +269,17 @@ func VerifyChain(ctx context.Context, q Queryer) (badSeq int64, err error) {
 		return 0, fmt.Errorf("iterate chain: %w", err)
 	}
 	return 0, nil
+}
+
+// normalizeHead maps an empty or NULL stored integrityHash to nil so the row
+// after an acknowledged orphan is treated as a fresh genesis (NULL running
+// head). A non-empty hash is adopted verbatim, so an acknowledged orphan that
+// DID chain its successor still links correctly.
+func normalizeHead(h *string) *string {
+	if h == nil || *h == "" {
+		return nil
+	}
+	return h
 }
 
 // canonicalizePayload marshals p to a sorted-key JSON object so the on-the-

@@ -423,6 +423,7 @@ func trafficRowsTwo() *pgxmock.Rows {
 	reqCode := "rate_limited"
 	details := json.RawMessage(`{"model":"gpt-4o"}`)
 	tags := []string{"pii"}
+	trace := "req-abc123"
 
 	rows := pgxmock.NewRows([]string{
 		"id", "source", "timestamp",
@@ -430,40 +431,41 @@ func trafficRowsTwo() *pgxmock.Rows {
 		"entityId", "entityType", "orgId",
 		"reqDecision", "reqReason", "reqCode",
 		"respDecision", "respReason", "respCode",
-		"complianceTags", "details",
+		"complianceTags", "details", "traceId",
 	})
-	// Row 1 — allowed (all hook fields NULL — back-compat alias copies nothing).
+	// Row 1 — allowed (all hook fields NULL — back-compat alias copies nothing);
+	// trace_id present so the forwarded event carries the correlation key.
 	rows.AddRow(
 		"evt-1", "ai-gateway", time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC),
 		&srcIP, &host, &method, &path, &status, &latency,
 		&entity, &entityType, &org,
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
-		tags, &details,
+		tags, &details, &trace,
 	)
-	// Row 2 — blocked at request stage; targetHost / details NULL so the
-	// nil-omit branches fire.
+	// Row 2 — blocked at request stage; targetHost / details / trace_id NULL so
+	// the nil-omit branches fire.
 	rows.AddRow(
 		"evt-2", "ai-gateway", time.Date(2026, 5, 17, 10, 0, 1, 0, time.UTC),
 		&srcIP, (*string)(nil), &method, &path, &status, &latency,
 		&entity, &entityType, &org,
 		&reqDecision, &reqReason, &reqCode,
 		(*string)(nil), (*string)(nil), (*string)(nil),
-		[]string(nil), (*json.RawMessage)(nil),
+		[]string(nil), (*json.RawMessage)(nil), (*string)(nil),
 	)
 	return rows
 }
 
-// TestQueryEvents_SecurityMode_Default builds the security-mode SQL (the
-// default trafficMode == "") and decodes a two-row result.
-func TestQueryEvents_SecurityMode_Default(t *testing.T) {
+// TestQueryEvents_SecurityMode builds the security-mode SQL and decodes a
+// two-row result.
+func TestQueryEvents_SecurityMode(t *testing.T) {
 	b, mock := newBridgeForTest(t, nil, BridgeConfig{})
 	since := time.Date(2026, 5, 17, 9, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(`request_hook_decision = 'block'`).
 		WithArgs(since, 50).
 		WillReturnRows(trafficRowsTwo())
 
-	events, lastTS, err := b.queryEvents(context.Background(), since, 50, "")
+	events, lastTS, err := b.queryEvents(context.Background(), since, 50)
 	if err != nil {
 		t.Fatalf("queryEvents: %v", err)
 	}
@@ -496,24 +498,12 @@ func TestQueryEvents_SecurityMode_Default(t *testing.T) {
 	if _, ok := events[0]["details"]; !ok {
 		t.Errorf("row 1 should have parsed details")
 	}
-}
-
-// TestQueryEvents_AllMode builds the "all" SQL (every row, no security
-// filter).
-func TestQueryEvents_AllMode(t *testing.T) {
-	b, mock := newBridgeForTest(t, nil, BridgeConfig{})
-	since := time.Date(2026, 5, 17, 9, 0, 0, 0, time.UTC)
-	// "all" mode SQL — the security WHERE clause is absent.
-	mock.ExpectQuery(`FROM traffic_event\s+WHERE timestamp > \$1\s+ORDER BY timestamp ASC`).
-		WithArgs(since, 50).
-		WillReturnRows(trafficRowsTwo())
-
-	events, _, err := b.queryEvents(context.Background(), since, 50, "all")
-	if err != nil {
-		t.Fatalf("queryEvents(all): %v", err)
+	// row 1 carries the trace_id correlation key; row 2's was NULL so it is omitted.
+	if events[0]["traceId"] != "req-abc123" {
+		t.Errorf("row 1 traceId = %v, want 'req-abc123'", events[0]["traceId"])
 	}
-	if len(events) != 2 {
-		t.Errorf("expected 2 events, got %d", len(events))
+	if _, ok := events[1]["traceId"]; ok {
+		t.Errorf("row 2 should omit traceId (NULL pointer)")
 	}
 }
 
@@ -538,20 +528,20 @@ func TestQueryEvents_ResponseHookOverridesRequest(t *testing.T) {
 		"entityId", "entityType", "orgId",
 		"reqDecision", "reqReason", "reqCode",
 		"respDecision", "respReason", "respCode",
-		"complianceTags", "details",
+		"complianceTags", "details", "traceId",
 	}).AddRow(
 		"evt-3", "ai-gateway", time.Now().UTC(),
 		&srcIP, (*string)(nil), &method, &path, (*int)(nil), (*int)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		&reqDecision, &reqReason, &reqCode,
 		&respDecision, &respReason, &respCode,
-		[]string(nil), (*json.RawMessage)(nil),
+		[]string(nil), (*json.RawMessage)(nil), (*string)(nil),
 	)
 	mock.ExpectQuery(`request_hook_decision = 'block'`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
 
-	events, _, err := b.queryEvents(context.Background(), time.Now(), 10, "")
+	events, _, err := b.queryEvents(context.Background(), time.Now(), 10)
 	if err != nil {
 		t.Fatalf("queryEvents: %v", err)
 	}
@@ -582,20 +572,20 @@ func TestQueryEvents_InvalidDetailsJSON(t *testing.T) {
 		"entityId", "entityType", "orgId",
 		"reqDecision", "reqReason", "reqCode",
 		"respDecision", "respReason", "respCode",
-		"complianceTags", "details",
+		"complianceTags", "details", "traceId",
 	}).AddRow(
 		"evt-bad", "ai-gateway", time.Now().UTC(),
 		&srcIP, (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
-		[]string(nil), &badDetails,
+		[]string(nil), &badDetails, (*string)(nil),
 	)
 	mock.ExpectQuery(`request_hook_decision = 'block'`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
 
-	events, _, err := b.queryEvents(context.Background(), time.Now(), 10, "")
+	events, _, err := b.queryEvents(context.Background(), time.Now(), 10)
 	if err != nil {
 		t.Fatalf("queryEvents: %v", err)
 	}
@@ -611,7 +601,7 @@ func TestQueryEvents_QueryError_Wrapped(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnError(errors.New("relation does not exist"))
 
-	_, _, err := b.queryEvents(context.Background(), time.Now(), 10, "")
+	_, _, err := b.queryEvents(context.Background(), time.Now(), 10)
 	if err == nil || !strings.Contains(err.Error(), "query traffic_event") {
 		t.Errorf("expected wrapped query err, got: %v", err)
 	}
@@ -621,13 +611,13 @@ func TestQueryEvents_QueryError_Wrapped(t *testing.T) {
 // supplying a row whose column count doesn't match the target tuple.
 func TestQueryEvents_ScanError_Wrapped(t *testing.T) {
 	b, mock := newBridgeForTest(t, nil, BridgeConfig{})
-	// Only 2 columns when the bridge expects 20 — scan must fail.
+	// Only 2 columns when the bridge expects 21 — scan must fail.
 	rows := pgxmock.NewRows([]string{"id", "source"}).AddRow("evt", "src")
 	mock.ExpectQuery(`FROM traffic_event`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
 
-	_, _, err := b.queryEvents(context.Background(), time.Now(), 10, "")
+	_, _, err := b.queryEvents(context.Background(), time.Now(), 10)
 	if err == nil || !strings.Contains(err.Error(), "scan traffic_event") {
 		t.Errorf("expected wrapped scan err, got: %v", err)
 	}
@@ -645,20 +635,20 @@ func TestQueryEvents_RowsErr_Wrapped(t *testing.T) {
 		"entityId", "entityType", "orgId",
 		"reqDecision", "reqReason", "reqCode",
 		"respDecision", "respReason", "respCode",
-		"complianceTags", "details",
+		"complianceTags", "details", "traceId",
 	}).AddRow(
 		"evt-x", "ai-gateway", time.Now().UTC(),
 		&srcIP, (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
-		[]string(nil), (*json.RawMessage)(nil),
+		[]string(nil), (*json.RawMessage)(nil), (*string)(nil),
 	).CloseError(errors.New("network blip post-iteration"))
 	mock.ExpectQuery(`FROM traffic_event`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(rows)
 
-	_, _, err := b.queryEvents(context.Background(), time.Now(), 10, "")
+	_, _, err := b.queryEvents(context.Background(), time.Now(), 10)
 	if err == nil || !strings.Contains(err.Error(), "rows iteration") {
 		t.Errorf("expected wrapped rows iteration err, got: %v", err)
 	}
@@ -860,7 +850,7 @@ func TestPoll_FullSuccessCycle(t *testing.T) {
 	// Traffic checkpoint — first call, no row → 24h default.
 	mock.ExpectQuery(`SELECT value FROM system_metadata WHERE key = \$1`).
 		WithArgs(checkpointKey).WillReturnError(pgx.ErrNoRows)
-	// Traffic query — security-mode SQL (no trafficMode in cfgRow → "").
+	// Traffic query — security-mode SQL (block / rate-limited / budget-exceeded).
 	mock.ExpectQuery(`request_hook_decision = 'block'`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(trafficRowsTwo())
@@ -937,14 +927,14 @@ func TestPoll_ReloadError_KeepsPreviousSink(t *testing.T) {
 		"entityId", "entityType", "orgId",
 		"reqDecision", "reqReason", "reqCode",
 		"respDecision", "respReason", "respCode",
-		"complianceTags", "details",
+		"complianceTags", "details", "traceId",
 	}).AddRow(
 		"evt-r1", "ai-gateway", time.Now().UTC(),
 		&srcIP, (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
 		(*string)(nil), (*string)(nil), (*string)(nil),
-		[]string(nil), (*json.RawMessage)(nil),
+		[]string(nil), (*json.RawMessage)(nil), (*string)(nil),
 	)
 	mock.ExpectQuery(`request_hook_decision = 'block'`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
@@ -1212,7 +1202,7 @@ func emptyTrafficRows() *pgxmock.Rows {
 		"entityId", "entityType", "orgId",
 		"reqDecision", "reqReason", "reqCode",
 		"respDecision", "respReason", "respCode",
-		"complianceTags", "details",
+		"complianceTags", "details", "traceId",
 	})
 }
 

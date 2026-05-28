@@ -8,11 +8,11 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/authn"
 	iamengine "github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/iam"
-	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/users/userstore"
+	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
+	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/identity/iam"
 )
 
@@ -22,11 +22,11 @@ import (
 // RegisterMeRoutes registers /me, /me/permissions, PATCH /me, and
 // /iam/action-catalog admin routes.
 func (h *Handler) RegisterMeRoutes(g *echo.Group, iamMW func(action string) echo.MiddlewareFunc) {
-	g.GET("/me", h.GetMe)
-	g.GET("/me/permissions", h.GetMePermissions)
+	g.GET("/me", h.GetMe)                        // iam-exempt: self-service, returns the caller's own profile
+	g.GET("/me/permissions", h.GetMePermissions) // iam-exempt: self-service, the caller's own permissions
 	g.PATCH("/me", h.UpdateMe, iamMW(iam.ResourceSettings.Action(iam.VerbRead)))
 	// IAM action catalog — pure metadata; any authenticated admin can read.
-	g.GET("/iam/action-catalog", h.GetActionCatalog)
+	g.GET("/iam/action-catalog", h.GetActionCatalog) // iam-exempt: static reference data (action/verb catalog)
 }
 
 // RegisterOrganizationTreeRoute registers the org tree endpoint.

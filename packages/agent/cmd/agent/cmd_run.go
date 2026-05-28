@@ -40,6 +40,7 @@ import (
 	sharedintro "github.com/AlphaBitCore/nexus-gateway/packages/shared/core/diag/runtimeintrospect"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/core/logging"
 	metricsplatform "github.com/AlphaBitCore/nexus-gateway/packages/shared/core/metrics/platform"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/thingclient"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/cmd/agent/platformshim"
@@ -203,6 +204,11 @@ func cmdRun(args []string) int {
 		defer tp.Shutdown(context.Background()) //nolint:errcheck
 	}
 
+	// Local body capture intent (yaml localBodyCapture, default true). Nil
+	// means unset → default-on, so users always see their own AI traffic
+	// locally regardless of the Hub-pushed payload_capture (upload) config.
+	localBodyCapture := cfg.LocalBodyCapture == nil || *cfg.LocalBodyCapture
+
 	// Compliance + policy subsystem.
 	comp := wiring.InitCompliance(wiring.ComplianceConfig{
 		DefaultAction:             cfg.DefaultAction,
@@ -212,6 +218,7 @@ func cmdRun(args []string) int {
 		ExemptionDurationSec:      cfg.ExemptionDurationSec,
 		ExemptionAllowlist:        cfg.ExemptionAllowlist,
 		ExemptionDenylist:         cfg.ExemptionDenylist,
+		LocalBodyCapture:          localBodyCapture,
 	}, logger)
 
 	// Atomic flag updated by the agent_settings shadow applier and
@@ -229,6 +236,8 @@ func cmdRun(args []string) int {
 		agentPipeline:        comp.AgentPipeline,
 		exemptionStore:       comp.ExemptionStore,
 		payloadCaptureStore:  comp.PayloadCaptureStore,
+		localCaptureStore:    comp.LocalCaptureStore,
+		localBodyCapture:     localBodyCapture,
 		streamingPolicyStore: comp.StreamingPolicyStore,
 		policiesCache:        comp.PoliciesCache,
 		attestationEnabled:   attestationEnabledFlag,
@@ -397,21 +406,34 @@ func cmdRun(args []string) int {
 	// Diag dedup-tick goroutine (10s cadence).
 	go startDiagDedupGoroutine(ctx, tc, diagBundle, recoveryCfg, logger)
 
-	// Spill uploader and connection bridge.
-	spillUploader := wiring.InitSpillUploader(hubClient)
+	// Connection bridge. The inspect path captures + spills oversize bodies
+	// to the local spill store inside tlsbump; the flow-level path no longer
+	// uploads bodies (passthrough/deny flows carry no decrypted HTTP body).
 	connHandler := wiring.InitConnectionBridge(wiring.ConnectionBridgeConfig{
 		PolicyEngine:            comp.PolicyEngine,
 		AgentPipeline:           comp.AgentPipeline,
 		AuditQueue:              auditQueue,
 		ThingID:                 thingID,
-		PayloadCaptureStore:     comp.PayloadCaptureStore,
-		SpillUploader:           spillUploader,
 		KillSwitch:              appliers.killSwitchObj,
 		ProviderTrafficNotifier: statusCollector.MarkProviderTraffic,
 	})
 
-	// Drain upload logic (in drain.go).
-	drainUpload := buildDrainUpload(ctx, tc, hubClient, auditQueue, statusCollector, cfgMgr, thingID, logger)
+	// Spill uploader (Hub presign → S3) + local spill reader: the audit drain
+	// reads each oversize body back from local disk and uploads it to S3,
+	// shipping an S3 SpillRef to Hub. The local file stays put so the agent's
+	// own detail view can read it without an S3 GET credential.
+	spillUploader := wiring.InitSpillUploader(hubClient)
+	var spillReader wiring.LocalSpillReader
+	if store, spillErr := wiring.NewLocalSpillStore(); spillErr != nil {
+		logger.Warn("audit drain: local spill store unavailable; oversize bodies will not upload", "error", spillErr)
+	} else {
+		spillReader = store
+	}
+
+	// Drain upload logic. comp.PayloadCaptureStore (Hub-pushed) is the body
+	// UPLOAD gate: when its StoreRequest/ResponseBody flags are off the drain
+	// ships metadata only and the body stays local.
+	drainUpload := buildDrainUpload(ctx, tc, hubClient, auditQueue, statusCollector, cfgMgr, thingID, comp.PayloadCaptureStore, spillReader, spillUploader, logger)
 
 	// Audit drain supervisor.
 	var drainWg sync.WaitGroup
@@ -533,6 +555,18 @@ func cmdRun(args []string) int {
 			Limit:  limit,
 		})
 	})
+	// Detail-by-id: the drawer fetches body + normalized + spill on demand.
+	// Oversize bodies that spilled locally are read back off disk here
+	// (spillReader); bodies already uploaded to S3 stay ref-only (no agent
+	// S3 GET credential) and the UI shows a "view in Control Plane" affordance.
+	statusServer.SetEventByID(func(id string) (*auditevent.Event, error) {
+		ev, err := auditQueue.EventByID(id)
+		if err != nil || ev == nil {
+			return ev, err
+		}
+		wiring.HydrateLocalSpill(ev, spillReader)
+		return ev, nil
+	})
 
 	// Wire IPC handlers onto the status server.
 	wireStatusServerIPC(wireStatusServerIPCArgs{
@@ -586,13 +620,8 @@ func cmdRun(args []string) int {
 	writeDaemonPID(pidPath, logger)
 	lifecycleEmitter.Startup()
 
-	// Platform + relay + connection bridge.
-	relayClient, err := wiring.InitRelay(opsReg, version)
-	if err != nil {
-		slog.Error("init relay client", "error", err)
-		return 1
-	}
-	plat := wiring.InitPlatform(cfg.PlatformBridgeAddress, relayClient)
+	// Platform + connection bridge.
+	plat := wiring.InitPlatform(cfg.PlatformBridgeAddress)
 
 	// Publish interception mode.
 	var interceptionModeRef atomic.Pointer[string]
@@ -644,9 +673,11 @@ func cmdRun(args []string) int {
 	// listener in WireDarwinBridge below.
 	if runtime.GOOS != "darwin" {
 		if bridgeDeps, depErr := wiring.BuildBridgeDeps(wiring.BridgeDepsArgs{
-			Logger:               logger,
-			AgentPipeline:        comp.AgentPipeline,
-			PayloadCaptureStore:  comp.PayloadCaptureStore,
+			Logger:        logger,
+			AgentPipeline: comp.AgentPipeline,
+			// Local capture store (always-on by default) gates body capture in
+			// tlsbump — independent of the Hub upload config.
+			PayloadCaptureStore:  comp.LocalCaptureStore,
 			AuditQueue:           auditQueue,
 			StreamingPolicyStore: comp.StreamingPolicyStore,
 			NormalizeRegistry:    normalizeRegistry,
@@ -672,9 +703,11 @@ func cmdRun(args []string) int {
 	bridgeCloser := platformshim.WireDarwinBridge(context.Background(), plat, platformshim.DarwinBridgeArgs{
 		Logger:               logger,
 		BridgeAddr:           cfg.MitmBridgeAddr,
-		AgentPipeline:        comp.AgentPipeline,
-		NormalizeRegistry:    normalizeRegistry,
-		PayloadCaptureStore:  comp.PayloadCaptureStore,
+		AgentPipeline:     comp.AgentPipeline,
+		NormalizeRegistry: normalizeRegistry,
+		// Local capture store (always-on by default) gates body capture in the
+		// macOS NE bridge's tlsbump path — independent of the Hub upload config.
+		PayloadCaptureStore:  comp.LocalCaptureStore,
 		AuditQueue:           auditQueue,
 		StreamingPolicyStore: comp.StreamingPolicyStore,
 		AttestationSigner:    attestationSigner,
@@ -1107,6 +1140,9 @@ func buildDrainUpload(
 	statusCollector *status.Collector,
 	cfgMgr *config.Manager,
 	thingID string,
+	uploadGate *payloadcapture.Store,
+	spillReader wiring.LocalSpillReader,
+	spillUploader wiring.SpillS3Uploader,
 	logger *slog.Logger,
 ) func([]auditevent.Event) error {
 	const maxBatchPayloadBytes = 10 * 1024 * 1024
@@ -1128,6 +1164,25 @@ func buildDrainUpload(
 		batchCtx, span := otel.Tracer("nexus-agent").Start(ctx, "audit.upload_batch")
 		span.SetAttributes(attribute.Int("nexus.event_count", len(events)))
 		defer span.End()
+
+		// Body UPLOAD gate (Hub payload_capture config): strip the body (inline
+		// bytes + spill ref) from the wire copy for any direction the server
+		// config doesn't want uploaded. The body always stays in the local
+		// store — this governs only what ships to Hub. Applied before the S3
+		// upload so a PUT is never spent on a body that won't ship.
+		uploadReq, uploadResp := true, true
+		if uploadGate != nil {
+			gate := uploadGate.Get()
+			uploadReq, uploadResp = gate.StoreRequestBody, gate.StoreResponseBody
+		}
+		events = wiring.GateBodyUpload(events, uploadReq, uploadResp)
+
+		// Oversize bodies still slated for upload were spilled to the local
+		// store at capture time; read them back and upload to S3 via the Hub
+		// presign flow, swapping the wire ref. Fail-open: the local file stays
+		// put, metadata still ships. Both wire branches (WS + HTTP) consume the
+		// converted batch.
+		events = wiring.UploadDrainSpills(batchCtx, events, spillReader, spillUploader, logger)
 
 		if tc != nil {
 			hubEvents := make([]map[string]any, len(events))

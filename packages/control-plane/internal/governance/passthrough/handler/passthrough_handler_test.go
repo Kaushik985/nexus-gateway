@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/pashagolub/pgxmock/v4"
 
+	auth "github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/authn"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/identity/iam"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/hub"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
@@ -42,8 +43,9 @@ func newMockHandler(t *testing.T, hub HubConfigChanger) (pgxmock.PgxPoolIface, *
 	return mock, h
 }
 
-// echoCtxWithUser returns an Echo context with the "user" key populated
-// the way the production JWT-auth middleware does (id + display_name).
+// echoCtxWithUser returns an Echo context with the AdminAuth identity
+// attached the way the production AdminAuth middleware does (id "admin-1",
+// name "Alice").
 func echoCtxWithUser(method, path, body string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	var r *http.Request
@@ -55,12 +57,12 @@ func echoCtxWithUser(method, path, body string) (echo.Context, *httptest.Respons
 	}
 	rec := httptest.NewRecorder()
 	c := e.NewContext(r, rec)
-	c.Set("user", map[string]any{"id": "admin-1", "display_name": "Alice"})
+	middleware.WithAdminAuth(c, &auth.AdminAuth{KeyID: "admin-1", KeyName: "Alice", AuthPrincipalType: "admin_user"})
 	return c, rec
 }
 
-// echoCtxAnon returns an Echo context with NO "user" key — exercises
-// the actor() empty-string fallback.
+// echoCtxAnon returns an Echo context with NO admin auth attached —
+// exercises the actor() empty-string fallback.
 func echoCtxAnon(method, path, body string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	var r *http.Request
@@ -168,30 +170,13 @@ func TestActor_PopulatedAndAnon(t *testing.T) {
 	c, _ := echoCtxWithUser(http.MethodGet, "/", "")
 	id, name := actor(c)
 	if id != "admin-1" || name != "Alice" {
-		t.Errorf("user-context: got id=%q name=%q", id, name)
+		t.Errorf("admin-auth context: got id=%q name=%q", id, name)
 	}
 
 	c2, _ := echoCtxAnon(http.MethodGet, "/", "")
 	id2, name2 := actor(c2)
 	if id2 != "" || name2 != "" {
 		t.Errorf("anon: got id=%q name=%q (want empty)", id2, name2)
-	}
-
-	// "user" present but wrong shape → actor returns "" via the type
-	// assertion default branch.
-	c3, _ := echoCtxAnon(http.MethodGet, "/", "")
-	c3.Set("user", "not-a-map")
-	id3, name3 := actor(c3)
-	if id3 != "" || name3 != "" {
-		t.Errorf("wrong-shape: got id=%q name=%q (want empty)", id3, name3)
-	}
-
-	// "user" map with wrong-typed fields → id/name fall through to "".
-	c4, _ := echoCtxAnon(http.MethodGet, "/", "")
-	c4.Set("user", map[string]any{"id": 42, "display_name": nil})
-	id4, name4 := actor(c4)
-	if id4 != "" || name4 != "" {
-		t.Errorf("wrong-field-type: got id=%q name=%q (want empty)", id4, name4)
 	}
 }
 

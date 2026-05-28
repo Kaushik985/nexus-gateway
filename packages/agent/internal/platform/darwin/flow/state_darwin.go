@@ -29,28 +29,4 @@ type State struct {
 
 	// Flow lifecycle.
 	StartedAt time.Time
-
-	// Request-side signals populated by handleFlowInspect when the
-	// compliance hook pipeline runs against the MITM'd request.
-	Provider          string
-	Model             string
-	ApiKeyClass       string
-	ApiKeyFingerprint string
-
-	// HTTP request method + path captured at flow_inspect time. Without
-	// these the audit_event method/path columns would always be empty
-	// because the Swift NEFlowClosedMessage doesn't carry them.
-	Method string
-	Path   string
-
-	// Response-side usage populated by handleFlowInspectResponse.
-	PromptTokens          *int
-	CompletionTokens      *int
-	UsageExtractionStatus string
-
-	// Payload capture bytes stashed by handleFlowInspect /
-	// handleFlowInspectResponse when the admin has enabled the
-	// corresponding capture flag. Nil when disabled.
-	PayloadRequest  []byte
-	PayloadResponse []byte
 }

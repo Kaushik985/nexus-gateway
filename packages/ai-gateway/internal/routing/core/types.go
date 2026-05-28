@@ -175,7 +175,7 @@ type RoutingTarget struct {
 	// (allowedModels matching, traffic_event.model_id, audit Record).
 	ModelID string
 	// ModelCode is the customer-facing identifier ("gpt-4o"). Returned
-	// to clients in the `x-nexus-aigw-model` response header so they can
+	// to clients in the `X-Nexus-Routed-Model` response header so they can
 	// correlate logs without exposing the internal UUID.
 	ModelCode       string
 	ModelName       string

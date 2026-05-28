@@ -72,7 +72,7 @@ func InitMQProducer(cfg *config.Config, logger *slog.Logger) (mq.Producer, error
 	}
 	mqCfg := mq.Config{
 		Driver:    cfg.MQ.Driver,
-		Namespace: "nexus_ai_gateway",
+		Namespace: "nexus",
 		NATS:      mq.NATSConfig{URL: cfg.MQ.NATS.URL},
 	}
 	p, err := mq.NewProducer(mqCfg, logger)

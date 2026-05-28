@@ -27,7 +27,7 @@ func InitMQ(ctx context.Context, cfg *config.HubConfig, logger *slog.Logger) (MQ
 
 	mqCfg := mq.Config{
 		Driver:    cfg.MQ.Driver,
-		Namespace: "nexus_hub",
+		Namespace: "nexus",
 		NATS:      mq.NATSConfig{URL: cfg.MQ.NATS.URL},
 	}
 

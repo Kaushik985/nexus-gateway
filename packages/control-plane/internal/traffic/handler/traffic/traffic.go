@@ -16,8 +16,8 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/middleware"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/traffic/store/trafficstore"
 	sharedaudit "github.com/AlphaBitCore/nexus-gateway/packages/shared/audit"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/schemas/domain"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/identity/iam"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/schemas/domain"
 )
 
 // RegisterTrafficRoutes registers traffic event and admin audit log routes.
@@ -32,7 +32,7 @@ func (h *Handler) RegisterTrafficRoutes(g *echo.Group, iamMW func(action string)
 	// Admin audit log routes (separate concern)
 	g.GET("/admin-audit-logs", h.ListAdminAuditLogs, iamMW(iam.ResourceAuditLog.Action(iam.VerbRead)))
 	g.GET("/admin-audit-logs/export", h.ExportAdminAuditLogs, iamMW(iam.ResourceAuditLog.Action(iam.VerbExport)))
-	g.GET("/me/admin-audit-logs", h.ListMyAdminAuditLogs)
+	g.GET("/me/admin-audit-logs", h.ListMyAdminAuditLogs) // iam-exempt: self-service, the caller's own audit log
 }
 
 // GetTrafficEventNormalized returns the normalized sidecar payload for

@@ -58,7 +58,7 @@ func InitInfra(cfg *config.Config, logger *slog.Logger) (InfraResult, error) {
 		return InfraResult{}, fmt.Errorf("upstream transport: %w", err)
 	}
 
-	adapterRegistry := traffic.NewAdapterRegistry("nexus_compliance_proxy")
+	adapterRegistry := traffic.NewAdapterRegistry("nexus")
 	adapters.RegisterBuiltins(adapterRegistry)
 	adapterRegistry.Freeze()
 

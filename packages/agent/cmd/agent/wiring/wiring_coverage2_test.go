@@ -8,6 +8,7 @@ package wiring
 // Total target: ≥36 statements to cross the 95% threshold.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,9 +25,12 @@ import (
 	agentcompliance "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/compliance"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/identity/enrollment"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/lifecycle/bootstrap"
+	auditevent "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/event"
 	auditqueue "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/queue"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/spilluploader"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/api"
+	sharedaudit "github.com/AlphaBitCore/nexus-gateway/packages/shared/audit"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
 	policy "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/policy/core"
 	schema "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/sync/schema"
 	shadow "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/sync/shadow"
@@ -309,8 +313,8 @@ func TestOnFlowComplete_ExplicitPolicyRuleID(t *testing.T) {
 	}
 }
 
-// bridge_audit.go:158 — routeCaptured successful spill upload (1 stmt)
-// Returns (nil, &ref, false) when uploader succeeds.
+// spill.go — UploadDrainSpills: a localfs spill ref is read back and uploaded
+// to S3 via the Hub presign flow, and the wire ref is swapped to the S3 ref.
 
 // fakeHubClientOK satisfies spilluploader.HubClient with a server that
 // accepts presign-mint and upload calls successfully.
@@ -321,23 +325,35 @@ type fakeHubClientOK struct {
 func (f *fakeHubClientOK) BaseURL() string          { return f.srv.URL }
 func (f *fakeHubClientOK) HTTPClient() *http.Client { return f.srv.Client() }
 
-func TestRouteCaptured_SpillUploaderSuccess(t *testing.T) {
-	// Serve successful responses for both the mint and upload steps.
-	// spilluploader.Upload sequence:
-	//   POST /api/internal/things/spill-uploads → returns {key, uploadUrl, ...}
+// stubSpillReader returns fixed bytes (or an error) for any Get — stands in
+// for the localfs store at drain time.
+type stubSpillReader struct {
+	body []byte
+	err  error
+}
+
+func (s stubSpillReader) Get(_ context.Context, _ sharedaudit.SpillRef) (io.ReadCloser, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return io.NopCloser(bytes.NewReader(s.body)), nil
+}
+
+func TestUploadDrainSpills_LocalfsToS3Success(t *testing.T) {
+	// Serve successful responses for both the mint and upload steps:
+	//   POST /api/internal/things/spill-uploads → {key, uploadUrl, backend:s3}
 	//   PUT  <uploadUrl> → 200
 	var mintCalled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/internal/things/spill-uploads" {
 			mintCalled = true
-			// Return a mint response with uploadUrl pointing at this same server.
 			uploadURL := fmt.Sprintf("http://%s/upload/fake-key", r.Host)
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `{"key":"fake-key","uploadUrl":%q,"backend":"s3","expiresAt":"2099-01-01T00:00:00Z"}`, uploadURL)
 			return
 		}
 		if r.Method == http.MethodPut {
-			io.Copy(io.Discard, r.Body)
+			io.Copy(io.Discard, r.Body) //nolint:errcheck
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -345,28 +361,191 @@ func TestRouteCaptured_SpillUploaderSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fakeHub := &fakeHubClientOK{srv: srv}
-	uploader := spilluploader.New(fakeHub)
-	b := &ConnectionBridge{SpillUploader: uploader}
-	body := make([]byte, 20)
-	threshold := int64(10)
-	inline, ref, trunc := b.routeCaptured(context.Background(), "evt-ok", "request", "application/json", body, threshold)
+	uploader := spilluploader.New(&fakeHubClientOK{srv: srv})
+	reader := stubSpillReader{body: make([]byte, 20)}
+	events := []auditevent.Event{{
+		ID: "evt-ok",
+		RequestSpillRef: &sharedaudit.SpillRef{
+			Backend: "localfs", Key: "2026-05-27/evt-ok-request.bin",
+			Size: 20, ContentType: "application/json",
+		},
+	}}
+	out := UploadDrainSpills(context.Background(), events, reader, uploader, discardLogger2())
 
 	if !mintCalled {
 		t.Error("mint endpoint should have been called")
 	}
-	// Success path: ref non-nil, inline nil, trunc false → covers line 158.
-	if ref != nil {
-		if inline != nil {
-			t.Error("success path: inline should be nil when ref is set")
-		}
-		if trunc {
-			t.Error("success path: trunc should be false")
-		}
-	} else {
-		// Upload failed for some reason (log the fallback but don't fail the test
-		// since line 158 coverage requires the PUT to succeed).
-		t.Logf("spill upload fell back to inline (trunc=%v) — line 158 not covered", trunc)
+	if out[0].RequestSpillRef == nil {
+		t.Fatal("request spill ref should be set after upload")
+	}
+	if out[0].RequestSpillRef.Backend != "s3" {
+		t.Errorf("request ref backend: want s3, got %q", out[0].RequestSpillRef.Backend)
+	}
+}
+
+func TestUploadDrainSpills_ReadFailureDropsRef(t *testing.T) {
+	// A local read failure must drop the wire ref (body stays local) and
+	// never fail — UploadDrainSpills is fail-open.
+	uploader := spilluploader.New(&fakeHubClientOK{srv: httptest.NewServer(http.NotFoundHandler())})
+	reader := stubSpillReader{err: fmt.Errorf("disk gone")}
+	events := []auditevent.Event{{
+		ID:               "evt-fail",
+		ResponseSpillRef: &sharedaudit.SpillRef{Backend: "localfs", Key: "k", Size: 5},
+	}}
+	out := UploadDrainSpills(context.Background(), events, reader, uploader, discardLogger2())
+	if out[0].ResponseSpillRef != nil {
+		t.Errorf("response ref should be dropped on read failure, got %+v", out[0].ResponseSpillRef)
+	}
+}
+
+func TestUploadDrainSpills_UploadFailureDropsRef(t *testing.T) {
+	// Local read succeeds but the Hub mint returns 500 → Upload fails →
+	// ref dropped (body stays local), batch never fails.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	uploader := spilluploader.New(&fakeHubClientOK{srv: srv})
+	reader := stubSpillReader{body: make([]byte, 20)}
+	events := []auditevent.Event{{
+		ID:              "evt-up-fail",
+		RequestSpillRef: &sharedaudit.SpillRef{Backend: "localfs", Key: "k", Size: 20},
+	}}
+	out := UploadDrainSpills(context.Background(), events, reader, uploader, discardLogger2())
+	if out[0].RequestSpillRef != nil {
+		t.Errorf("request ref should be dropped on upload failure, got %+v", out[0].RequestSpillRef)
+	}
+}
+
+func TestUploadDrainSpills_NoopAndPassthrough(t *testing.T) {
+	// nil reader/uploader → no-op (refs preserved untouched).
+	in := []auditevent.Event{{ID: "e", RequestSpillRef: &sharedaudit.SpillRef{Backend: "localfs", Key: "k"}}}
+	out := UploadDrainSpills(context.Background(), in, nil, nil, discardLogger2())
+	if out[0].RequestSpillRef == nil {
+		t.Error("nil reader/uploader should be a no-op (ref preserved)")
+	}
+
+	// An already-S3 ref passes through untouched; an event with no ref stays nil.
+	reader := stubSpillReader{body: []byte("x")}
+	uploader := spilluploader.New(&fakeHubClientOK{srv: httptest.NewServer(http.NotFoundHandler())})
+	events := []auditevent.Event{
+		{ID: "s3", RequestSpillRef: &sharedaudit.SpillRef{Backend: "s3", Key: "already"}},
+		{ID: "none"},
+	}
+	got := UploadDrainSpills(context.Background(), events, reader, uploader, discardLogger2())
+	if got[0].RequestSpillRef == nil || got[0].RequestSpillRef.Backend != "s3" {
+		t.Error("existing s3 ref should pass through unchanged")
+	}
+	if got[1].RequestSpillRef != nil || got[1].ResponseSpillRef != nil {
+		t.Error("event with no spill ref should stay nil")
+	}
+}
+
+func TestSpillRoot_EndsInSpill(t *testing.T) {
+	root := SpillRoot()
+	if root == "" || filepath.Base(root) != "spill" {
+		t.Errorf("SpillRoot should end in /spill, got %q", root)
+	}
+}
+
+func TestHydrateLocalSpill(t *testing.T) {
+	reader := stubSpillReader{body: []byte("local body bytes")}
+	ev := &auditevent.Event{
+		RequestSpillRef:  &sharedaudit.SpillRef{Backend: "localfs", Key: "rq"},
+		ResponseSpillRef: &sharedaudit.SpillRef{Backend: "s3", Key: "rs"},
+	}
+	HydrateLocalSpill(ev, reader)
+	// localfs ref → body read back off disk for the detail drawer.
+	if string(ev.PayloadRequest) != "local body bytes" {
+		t.Errorf("localfs ref should be read back, got %q", ev.PayloadRequest)
+	}
+	// s3 ref → NOT hydrated (agent has no S3 GET); stays ref-only.
+	if ev.PayloadResponse != nil {
+		t.Errorf("s3 ref must not be hydrated, got %q", ev.PayloadResponse)
+	}
+	// Read failure → body left nil, no panic.
+	failEv := &auditevent.Event{RequestSpillRef: &sharedaudit.SpillRef{Backend: "localfs", Key: "x"}}
+	HydrateLocalSpill(failEv, stubSpillReader{err: fmt.Errorf("gone")})
+	if failEv.PayloadRequest != nil {
+		t.Error("read failure should leave body nil")
+	}
+	// nil guards.
+	HydrateLocalSpill(nil, reader)
+	HydrateLocalSpill(ev, nil)
+}
+
+func TestGateBodyUpload(t *testing.T) {
+	mk := func() []auditevent.Event {
+		return []auditevent.Event{{
+			ID:               "e",
+			PayloadRequest:   []byte("req"),
+			PayloadResponse:  []byte("resp"),
+			RequestSpillRef:  &sharedaudit.SpillRef{Backend: "s3", Key: "rq"},
+			ResponseSpillRef: &sharedaudit.SpillRef{Backend: "s3", Key: "rs"},
+		}}
+	}
+	// Both allowed → bodies intact (no-op).
+	out := GateBodyUpload(mk(), true, true)
+	if out[0].PayloadRequest == nil || out[0].RequestSpillRef == nil ||
+		out[0].PayloadResponse == nil || out[0].ResponseSpillRef == nil {
+		t.Error("both-allowed should leave bodies intact")
+	}
+	// Request upload disabled → request stripped, response kept.
+	out = GateBodyUpload(mk(), false, true)
+	if out[0].PayloadRequest != nil || out[0].RequestSpillRef != nil {
+		t.Error("request body should be stripped when request upload disabled")
+	}
+	if out[0].PayloadResponse == nil || out[0].ResponseSpillRef == nil {
+		t.Error("response body should be kept when only request disabled")
+	}
+	// Both disabled → everything stripped (body stays local; wire carries none).
+	out = GateBodyUpload(mk(), false, false)
+	if out[0].PayloadRequest != nil || out[0].PayloadResponse != nil ||
+		out[0].RequestSpillRef != nil || out[0].ResponseSpillRef != nil {
+		t.Error("both-disabled should strip all body fields from the wire")
+	}
+}
+
+func TestSyncLocalCapture(t *testing.T) {
+	local := payloadcapture.NewStore(payloadcapture.DefaultConfig())
+	// Server config: upload flags asymmetric, custom size params.
+	server := payloadcapture.Config{
+		StoreRequestBody:   true,
+		StoreResponseBody:  false,
+		MaxInlineBodyBytes: 999,
+		MaxRequestBytes:    111,
+		MaxResponseBytes:   222,
+	}
+	// localBodyCapture=true → both capture flags on regardless of server flags;
+	// size params mirror the server.
+	SyncLocalCapture(local, server, true)
+	got := local.Get()
+	if !got.StoreRequestBody || !got.StoreResponseBody {
+		t.Error("local capture flags must follow localBodyCapture, not the server upload flags")
+	}
+	if got.MaxInlineBodyBytes != 999 || got.MaxRequestBytes != 111 || got.MaxResponseBytes != 222 {
+		t.Errorf("local store must mirror server size params, got %+v", got)
+	}
+	// localBodyCapture=false → capture off even though the server wants the request body.
+	SyncLocalCapture(local, server, false)
+	if off := local.Get(); off.StoreRequestBody || off.StoreResponseBody {
+		t.Error("localBodyCapture=false must disable local capture flags")
+	}
+	// nil store → no panic.
+	SyncLocalCapture(nil, server, true)
+}
+
+func TestInitCompliance_LocalCaptureStore(t *testing.T) {
+	comp := InitCompliance(ComplianceConfig{LocalBodyCapture: true}, discardLogger2())
+	if comp.LocalCaptureStore == nil {
+		t.Fatal("LocalCaptureStore should be non-nil")
+	}
+	if c := comp.LocalCaptureStore.Get(); !c.StoreRequestBody || !c.StoreResponseBody {
+		t.Error("LocalBodyCapture=true should enable local capture flags")
+	}
+	// The Hub-pushed server store stays at the zero-risk default (upload off).
+	if s := comp.PayloadCaptureStore.Get(); s.StoreRequestBody || s.StoreResponseBody {
+		t.Error("server payload-capture store should default to upload-off")
 	}
 }
 

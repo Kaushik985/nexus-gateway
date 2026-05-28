@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,8 +19,8 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/pipeline"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/rulepack"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillfactory"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillsweep"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/traffic"
 )
 
 // ComplianceResult holds the components created by InitCompliance.
@@ -29,7 +28,6 @@ type ComplianceResult struct {
 	Resolver        *compliance.PolicyResolver
 	HookConfigCache *pipeline.HookConfigCache
 	Emitter         *compliance.AuditEmitter
-	DomainSnapshot  *atomic.Pointer[traffic.DomainSnapshot]
 	// StreamingMode field deleted in #115 — admin policy is the
 	// single source of truth; downstream reads from
 	// *streampolicy.Store directly.
@@ -119,8 +117,6 @@ func InitCompliance(cfg *config.Config, cacheManager *cache.Manager, auditWriter
 	initCancel()
 
 	result.Resolver = result.HookConfigCache.Resolver(context.Background())
-	result.DomainSnapshot = &atomic.Pointer[traffic.DomainSnapshot]{}
-	result.DomainSnapshot.Store(traffic.Empty())
 
 	if auditWriter != nil {
 		result.Emitter = compliance.NewAuditEmitter(auditWriter, logger)
@@ -136,6 +132,11 @@ func InitCompliance(cfg *config.Config, cacheManager *cache.Manager, auditWriter
 		}
 		if spillStore != nil {
 			result.Emitter.WithSpillStore(spillStore)
+			// Process-lifetime sweep so the backend's retention horizon and
+			// total-size cap are enforced (the store is per-process).
+			go spillsweep.Run(context.Background(), spillStore, spillsweep.Options{
+				Retention: cfg.Spill.RetentionHorizon(),
+			}, logger)
 		}
 	}
 

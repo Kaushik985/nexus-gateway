@@ -129,11 +129,11 @@ func TestMetrics_AllCountersIncrement(t *testing.T) {
 		t.Fatalf("Gather: %v", err)
 	}
 	want := map[string]bool{
-		"nexus_aigw_gemini_cache_hit_total":        false,
-		"nexus_aigw_gemini_cache_miss_total":       false,
-		"nexus_aigw_gemini_cache_create_ok_total":  false,
-		"nexus_aigw_gemini_cache_create_err_total": false,
-		"nexus_aigw_gemini_cache_skipped_total":    false,
+		"nexus_gemini_cache_hit_total":        false,
+		"nexus_gemini_cache_miss_total":       false,
+		"nexus_gemini_cache_create_ok_total":  false,
+		"nexus_gemini_cache_create_err_total": false,
+		"nexus_gemini_cache_skipped_total":    false,
 	}
 	for _, mf := range mfs {
 		if _, ok := want[mf.GetName()]; ok {

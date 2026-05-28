@@ -77,7 +77,7 @@ func newHandlerWithMock(t *testing.T) (pgxmock.PgxPoolIface, *Handler, *auditSpy
 	t.Cleanup(mock.Close)
 	aud := &auditSpy{}
 	h := New(Deps{
-		Meta:   systemmetastore.NewFromPool(mock),
+		Meta:   systemmetastore.New(mock),
 		Audit:  audit.NewWriter(aud, "nexus.event.admin-audit", silentLogger()),
 		Logger: silentLogger(),
 	})
@@ -226,7 +226,7 @@ func TestIncrementConfigVersion_GarbageValue_RestartsFromOne(t *testing.T) {
 // New() + RegisterRoutes
 
 func TestNew_FieldsWired(t *testing.T) {
-	meta := systemmetastore.NewFromPool(nil)
+	meta := systemmetastore.New(nil)
 	aud := &auditSpy{}
 	w := audit.NewWriter(aud, "q", silentLogger())
 	lg := silentLogger()

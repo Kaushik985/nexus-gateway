@@ -24,7 +24,7 @@ func TestMetrics_NilReceiverIsNoOp(t *testing.T) {
 }
 
 // TestNewMetrics_RegistersAllInstruments asserts that NewMetrics
-// registers six instruments under the nexus_aigw/cache namespace and
+// registers six instruments under the nexus_cache namespace and
 // returns a fully-wired *Metrics. Uses an isolated registry so the
 // test cannot collide with other suites or DefaultRegisterer state.
 func TestNewMetrics_RegistersAllInstruments(t *testing.T) {
@@ -52,12 +52,12 @@ func TestNewMetrics_RegistersAllInstruments(t *testing.T) {
 		t.Fatalf("Gather: %v", err)
 	}
 	want := map[string]bool{
-		"nexus_aigw_cache_lookups_total":       false,
-		"nexus_aigw_cache_writes_total":        false,
-		"nexus_aigw_cache_broker_subscribers":  false,
-		"nexus_aigw_cache_broker_active":       false,
-		"nexus_aigw_cache_replay_chunks_total": false,
-		"nexus_aigw_cache_entry_bytes":         false,
+		"nexus_cache_lookups_total":       false,
+		"nexus_cache_writes_total":        false,
+		"nexus_cache_broker_subscribers":  false,
+		"nexus_cache_broker_active":       false,
+		"nexus_cache_replay_chunks_total": false,
+		"nexus_cache_entry_bytes":         false,
 	}
 	for _, mf := range mfs {
 		if _, ok := want[mf.GetName()]; ok {
@@ -149,7 +149,7 @@ func TestMetrics_RecordWrite_OkObservesHistogram(t *testing.T) {
 	var writes float64
 	for _, mf := range mfs {
 		switch mf.GetName() {
-		case "nexus_aigw_cache_entry_bytes":
+		case "nexus_cache_entry_bytes":
 			// Sum the histogram count across all metric series.
 			for _, mtr := range mf.GetMetric() {
 				c := mtr.GetHistogram().GetSampleCount()
@@ -158,7 +158,7 @@ func TestMetrics_RecordWrite_OkObservesHistogram(t *testing.T) {
 				}
 				*hist += c
 			}
-		case "nexus_aigw_cache_writes_total":
+		case "nexus_cache_writes_total":
 			for _, mtr := range mf.GetMetric() {
 				writes += mtr.GetCounter().GetValue()
 			}
@@ -203,7 +203,7 @@ func TestMetrics_GaugeHelpers_AdjustGauges(t *testing.T) {
 }
 
 // TestMetrics_NamespacePrefix asserts every metric name carries the
-// expected nexus_aigw_cache_ prefix — observable contract for prod
+// expected nexus_cache_ prefix — observable contract for prod
 // scrape configs.
 func TestMetrics_NamespacePrefix(t *testing.T) {
 	reg := prometheus.NewRegistry()
@@ -223,8 +223,8 @@ func TestMetrics_NamespacePrefix(t *testing.T) {
 		t.Fatal("no metrics registered")
 	}
 	for _, mf := range mfs {
-		if !strings.HasPrefix(mf.GetName(), "nexus_aigw_cache_") {
-			t.Errorf("metric %s missing nexus_aigw_cache_ prefix", mf.GetName())
+		if !strings.HasPrefix(mf.GetName(), "nexus_cache_") {
+			t.Errorf("metric %s missing nexus_cache_ prefix", mf.GetName())
 		}
 	}
 }

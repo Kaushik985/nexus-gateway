@@ -257,7 +257,9 @@
       "action": "动作",
       "status": "状态",
       "tags": "标签",
-      "compliance": "Hook"
+      "compliance": "Hook",
+      "method": "方法",
+      "path": "路径"
     },
     "detail": {
       "title": "事件详情",
@@ -266,6 +268,11 @@
       "fieldProcess": "进程",
       "fieldTarget": "目标",
       "fieldStatus": "状态",
+      "fieldMethod": "方法",
+      "fieldPath": "路径 / URL",
+      "fieldDestIp": "目标 IP:端口",
+      "fieldBytes": "字节(入 / 出)",
+      "fieldProvider": "AI 提供商 / 模型",
       "hooksTitle": "Hook 流水线",
       "hookId": "Hook",
       "hookStage": "阶段",
@@ -275,7 +282,17 @@
       "hooksParseError": "Hook 流水线数据无法解析。",
       "waterfall": {
         "title": "阶段分解"
-      }
+      },
+      "fieldTime": "时间",
+      "fieldAction": "操作",
+      "fieldHookDecision": "Hook 决策",
+      "fieldLatency": "延迟",
+      "payloadsTitle": "负载",
+      "payloadRequest": "请求体",
+      "payloadResponse": "响应体",
+      "payloadSpilled": "大负载已存入 spill({{size}})——请在控制台查看。",
+      "payloadEmpty": "未捕获(负载捕获已禁用或负载已转存至远端存储)。",
+      "payloadDecodeError": "无法解码 base64 负载。"
     },
     "waterfall": {
       "reqHooks": "请求 Hooks",
@@ -371,7 +388,9 @@
       "agentResumed": "已恢复",
       "agentSsoLogin": "已登录",
       "agentSsoLogout": "已退出登录"
-    }
+    },
+    "prevPage": "上一页",
+    "nextPage": "下一页"
   },
   "stats": {
     "title": "统计",
@@ -475,7 +494,9 @@
       "inflight": "正在重启守护进程……",
       "success": "守护进程重启请求已发送，约 10 秒后恢复。",
       "blocked": "重启被拒绝：{{error}}",
-      "failed": "重启失败：{{error}}"
+      "failed": "重启失败：{{error}}",
+      "clicked": "已点击重启守护进程——请确认以继续…",
+      "cancelled": "已取消重启守护进程"
     },
     "copyBundle": {
       "button": "复制支持包",
@@ -608,6 +629,7 @@
   },
   "trafficDetail": {
     "tabRaw": "原始",
-    "tabNormalized": "规范化"
+    "tabNormalized": "规范化",
+    "tabNormalizedDisabled": "此事件无规范化负载(非 AI 流量或未拦截的流)。"
   }
 }

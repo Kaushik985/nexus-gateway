@@ -10,6 +10,12 @@ import (
 // TrafficEventMessage is the canonical wire format for traffic events on MQ.
 // Published by AI Gateway to "nexus.event.ai-traffic".
 // Consumers (hub-db-writer, hub-siem) deserialize from this.
+//
+// MUST stay JSON-tag-aligned with the Hub's consumer.TrafficEventMessage
+// (packages/nexus-hub/internal/observability/consumer/message.go). The two are
+// separate structs by design (value+omitempty here vs pointer-for-NULL there),
+// but a tag added here without a matching tag there is silently dropped on the
+// Hub. Enforced by TestTrafficEventMessage_NoStructDrift in that package.
 type TrafficEventMessage struct {
 	ID                string    `json:"id"`
 	Source            string    `json:"source"`

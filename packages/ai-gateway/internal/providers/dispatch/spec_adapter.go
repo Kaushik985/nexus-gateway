@@ -566,7 +566,7 @@ func stripNexusNamespace(body []byte) []byte {
 
 // outbound dst request. Anything not on the resolved request-side
 // allowlist is dropped and counted against
-// ai_gateway_forward_header_dropped_total.
+// nexus_forward_header_dropped_total.
 //
 // The allowlist is precomputed per Format at config load
 // (forwardheader.Resolve), so no per-request map allocation happens here.
@@ -602,7 +602,7 @@ func (a *specAdapter) forwardHeaders(dst *http.Request, src http.Header) {
 //
 // Headers not on either Static or PerRequest are dropped silently
 // and counted against
-// ai_gateway_forward_header_dropped_total{direction="response"}.
+// nexus_forward_header_dropped_total{direction="response"}.
 //
 // Kept as a free function so the handler does not need to type-assert
 // on Adapter or pull the method through the interface (which would

@@ -26,14 +26,12 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/lifecycle/killswitch"
 	auditevent "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/event"
 	auditqueue "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/queue"
-	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/spilluploader"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/api"
 	policy "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/policy/core"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/policy/policies"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/sync/hub"
 	schema "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/sync/schema"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/core/metrics/registry"
-	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
 )
 
 // discardLogger returns an slog.Logger that discards all output.
@@ -882,111 +880,6 @@ func TestRecordKillSwitchPassthrough_DifferentHosts(t *testing.T) {
 	}
 }
 
-// bridge_audit.go — ConnectionBridge.OnFlowComplete + applyPayloadCapture + routeCaptured
-
-// fakeAuditQueue wraps the real Queue by embedding nothing — we use a real
-// in-memory SQLite so OnFlowComplete can call Record. But that requires
-// SQLCipher. Instead, we test OnFlowComplete indirectly via recordedEvents.
-
-// stubQueue satisfies the shape expected by OnFlowComplete. Since Queue is
-// concrete we use *auditqueue.Queue. For these tests we exercise the decision
-// logic with a real auditqueue backed by a temp db.
-// Actually — Queue requires SQLCipher so we can't instantiate it without the
-// keystore. We split: test applyPayloadCapture and routeCaptured directly.
-
-func TestApplyPayloadCapture_InlineUnderThreshold(t *testing.T) {
-	b := &ConnectionBridge{}
-	e := &auditevent.Event{ID: "evt1"}
-	reqBody := []byte("small request body")
-	respBody := []byte("small response body")
-	b.applyPayloadCapture(e, reqBody, respBody)
-	if string(e.PayloadRequest) != string(reqBody) {
-		t.Errorf("PayloadRequest: want %q, got %q", string(reqBody), string(e.PayloadRequest))
-	}
-	if string(e.PayloadResponse) != string(respBody) {
-		t.Errorf("PayloadResponse: want %q, got %q", string(respBody), string(e.PayloadResponse))
-	}
-	if e.RequestSpillRef != nil {
-		t.Error("RequestSpillRef should be nil for inline body")
-	}
-}
-
-func TestApplyPayloadCapture_TruncatesOverThreshold(t *testing.T) {
-	// Default threshold is 256 KiB. Build a body larger than that.
-	threshold := int64(256 * 1024)
-	body := make([]byte, int(threshold)+1)
-	for i := range body {
-		body[i] = 'A'
-	}
-	b := &ConnectionBridge{}
-	e := &auditevent.Event{ID: "evt2"}
-	b.applyPayloadCapture(e, body, nil)
-	if int64(len(e.PayloadRequest)) > threshold {
-		t.Errorf("truncated request body should be <= %d bytes, got %d", threshold, len(e.PayloadRequest))
-	}
-}
-
-func TestApplyPayloadCapture_WithCustomStore(t *testing.T) {
-	// Use a store with a small max inline cap of 10 bytes.
-	cfg := payloadcapture.DefaultConfig()
-	cfg.MaxInlineBodyBytes = 10
-	store := payloadcapture.NewStore(cfg)
-
-	b := &ConnectionBridge{PayloadCaptureStore: store}
-	e := &auditevent.Event{ID: "evt3"}
-	body := []byte("this is longer than 10 bytes for sure")
-	b.applyPayloadCapture(e, body, nil)
-	if len(e.PayloadRequest) > 10 {
-		t.Errorf("inline body should be <= 10 bytes with custom store, got %d", len(e.PayloadRequest))
-	}
-}
-
-func TestRouteCaptured_InlineUnderThreshold(t *testing.T) {
-	b := &ConnectionBridge{}
-	body := []byte("hello")
-	inline, ref, trunc := b.routeCaptured(context.Background(), "evt1", "request", "application/json", body, 1000)
-	if string(inline) != "hello" {
-		t.Errorf("inline: want hello, got %s", inline)
-	}
-	if ref != nil {
-		t.Error("ref should be nil for inline body")
-	}
-	if trunc {
-		t.Error("trunc should be false for inline body")
-	}
-}
-
-func TestRouteCaptured_TruncatesNoUploader(t *testing.T) {
-	b := &ConnectionBridge{SpillUploader: nil}
-	body := make([]byte, 20)
-	inline, ref, trunc := b.routeCaptured(context.Background(), "evt1", "request", "application/json", body, 10)
-	if len(inline) != 10 {
-		t.Errorf("truncated inline: want 10 bytes, got %d", len(inline))
-	}
-	if ref != nil {
-		t.Error("ref should be nil when no uploader")
-	}
-	if !trunc {
-		t.Error("trunc should be true")
-	}
-}
-
-func TestRouteCaptured_EmptyEventID_TruncatesNoUploader(t *testing.T) {
-	b := &ConnectionBridge{SpillUploader: nil}
-	body := make([]byte, 20)
-	// Empty eventID with no SpillUploader → inline truncation path
-	inline, ref, trunc := b.routeCaptured(context.Background(), "", "request", "application/json", body, 10)
-	if len(inline) != 10 {
-		t.Errorf("empty event id: want 10 bytes inline truncated, got %d", len(inline))
-	}
-	if ref != nil {
-		t.Error("ref should be nil")
-	}
-	if !trunc {
-		t.Error("trunc should be true")
-	}
-}
-
 // compliance.go — InitCompliance
 
 func TestInitCompliance_ReturnsPopulatedBundle(t *testing.T) {
@@ -1555,20 +1448,6 @@ func TestInitTelemetry_DisabledReturnNil(t *testing.T) {
 	_ = tp
 }
 
-// network.go — InitRelay
-
-func TestInitRelay_Smoke(t *testing.T) {
-	// InitRelay should succeed with a valid registry and version string.
-	// No network calls at construction time.
-	client, err := InitRelay(testOpsReg(), "1.0.0-test")
-	if err != nil {
-		t.Errorf("InitRelay: unexpected error: %v", err)
-	}
-	if client == nil {
-		t.Error("InitRelay: expected non-nil client")
-	}
-}
-
 // statusapi.go — InitPendingStatusCollector — cover all internal closure branches
 
 func TestInitPendingStatusCollector_QuitAllowedTrue(t *testing.T) {
@@ -1763,46 +1642,6 @@ func TestOnFlowComplete_DenyDecision(t *testing.T) {
 	}
 }
 
-func TestOnFlowComplete_HookRejectHard(t *testing.T) {
-	q := newTestQueue(t)
-	defer q.Close()
-	b := &ConnectionBridge{
-		PolicyEngine: policy.NewEngine("passthrough"),
-		AuditQueue:   q,
-	}
-	result := api.FlowResult{
-		FlowID:       "flow-hook-reject-1",
-		DstHost:      "api.example.com",
-		Decision:     api.DecisionInspect,
-		HookDecision: "reject_hard",
-		HookReason:   "pii detected",
-	}
-	b.OnFlowComplete(result)
-	if q.UnsyncedCount() == 0 {
-		t.Error("OnFlowComplete hook reject: expected event in queue")
-	}
-}
-
-func TestOnFlowComplete_BlockSoft(t *testing.T) {
-	q := newTestQueue(t)
-	defer q.Close()
-	b := &ConnectionBridge{
-		PolicyEngine: policy.NewEngine("passthrough"),
-		AuditQueue:   q,
-	}
-	result := api.FlowResult{
-		FlowID:       "flow-block-1",
-		DstHost:      "api.example.com",
-		Decision:     api.DecisionInspect,
-		HookDecision: "block_soft",
-		HookReason:   "rate limit",
-	}
-	b.OnFlowComplete(result)
-	if q.UnsyncedCount() == 0 {
-		t.Error("OnFlowComplete block_soft: expected event in queue")
-	}
-}
-
 func TestOnFlowComplete_BumpFailedPassthrough(t *testing.T) {
 	q := newTestQueue(t)
 	defer q.Close()
@@ -1864,44 +1703,23 @@ func TestOnFlowComplete_PolicyRuleIDFromBridge(t *testing.T) {
 	}
 }
 
-func TestOnFlowComplete_ProviderTrafficNotifier(t *testing.T) {
-	q := newTestQueue(t)
-	defer q.Close()
-	notified := false
-	b := &ConnectionBridge{
-		PolicyEngine:            policy.NewEngine("passthrough"),
-		AuditQueue:              q,
-		ProviderTrafficNotifier: func() { notified = true },
-	}
-	result := api.FlowResult{
-		FlowID:   "provider-flow",
-		DstHost:  "api.openai.com",
-		Decision: api.DecisionInspect,
-		Provider: "openai",
-	}
-	b.OnFlowComplete(result)
-	if !notified {
-		t.Error("OnFlowComplete with provider: ProviderTrafficNotifier should be called")
-	}
-}
-
-func TestOnFlowComplete_PayloadCapture(t *testing.T) {
+func TestOnFlowComplete_InspectRecordsEvent(t *testing.T) {
 	q := newTestQueue(t)
 	defer q.Close()
 	b := &ConnectionBridge{
 		PolicyEngine: policy.NewEngine("passthrough"),
 		AuditQueue:   q,
 	}
+	// FlowResult carries transport-level metadata only — bodies are captured
+	// + spilled per-request inside tlsbump, not on this flow-level path.
 	result := api.FlowResult{
-		FlowID:          "payload-flow",
-		DstHost:         "api.openai.com",
-		Decision:        api.DecisionInspect,
-		PayloadRequest:  []byte("request body"),
-		PayloadResponse: []byte("response body"),
+		FlowID:   "inspect-flow",
+		DstHost:  "api.openai.com",
+		Decision: api.DecisionInspect,
 	}
 	b.OnFlowComplete(result)
 	if q.UnsyncedCount() == 0 {
-		t.Error("OnFlowComplete with payload: expected event in queue")
+		t.Error("OnFlowComplete inspect: expected event in queue")
 	}
 }
 
@@ -2009,50 +1827,10 @@ func TestInitStatusCollector_Smoke(t *testing.T) {
 	}
 }
 
-// bridge_audit.go — routeCaptured — SpillUploader error path
-
-// fakeHubClientForSpill satisfies spilluploader.HubClient with a failing
-// HTTP server so Upload returns an error and routeCaptured falls back to
-// inline-truncated.
-type fakeHubClientForSpill struct {
-	srv *httptest.Server
-}
-
-func (f *fakeHubClientForSpill) BaseURL() string          { return f.srv.URL }
-func (f *fakeHubClientForSpill) HTTPClient() *http.Client { return f.srv.Client() }
-
-func TestRouteCaptured_SpillUploaderError_FallsBackToInline(t *testing.T) {
-	// Create a server that returns 500 so the mint step fails.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}))
-	defer srv.Close()
-
-	fakeHub := &fakeHubClientForSpill{srv: srv}
-	uploader := spilluploader.New(fakeHub)
-	b := &ConnectionBridge{SpillUploader: uploader}
-	body := make([]byte, 20)
-	// threshold = 10, body len = 20 → exceeds threshold, uploader will be called and fail
-	inline, ref, trunc := b.routeCaptured(context.Background(), "evt-spill", "request", "application/json", body, 10)
-	if len(inline) != 10 {
-		t.Errorf("fallback inline: want 10 bytes, got %d", len(inline))
-	}
-	if ref != nil {
-		t.Error("fallback inline: ref should be nil")
-	}
-	if !trunc {
-		t.Error("fallback inline: trunc should be true")
-	}
-}
-
 // network.go — InitPlatform
 
 func TestInitPlatform_ReturnsNonNil(t *testing.T) {
-	relay, err := InitRelay(testOpsReg(), "1.0.0")
-	if err != nil {
-		t.Fatalf("InitRelay: %v", err)
-	}
-	plat := InitPlatform("localhost:0", relay)
+	plat := InitPlatform("localhost:0")
 	if plat == nil {
 		t.Error("InitPlatform should return non-nil Platform")
 	}
@@ -2235,13 +2013,6 @@ func TestInitDiag_Smoke(t *testing.T) {
 
 // statusapi.go — WireRecentEvents (smoke — needs Queue but tests the wiring)
 // WireRecentEvents requires *auditqueue.Queue. Covered by allowlist category C.
-
-// bridge_audit.go — routeCaptured — SpillUploader error path
-
-// fakeFailingUploader satisfies spilluploader.Uploader's interface by
-// returning an error from Upload. We test it by checking fallback to inline.
-// Actually spilluploader.Uploader is a concrete struct, not an interface.
-// The upload failure path requires a real Uploader. Covered as network-bound.
 
 // observability.go — InitDiag (Queue-bound; allowlist category C)
 

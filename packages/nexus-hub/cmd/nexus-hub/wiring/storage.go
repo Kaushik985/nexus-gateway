@@ -15,6 +15,7 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/schemas/configkey"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillfactory"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillsweep"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillupload"
 )
 
@@ -67,6 +68,14 @@ func InitStorage(
 	hubSpillStore, err := spillfactory.New(cfg.Spill, logger)
 	if err != nil {
 		return StorageResult{}, err
+	}
+	if hubSpillStore != nil {
+		// Sweep on the Hub lifetime ctx so the backend's retention horizon and
+		// total-size cap are enforced. For a shared S3 bucket this sweep covers
+		// every service's objects; the sweeps are idempotent across services.
+		go spillsweep.Run(ctx, hubSpillStore, spillsweep.Options{
+			Retention: cfg.Spill.RetentionHorizon(),
+		}, logger)
 	}
 
 	// Spill upload secrets. LoadOrInit auto-generates an epoch-1 secret on

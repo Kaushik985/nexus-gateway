@@ -202,10 +202,24 @@ func expectPersistState(mock pgxmock.PgxPoolIface) {
 }
 
 // expectAuditRow makes the mock expect and accept the AdminAuditLog insert.
+// The row joins the tamper-evident hash chain via chain.NextHash inside a
+// transaction, so the expectation chain is: Begin → advisory lock → chain-head
+// read (genesis: no prior rows) → INSERT → Commit. The deferred post-commit
+// Rollback is tolerated by pgxmock without its own expectation.
 func expectAuditRow(mock pgxmock.PgxPoolIface) {
-	mock.ExpectExec(`INSERT INTO "AdminAuditLog"`).
+	mock.ExpectBegin()
+	mock.ExpectExec(`pg_advisory_xact_lock`).
 		WithArgs(pgxmock.AnyArg()).
+		WillReturnResult(pgconn.NewCommandTag("SELECT 1"))
+	mock.ExpectQuery(`SELECT "integrityHash" FROM "AdminAuditLog"`).
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectExec(`INSERT INTO "AdminAuditLog"`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
 		WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	mock.ExpectCommit()
 }
 
 // Identity tests
@@ -686,13 +700,121 @@ func TestSemanticCacheReindexJob_AuditRowExecFails_NoError(t *testing.T) {
 	expectNoStateRow(mock)
 	expectNoStateRow(mock)
 	expectPersistState(mock)
-	// Audit INSERT fails.
-	mock.ExpectExec(`INSERT INTO "AdminAuditLog"`).
+	// Audit INSERT fails inside the chain transaction; writeAuditRow logs at
+	// WARN and rolls back, but Run still returns nil.
+	mock.ExpectBegin()
+	mock.ExpectExec(`pg_advisory_xact_lock`).
 		WithArgs(pgxmock.AnyArg()).
+		WillReturnResult(pgconn.NewCommandTag("SELECT 1"))
+	mock.ExpectQuery(`SELECT "integrityHash" FROM "AdminAuditLog"`).
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectExec(`INSERT INTO "AdminAuditLog"`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
 		WillReturnError(errors.New("db: audit table locked"))
+	mock.ExpectRollback()
 
 	j := buildJobWithMock(t, mock, rdb)
 	// Audit failure must NOT propagate as an error.
+	if err := j.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unexpected DB calls: %v", err)
+	}
+}
+
+// writeAuditRow: tx Begin fails → logged at warn, Run still returns nil
+
+func TestSemanticCacheReindexJob_AuditTxBeginFails_NoError(t *testing.T) {
+	rdb, _ := newFTValkey(t)
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+
+	const newFP = "fp"
+	const newIndex = "nexus:semantic-cache:v1"
+	dim := 1536
+
+	expectConfigRow(mock, newFP, newIndex, &dim)
+	expectNoStateRow(mock)
+	expectNoStateRow(mock)
+	expectPersistState(mock)
+	// The audit transaction cannot even begin; reindex already succeeded so
+	// the failure is swallowed.
+	mock.ExpectBegin().WillReturnError(errors.New("db: too many connections"))
+
+	j := buildJobWithMock(t, mock, rdb)
+	if err := j.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unexpected DB calls: %v", err)
+	}
+}
+
+// writeAuditRow: chain.NextHash fails (advisory lock) → warn, rollback, Run nil
+
+func TestSemanticCacheReindexJob_AuditChainHashFails_NoError(t *testing.T) {
+	rdb, _ := newFTValkey(t)
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+
+	const newFP = "fp"
+	const newIndex = "nexus:semantic-cache:v1"
+	dim := 1536
+
+	expectConfigRow(mock, newFP, newIndex, &dim)
+	expectNoStateRow(mock)
+	expectNoStateRow(mock)
+	expectPersistState(mock)
+	mock.ExpectBegin()
+	// Advisory-lock acquisition (first statement inside NextHash) fails.
+	mock.ExpectExec(`pg_advisory_xact_lock`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnError(errors.New("db: lock wait timeout"))
+	mock.ExpectRollback()
+
+	j := buildJobWithMock(t, mock, rdb)
+	if err := j.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unexpected DB calls: %v", err)
+	}
+}
+
+// writeAuditRow: tx Commit fails → logged at warn, Run still returns nil
+
+func TestSemanticCacheReindexJob_AuditCommitFails_NoError(t *testing.T) {
+	rdb, _ := newFTValkey(t)
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+
+	const newFP = "fp"
+	const newIndex = "nexus:semantic-cache:v1"
+	dim := 1536
+
+	expectConfigRow(mock, newFP, newIndex, &dim)
+	expectNoStateRow(mock)
+	expectNoStateRow(mock)
+	expectPersistState(mock)
+	mock.ExpectBegin()
+	mock.ExpectExec(`pg_advisory_xact_lock`).
+		WithArgs(pgxmock.AnyArg()).
+		WillReturnResult(pgconn.NewCommandTag("SELECT 1"))
+	mock.ExpectQuery(`SELECT "integrityHash" FROM "AdminAuditLog"`).
+		WillReturnError(pgx.ErrNoRows)
+	mock.ExpectExec(`INSERT INTO "AdminAuditLog"`).
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	mock.ExpectCommit().WillReturnError(errors.New("db: commit conflict"))
+
+	j := buildJobWithMock(t, mock, rdb)
 	if err := j.Run(context.Background()); err != nil {
 		t.Fatalf("Run: %v", err)
 	}

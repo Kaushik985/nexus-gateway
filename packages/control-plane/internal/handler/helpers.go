@@ -395,7 +395,7 @@ func templateVersion(tpl *thingstore.ThingConfigTemplate) int64 {
 func (h *AdminHandler) incrementConfigVersion(ctx context.Context) {
 	const key = "agent.config.version"
 	version := 0
-	meta := systemmetastore.NewFromPool(h.DB.InternalPool())
+	meta := systemmetastore.New(h.DB.InternalPool())
 	raw, err := meta.GetSystemMetadata(ctx, key)
 	if err == nil && raw != nil {
 		var v int

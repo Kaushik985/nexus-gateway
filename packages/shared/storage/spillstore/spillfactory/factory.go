@@ -233,3 +233,20 @@ func (c FactoryConfig) PerObjectCap() int64 {
 	}
 	return fallback
 }
+
+// RetentionHorizon returns the active age horizon for the configured backend —
+// the duration the spill-sweep loop passes to SpillStore.Sweep as
+// now-RetentionHorizon. It reads RetentionDays from the active backend block
+// and falls back to 30 days (matching the backend defaults) when unset, so a
+// minimal `spill:` block still gets a bounded store once sweeping is wired.
+func (c FactoryConfig) RetentionHorizon() time.Duration {
+	const fallback = 30 * 24 * time.Hour
+	days := c.Localfs.RetentionDays
+	if c.Backend == "s3" {
+		days = c.S3.RetentionDays
+	}
+	if days > 0 {
+		return time.Duration(days) * 24 * time.Hour
+	}
+	return fallback
+}

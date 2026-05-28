@@ -1313,7 +1313,7 @@ func TestIncrementConfigVersion_WithMeta_FreshKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(mock.Close)
-	meta := systemmetastore.NewFromPool(mock)
+	meta := systemmetastore.New(mock)
 
 	// GetSystemMetadata returns no rows for fresh key
 	mock.ExpectQuery(`SELECT value FROM system_metadata WHERE key`).
@@ -1340,7 +1340,7 @@ func TestIncrementConfigVersion_WithMeta_ExistingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(mock.Close)
-	meta := systemmetastore.NewFromPool(mock)
+	meta := systemmetastore.New(mock)
 
 	mock.ExpectQuery(`SELECT value FROM system_metadata WHERE key`).
 		WithArgs("agent.config.version").

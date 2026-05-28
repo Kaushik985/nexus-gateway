@@ -709,3 +709,91 @@ func syntheticRowsToPgxMock(rows []syntheticRow) *pgxmock.Rows {
 // strPtr returns a pointer to its string argument — convenience for fixtures
 // that need *string column values.
 func strPtr(s string) *string { return &s }
+
+// --- VerifyChainAcked: acknowledged orphan skip + re-anchor ---------------
+
+// buildOrphanReanchorChain mirrors the prod incident: seq 1-2 normal, seq 3 a
+// chainless orphan (nil previousHash, "" integrityHash, nil hashInput — what a
+// pre-fix job wrote), seq 4-5 a re-anchored genesis chain.
+func buildOrphanReanchorChain() []syntheticRow {
+	rows := buildSyntheticChain(2)
+	empty := ""
+	rows = append(rows, syntheticRow{seq: 3, previousHash: nil, integrityHash: &empty, hashInput: nil})
+	var prev string
+	for i, seq := range []int64{4, 5} {
+		hi := fmt.Appendf(nil, "reanchor-%d", i)
+		integ := computeHashLink(prev, hi)
+		ic := integ
+		var pp *string
+		if prev != "" {
+			cp := prev
+			pp = &cp
+		}
+		rows = append(rows, syntheticRow{seq: seq, previousHash: pp, integrityHash: &ic, hashInput: hi})
+		prev = integ
+	}
+	return rows
+}
+
+func TestVerifyChainAcked_PgxMock_SkipsOrphanReanchors(t *testing.T) {
+	rows := buildOrphanReanchorChain()
+
+	// Without acks: the orphan at seq 3 is reported as the first break.
+	m1, _ := pgxmock.NewPool()
+	defer m1.Close()
+	m1.ExpectQuery(`FROM "AdminAuditLog"`).WillReturnRows(syntheticRowsToPgxMock(rows))
+	bad, err := VerifyChain(context.Background(), m1)
+	if err != nil {
+		t.Fatalf("VerifyChain: %v", err)
+	}
+	if bad != 3 {
+		t.Fatalf("without acks: badSeq=%d, want 3 (orphan)", bad)
+	}
+
+	// With seq 3 acknowledged: orphan skipped, seq 4 re-anchors as genesis,
+	// seq 5 links to seq 4 → intact.
+	m2, _ := pgxmock.NewPool()
+	defer m2.Close()
+	m2.ExpectQuery(`FROM "AdminAuditLog"`).WillReturnRows(syntheticRowsToPgxMock(rows))
+	bad, err = VerifyChainAcked(context.Background(), m2, map[int64]struct{}{3: {}})
+	if err != nil {
+		t.Fatalf("VerifyChainAcked: %v", err)
+	}
+	if bad != 0 {
+		t.Fatalf("with ack{3}: badSeq=%d, want 0 (intact)", bad)
+	}
+}
+
+func TestVerifyChainAcked_PgxMock_TamperAfterOrphanStillCaught(t *testing.T) {
+	rows := buildOrphanReanchorChain()
+	// Tamper seq 5's hashInput so its stored integrityHash no longer matches.
+	rows[4].hashInput = append(rows[4].hashInput, 0x00)
+
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	mock.ExpectQuery(`FROM "AdminAuditLog"`).WillReturnRows(syntheticRowsToPgxMock(rows))
+	bad, err := VerifyChainAcked(context.Background(), mock, map[int64]struct{}{3: {}})
+	if err != nil {
+		t.Fatalf("VerifyChainAcked: %v", err)
+	}
+	if bad != 5 {
+		t.Errorf("badSeq=%d, want 5 — tampering after an acknowledged orphan must still be caught", bad)
+	}
+}
+
+func TestVerifyChainAcked_PgxMock_NonEmptyHeadAdopted(t *testing.T) {
+	// Acking a normal mid-chain row exercises normalizeHead's non-empty branch:
+	// the row's (valid, non-empty) integrityHash is adopted as the running head,
+	// so its successor still links → intact.
+	rows := buildSyntheticChain(4)
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	mock.ExpectQuery(`FROM "AdminAuditLog"`).WillReturnRows(syntheticRowsToPgxMock(rows))
+	bad, err := VerifyChainAcked(context.Background(), mock, map[int64]struct{}{2: {}})
+	if err != nil {
+		t.Fatalf("VerifyChainAcked: %v", err)
+	}
+	if bad != 0 {
+		t.Errorf("badSeq=%d, want 0 — adopting a non-empty acked head must keep the chain intact", bad)
+	}
+}

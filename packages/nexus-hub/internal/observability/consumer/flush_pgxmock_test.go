@@ -81,7 +81,7 @@ func TestTrafficWriter_Flush_HappyPath_AcksAllAndCommits(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb1 := mock.ExpectBatch()
-	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	eb2 := mock.ExpectBatch()
 	eb2.ExpectExec(`INSERT INTO traffic_event_payload`).WithArgs(anyArgs(11)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	eb3 := mock.ExpectBatch()
@@ -111,6 +111,54 @@ func TestTrafficWriter_Flush_HappyPath_AcksAllAndCommits(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&nakCount); got != 0 {
 		t.Errorf("nakAll: got %d, want 0 (happy path must not nak)", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("expectations: %v", err)
+	}
+}
+
+// TrafficEventWriter.flush — endpoint_type ($90) is persisted from the
+// message. ai-gateway stamps the canonical typology.EndpointKind onto
+// TrafficEventMessage.EndpointType; the writer must bind it as the final
+// INSERT arg so the audit row records the request modality. Pinning the
+// 90th positional arg to "embeddings" makes a regression that drops or
+// reorders the binding fail loudly (the bug that shipped endpoint_type
+// without a column / writer wiring would never have populated this).
+func TestTrafficWriter_Flush_PersistsEndpointType(t *testing.T) {
+	w, mock := trafficFlushWriter(t)
+
+	mock.ExpectBegin()
+	eb1 := mock.ExpectBatch()
+	eb1.ExpectExec(`INSERT INTO traffic_event`).
+		WithArgs(append(anyArgs(89), "embeddings")...).
+		WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb2 := mock.ExpectBatch()
+	eb2.ExpectExec(`INSERT INTO traffic_event_payload`).WithArgs(anyArgs(11)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb3 := mock.ExpectBatch()
+	eb3.ExpectExec(`INSERT INTO traffic_event_normalized`).WithArgs(anyArgs(8)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	mock.ExpectCommit()
+
+	var ackCount, nakCount int32
+	items := []pendingTrafficMessage{
+		{
+			event: TrafficEventMessage{
+				ID:                "evt-ep",
+				Source:            "ai-gateway",
+				Timestamp:         time.Now().UTC(),
+				EndpointType:      "embeddings",
+				RequestBody:       sharedaudit.Body{Kind: sharedaudit.BodyInline, InlineBytes: []byte(`{"a":1}`), SizeBytes: 7},
+				ResponseBody:      sharedaudit.EmptyBody(),
+				RequestNormalized: json.RawMessage(`{"messages":[]}`),
+			},
+			msg: countingMsg(&ackCount, &nakCount),
+		},
+	}
+
+	if err := w.flush(context.Background(), items); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if got := atomic.LoadInt32(&ackCount); got != 1 {
+		t.Errorf("ackAll: got %d, want 1 (endpoint_type row must commit)", got)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("expectations: %v", err)
@@ -170,7 +218,7 @@ func TestTrafficWriter_Flush_InsertPoisonPill22021AcksToSkip(t *testing.T) {
 	eb := mock.ExpectBatch()
 	// pgconn.PgError carrying "22021" — flush detects via strings.Contains on
 	// the error message, so any error whose message contains "22021" suffices.
-	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnError(errors.New("ERROR: invalid byte sequence (SQLSTATE 22021)"))
+	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnError(errors.New("ERROR: invalid byte sequence (SQLSTATE 22021)"))
 	mock.ExpectRollback()
 
 	var ackCount, nakCount int32
@@ -213,7 +261,7 @@ func TestTrafficWriter_Flush_InsertNonPoisonFailureNaksAll(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb := mock.ExpectBatch()
-	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnError(errors.New("unique_violation"))
+	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnError(errors.New("unique_violation"))
 	mock.ExpectRollback()
 
 	var ackCount, nakCount int32
@@ -249,7 +297,7 @@ func TestTrafficWriter_Flush_InsertPayloadsFailureNaksAll(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb1 := mock.ExpectBatch()
-	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	eb2 := mock.ExpectBatch()
 	eb2.ExpectExec(`INSERT INTO traffic_event_payload`).WithArgs(anyArgs(11)...).WillReturnError(errors.New("disk-full"))
 	mock.ExpectRollback()
@@ -289,7 +337,7 @@ func TestTrafficWriter_Flush_NormalizedFailureWarnsButCommits(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb1 := mock.ExpectBatch()
-	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	// Body absent → insertPayloads short-circuits, no traffic_event_payload
 	// batch is sent.
 	eb3 := mock.ExpectBatch()
@@ -331,7 +379,7 @@ func TestTrafficWriter_Flush_CommitFailureNaksAll(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb1 := mock.ExpectBatch()
-	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb1.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	// Body absent + no normalize → only the traffic_event insert; commit fails.
 	mock.ExpectCommit().WillReturnError(errors.New("commit-rejected"))
 	mock.ExpectRollback()
@@ -377,7 +425,7 @@ func TestTrafficWriter_Flush_NilRegistryHappyPath(t *testing.T) {
 
 	mock.ExpectBegin()
 	eb := mock.ExpectBatch()
-	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(89)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
+	eb.ExpectExec(`INSERT INTO traffic_event`).WithArgs(anyArgs(90)...).WillReturnResult(pgconn.NewCommandTag("INSERT 0 1"))
 	mock.ExpectCommit()
 
 	var ackCount, nakCount int32

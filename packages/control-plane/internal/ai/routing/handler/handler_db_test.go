@@ -65,7 +65,7 @@ func newHandlerWithMockDB(t *testing.T) (*Handler, pgxmock.PgxPoolIface, *hubSpy
 	logger := slog.New(slog.NewTextHandler(testLogWriter{t: t}, nil))
 	h := New(Deps{
 		Pool:   mock,
-		Meta:   systemmetastore.NewFromPool(mock),
+		Meta:   systemmetastore.New(mock),
 		Hub:    hub,
 		Audit:  audit.NewWriter(aud, "admin-audit", silentLogger()),
 		Logger: logger,
@@ -610,7 +610,7 @@ func TestCreateRoutingRule_NoHub(t *testing.T) {
 	aud := &auditSpy{}
 	h := New(Deps{
 		Pool:   mock,
-		Meta:   systemmetastore.NewFromPool(mock),
+		Meta:   systemmetastore.New(mock),
 		Hub:    nil, // explicit nil
 		Audit:  audit.NewWriter(aud, "audit", silentLogger()),
 		Logger: silentLogger(),
@@ -857,7 +857,7 @@ func TestUpdateRoutingRule_NoHubAllowed(t *testing.T) {
 	aud := &auditSpy{}
 	h := New(Deps{
 		Pool:   mock,
-		Meta:   systemmetastore.NewFromPool(mock),
+		Meta:   systemmetastore.New(mock),
 		Hub:    nil,
 		Audit:  audit.NewWriter(aud, "audit", silentLogger()),
 		Logger: silentLogger(),
@@ -1060,7 +1060,7 @@ func TestDeleteRoutingRule_NoHubAllowed(t *testing.T) {
 	aud := &auditSpy{}
 	h := New(Deps{
 		Pool:   mock,
-		Meta:   systemmetastore.NewFromPool(mock),
+		Meta:   systemmetastore.New(mock),
 		Hub:    nil,
 		Audit:  audit.NewWriter(aud, "audit", silentLogger()),
 		Logger: silentLogger(),

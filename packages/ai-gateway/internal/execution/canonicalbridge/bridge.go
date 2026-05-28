@@ -12,6 +12,7 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/providers/specs/gemini"
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/providers/specs/openai"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/typology"
+	"github.com/tidwall/sjson"
 )
 
 // formatsNativelyServingResponsesAPI is the set of provider wire formats whose
@@ -189,26 +190,48 @@ func (b *Bridge) EmbeddingsRoutable(ingress, target provcore.Format) bool {
 	}
 }
 
-// EndpointRoutable extends routing compatibility beyond chat when embeddings
-// or model listing keep the legacy OpenAI-only translation rule.
+// EndpointRoutable reports whether an ingress format may route to a target
+// format for the given endpoint wire shape.
+//
+// It dispatches by endpoint KIND (typology.KindFromWireShape) so the routing
+// gate stays in lockstep with the rest of the pipeline: request
+// canonicalization (proxy.go IngressChatToCanonical) and egress reshape
+// (ResponseCanonicalToIngress) both classify the endpoint via
+// KindFromWireShape. A hardcoded per-WireShape switch previously routed only
+// WireShapeOpenAIChat through ChatRoutable, so every OTHER chat-kind ingress
+// (anthropic-messages, gemini / vertex generate-content) fell into a
+// same-format-only default — silently blocking the cross-provider routing
+// those ingresses are otherwise fully built to serve. Dispatching by Kind
+// closes that drift: any chat-kind WireShape gets ChatRoutable.
+//
+// WireShapeOpenAIResponses and the legacy/none shapes keep dedicated rules and
+// are matched BEFORE the Kind dispatch (both are chat-kind, but Responses has
+// its own native-passthrough gate and /v1/completions + model-listing have no
+// canonical translation pipeline for their payload shape).
 func (b *Bridge) EndpointRoutable(ep typology.WireShape, ingress, target provcore.Format) bool {
 	switch ep {
-	case typology.WireShapeOpenAIChat:
-		return b.ChatRoutable(ingress, target)
 	case typology.WireShapeOpenAIResponses:
 		// /v1/responses ingress: cross-format goes through canonical chat-completions;
 		// same-shape passthrough fires for targets declaring responses-api support.
+		// Strictly an OpenAI-Responses ingress.
 		return ingress == provcore.FormatOpenAIResponses && b.ResponsesRoutable(target)
-	case typology.WireShapeOpenAIEmbeddings:
-		// Cross-format routing via the embedding canonical bridge.
-		// Capability mismatch (dimensions / batch / encoding) surfaces at the
-		// routing pre-filter, not here.
-		return b.EmbeddingsRoutable(ingress, target)
 	case typology.WireShapeNone, typology.WireShapeOpenAICompletionsLegacy:
+		// Model listing + legacy /v1/completions have no canonical translation
+		// pipeline for their payload shape: same-format, or the legacy
+		// OpenAI-only translation rule.
 		if ingress == target {
 			return true
 		}
 		return ingress == provcore.FormatOpenAI
+	}
+	switch typology.KindFromWireShape(ep) {
+	case typology.EndpointKindChat:
+		return b.ChatRoutable(ingress, target)
+	case typology.EndpointKindEmbeddings:
+		// Cross-format routing via the embedding canonical bridge.
+		// Capability mismatch (dimensions / batch / encoding) surfaces at the
+		// routing pre-filter, not here.
+		return b.EmbeddingsRoutable(ingress, target)
 	default:
 		return ingress == target
 	}
@@ -330,8 +353,13 @@ func (b *Bridge) IngressChatToCanonical(ingress provcore.Format, body []byte, ct
 }
 
 // IngressChatToWire converts ingress JSON to the upstream provider wire body
-// for chat completions.
-func (b *Bridge) IngressChatToWire(ingress, target provcore.Format, body []byte, ct provcore.CallTarget) ([]byte, error) {
+// for chat completions. `stream` is the request's resolved streaming intent
+// (req.Stream): ingresses that signal streaming out-of-band — Gemini's
+// :streamGenerateContent URL — produce a canonical body with no `stream` field,
+// so it must be stamped on before the target codec encodes, or a codec that
+// propagates `stream` from the canonical input (Anthropic) emits a
+// non-streaming upstream request and the client's stream loses all content.
+func (b *Bridge) IngressChatToWire(ingress, target provcore.Format, body []byte, ct provcore.CallTarget, stream bool) ([]byte, error) {
 	if ingress == target {
 		return body, nil
 	}
@@ -347,12 +375,37 @@ func (b *Bridge) IngressChatToWire(ingress, target provcore.Format, body []byte,
 	if err != nil {
 		return nil, err
 	}
+	if stream {
+		canon = EnsureCanonicalStream(canon)
+	}
 	codec, ok := b.codecs[target]
 	if !ok || codec == nil {
 		return nil, fmt.Errorf("canonicalbridge: no codec for format %q", target)
 	}
 	encRes, err := codec.EncodeRequest(chatWireShapeForFormat(target), canon, ct)
 	return encRes.Body, err
+}
+
+// EnsureCanonicalStream stamps `stream: true` onto an OpenAI-canonical chat
+// request body. Cross-format ingresses that signal streaming out-of-band — the
+// Gemini :streamGenerateContent URL, the gateway's broker stream path —
+// canonicalize to a chat body that carries no `stream` field. A target codec
+// that propagates the field from its canonical input (the Anthropic codec reads
+// `stream` and forwards it to /v1/messages) would otherwise emit a NON-streaming
+// upstream request, so the client's SSE terminates with no text. Callers invoke
+// this only when the request is actually streaming (gated on the resolved
+// isStream / req.Stream), so the set is unconditional. Gemini/Vertex targets
+// drive streaming from the URL and ignore the body field — the stamp is a
+// harmless no-op for them.
+func EnsureCanonicalStream(canonicalBody []byte) []byte {
+	if len(canonicalBody) == 0 {
+		return canonicalBody
+	}
+	out, err := sjson.SetBytes(canonicalBody, "stream", true)
+	if err != nil {
+		return canonicalBody
+	}
+	return out
 }
 
 // chatWireShapeForFormat returns the chat-completions wire shape for a target
@@ -646,7 +699,7 @@ func (b *Bridge) SelfCheck() error {
 				Format:          target,
 				ProviderModelID: FixtureProviderModel(target),
 			}
-			if _, err := b.IngressChatToWire(ingress, target, body, ct); err != nil {
+			if _, err := b.IngressChatToWire(ingress, target, body, ct, false); err != nil {
 				return fmt.Errorf("canonicalbridge: %s→%s unusable: %w", ingress, target, err)
 			}
 		}

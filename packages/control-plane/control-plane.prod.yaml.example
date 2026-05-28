@@ -93,12 +93,6 @@ crypto:
   #   credentialKeyMap      → CREDENTIAL_KEY_MAP
   production: true
 
-retention:
-  auditLogDays: 90
-  adminAuditLogDays: 365
-  metricRollupDays: 365
-  agentAuditDays: 90
-
 agent:
   caDir: "/var/lib/nexus/agent-ca"
 

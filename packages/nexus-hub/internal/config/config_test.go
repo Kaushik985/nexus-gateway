@@ -483,8 +483,6 @@ func TestEnvOverrides_RetentionAndIntervals(t *testing.T) {
 	t.Setenv("NEXUS_HUB_RETENTION_TRAFFIC_EVENT_DAYS", "180")
 	t.Setenv("NEXUS_HUB_RETENTION_TRAFFIC_EVENT_PAYLOAD_DAYS", "60")
 	t.Setenv("NEXUS_HUB_RETENTION_ADMIN_AUDIT_DAYS", "730")
-	t.Setenv("NEXUS_HUB_RETENTION_METRIC_ROLLUP_DAYS", "180")
-	t.Setenv("NEXUS_HUB_RETENTION_AGENT_AUDIT_DAYS", "30")
 	t.Setenv("NEXUS_HUB_RETENTION_ROLLUP_5M_DAYS", "14")
 	t.Setenv("NEXUS_HUB_RETENTION_ROLLUP_1H_DAYS", "180")
 	t.Setenv("NEXUS_HUB_RETENTION_ROLLUP_1D_DAYS", "730")
@@ -523,8 +521,7 @@ func TestEnvOverrides_RetentionAndIntervals(t *testing.T) {
 	}
 	r := cfg.Scheduler.Retention
 	if r.TrafficEventDays != 180 || r.TrafficEventPayloadDays != 60 ||
-		r.AdminAuditLogDays != 730 || r.MetricRollupDays != 180 ||
-		r.AgentAuditDays != 30 || r.Rollup5mDays != 14 ||
+		r.AdminAuditLogDays != 730 || r.Rollup5mDays != 14 ||
 		r.Rollup1hDays != 180 || r.Rollup1dDays != 730 || r.Rollup1moDays != 3650 {
 		t.Errorf("retention env-overrides not all applied; got %+v", r)
 	}

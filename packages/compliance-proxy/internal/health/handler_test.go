@@ -214,7 +214,7 @@ func TestShadowAgeGauge_RegisteredWhenProbeProvided(t *testing.T) {
 	}
 	var got *float64
 	for _, mf := range mfs {
-		if mf.GetName() == "compliance_proxy_shadow_last_report_age_seconds" {
+		if mf.GetName() == "nexus_shadow_last_report_age_seconds" {
 			for _, m := range mf.GetMetric() {
 				v := m.GetGauge().GetValue()
 				got = &v
@@ -222,7 +222,7 @@ func TestShadowAgeGauge_RegisteredWhenProbeProvided(t *testing.T) {
 		}
 	}
 	if got == nil {
-		t.Fatalf("gauge compliance_proxy_shadow_last_report_age_seconds not registered")
+		t.Fatalf("gauge nexus_shadow_last_report_age_seconds not registered")
 	}
 	if *got != 42 {
 		t.Errorf("gauge = %v, want 42", *got)

@@ -20,8 +20,10 @@ import (
 	nexushttp "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/http"
 )
 
-// OidcConfig holds the SSO/OIDC configuration stored in system_metadata
-// under key "oidc.config".
+// OidcConfig holds the OIDC settings for one external IdP — issuer, JWKS
+// endpoint, audience, and claim mappings. It is built per request from the
+// IdentityProvider row (see store.DecodeOIDCConfig) and passed to ValidateJWT
+// to verify an ID token.
 type OidcConfig struct {
 	Enabled      bool              `json:"enabled"`
 	Issuer       string            `json:"issuer"`

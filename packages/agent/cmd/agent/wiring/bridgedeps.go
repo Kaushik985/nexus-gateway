@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 	auditqueue "github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/observability/audit/queue"
 	"github.com/AlphaBitCore/nexus-gateway/packages/agent/internal/platform/paths"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/policy/payloadcapture"
-	localfsspill "github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/localfs"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/spillstore/spillsweep"
 	normalizecore "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/normalize/core"
 	streampolicy "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming/policy"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/tlsbump"
@@ -79,11 +80,19 @@ func BuildBridgeDeps(args BridgeDepsArgs) (*agentproxy.BridgeDeps, error) {
 		return nil, fmt.Errorf("BuildBridgeDeps: new upstream transport: %w", err)
 	}
 
-	spillRoot := filepath.Join(p.StateDir, "spill")
-	spill, spillErr := localfsspill.New(localfsspill.Options{Root: spillRoot})
+	// Same root the audit drain reads back from (SpillRoot is the single
+	// source of truth) so spilled bodies can be uploaded to S3 at drain time.
+	spill, spillErr := NewLocalSpillStore()
 	if spillErr != nil {
 		logger.Warn("bridge deps: localfs spillstore init failed; oversize bodies will truncate",
-			"root", spillRoot, "error", spillErr)
+			"root", SpillRoot(), "error", spillErr)
+	} else {
+		// Sweep the agent's local spill dir so its retention horizon and
+		// total-size cap are enforced. The store is hardcoded localfs with no
+		// configured retention, so use the default horizon.
+		go spillsweep.Run(context.Background(), spill, spillsweep.Options{
+			Retention: spillsweep.DefaultRetention,
+		}, logger)
 	}
 
 	return &agentproxy.BridgeDeps{

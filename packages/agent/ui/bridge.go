@@ -115,6 +115,15 @@ func (b *AgentBridge) QueryEvents(filter EventFilter) (map[string]any, error) {
 	return b.sendJSON("QUERY_EVENTS?" + strings.Join(params, "&"))
 }
 
+// EventByID fetches one event's full detail (body + normalized + spill refs)
+// on demand for the Traffic detail drawer, keeping the list query lightweight.
+// A body that spilled to local disk is read back by the daemon and returned
+// inline; a body already uploaded to S3 comes back ref-only (the agent has no
+// S3 GET credential) so the drawer renders a "view in Control Plane" hint.
+func (b *AgentBridge) EventByID(id string) (map[string]any, error) {
+	return b.sendJSON("EVENT_BY_ID?id=" + id)
+}
+
 // EventFilter mirrors the daemon's QUERY_EVENTS params. The Search
 // and Action fields are forwarded verbatim; empty strings are
 // dropped from the query string so the daemon receives "no filter"

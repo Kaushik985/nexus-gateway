@@ -171,9 +171,10 @@ func (r *Resolved) Response(formatSlug string) ResolvedResponseSet {
 }
 
 // Hash returns a short, deterministic hash of the resolved sets.
-// Used as the `x-nexus-aigw-allowlist-version` response header value
-// and as the allowlist contribution to the cache key. Returns the
-// first 8 hex characters of SHA-256 over a canonical encoding of the
+// Folded into the response cache key (Cache.BuildKey's allowlistVersion)
+// as the allowlist's contribution, so an allowlist change invalidates
+// cached entries captured under a different filter. Returns the first
+// 8 hex characters of SHA-256 over a canonical encoding of the
 // resolved structure.
 func (r *Resolved) Hash() string {
 	if r == nil {
@@ -450,7 +451,7 @@ func checkAgainstDenylist(label, name string, _ bool) error {
 
 // BucketDroppedHeader returns a low-cardinality label for a dropped
 // header name, suitable for the
-// `ai_gateway_forward_header_dropped_total{header}` metric.
+// `nexus_forward_header_dropped_total{header}` metric.
 //
 // Cardinality contract (NFR-FH4):
 //   - If lowerName is an exact match for a hard-denylist entry,

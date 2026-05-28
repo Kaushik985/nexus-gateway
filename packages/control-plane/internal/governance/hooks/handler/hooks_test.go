@@ -95,7 +95,7 @@ func newMockStore(t *testing.T) (pgxmock.PgxPoolIface, *systemmetastore.Store) {
 		t.Fatal(err)
 	}
 	t.Cleanup(mock.Close)
-	return mock, systemmetastore.NewFromPool(mock)
+	return mock, systemmetastore.New(mock)
 }
 
 // hookConfigCols mirrors store/hook_config_test.go.

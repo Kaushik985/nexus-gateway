@@ -52,6 +52,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	defs "github.com/AlphaBitCore/nexus-gateway/packages/nexus-hub/internal/jobs/defs"
+	"github.com/AlphaBitCore/nexus-gateway/packages/nexus-hub/internal/traffic/chain"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/storage/configstore"
 )
 
@@ -398,6 +399,16 @@ type reindexAuditPayload struct {
 // writeAuditRow inserts one AdminAuditLog row for the reindex event.
 // Errors are logged at WARN only — the reindex has already succeeded at this
 // point; losing the audit trail is preferable to surfacing a false error.
+//
+// The row joins the tamper-evident hash chain like every other AdminAuditLog
+// writer (F3: the Hub is the sole chain writer, through one helper, with no
+// parallel non-chained path). The insert runs in a short transaction so
+// chain.NextHash can hold the advisory lock across the head read and the
+// insert. The timestamp is generated in Go and hashed as an int64 ms-epoch,
+// then persisted via to_timestamp from the same value, so VerifyChain
+// recomputes the row byte-for-byte. actorRole='system' stays as a display
+// attribute that distinguishes scheduler-written rows from admin actions; it
+// is no longer load-bearing for chain linkage.
 func (j *SemanticCacheReindexJob) writeAuditRow(
 	ctx context.Context,
 	oldFP, newFP, oldIndexName, newIndexName string,
@@ -416,12 +427,41 @@ func (j *SemanticCacheReindexJob) writeAuditRow(
 		return
 	}
 
-	// Write directly to AdminAuditLog WITHOUT the chain hash. Hub-side
-	// scheduled jobs that run outside a transaction (no TX boundary to hold
-	// the advisory lock from chain.NextHash) use a simplified non-chain row.
-	// The chain is for CP-initiated admin actions; system-job rows are
-	// distinguished by actorRole='system' and carry NULL previousHash.
-	_, err = j.pool.Exec(ctx, `
+	tx, err := j.pool.Begin(ctx)
+	if err != nil {
+		j.logger.Warn("semantic-cache-reindex: begin audit tx failed", "error", err)
+		return
+	}
+	// Rollback is a no-op after a successful Commit; the deferred call covers
+	// every early-return path below without leaking the transaction.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Action and actor are compile-time constants here, so the validated
+	// chain.NewHashPayload constructor (which the runtime-driven writers use
+	// because their actor/action come from request data) would only contribute
+	// an unreachable error branch. Build the payload directly instead.
+	hp := chain.HashPayload{
+		TimestampMs: time.Now().UTC().UnixMilli(),
+		Action:      "semantic-cache.reindex",
+		ActorID:     "hub-job",
+		EntityType:  "semantic_cache_config",
+		EntityID:    "singleton",
+		AfterState:  json.RawMessage(payloadJSON),
+	}
+
+	prevHash, integrityHash, hashInput, err := chain.NextHash(ctx, tx, hp)
+	if err != nil {
+		j.logger.Warn("semantic-cache-reindex: compute chain hash failed", "error", err)
+		return
+	}
+	// Genesis row stores previousHash NULL; every later row stores the prior
+	// integrityHash.
+	var prevArg any
+	if prevHash != "" {
+		prevArg = prevHash
+	}
+
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO "AdminAuditLog" (
 			id, timestamp,
 			"actorId", "actorLabel", "actorRole",
@@ -429,14 +469,18 @@ func (j *SemanticCacheReindexJob) writeAuditRow(
 			"afterState",
 			"previousHash", "integrityHash", "hashInput"
 		) VALUES (
-			gen_random_uuid()::text, NOW(),
+			gen_random_uuid()::text, to_timestamp($1 / 1000.0),
 			'hub-job', 'Hub Scheduler', 'system',
 			'semantic-cache.reindex', 'semantic_cache_config', 'singleton',
-			$1,
-			NULL, '', ''
+			$2,
+			$3, $4, $5
 		)
-	`, payloadJSON)
-	if err != nil {
+	`, hp.TimestampMs, payloadJSON, prevArg, integrityHash, hashInput); err != nil {
 		j.logger.Warn("semantic-cache-reindex: write audit row failed", "error", err)
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		j.logger.Warn("semantic-cache-reindex: commit audit row failed", "error", err)
 	}
 }

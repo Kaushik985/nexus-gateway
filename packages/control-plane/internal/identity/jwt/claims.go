@@ -17,7 +17,7 @@ type Claims struct {
 	ClientID  string   `json:"client_id"`
 	Scope     string   `json:"scope"`
 	DeviceID  string   `json:"device_id,omitempty"`
-	SessionID string   `json:"session_id,omitempty"`
+	SessionID string   `json:"sid,omitempty"`
 	Email     string   `json:"email"`
 	IDP       string   `json:"idp"`
 	AuthMode  string   `json:"auth_mode,omitempty"`

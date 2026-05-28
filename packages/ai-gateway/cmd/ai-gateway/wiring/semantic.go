@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/cache/budget"
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/cache/freshness"
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/cache/semantic"
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/embeddings"
@@ -25,7 +24,6 @@ type SemanticDeps struct {
 	IndexLifecycle *semantic.IndexLifecycle
 	Reader         *semantic.Reader
 	Writer         *semantic.Writer
-	BudgetTracker  *budget.Tracker
 	Detector       *freshness.Detector
 }
 
@@ -104,15 +102,11 @@ func InitSemantic(
 	// Writer orchestrates the L2 write-back flow.
 	writer := semantic.NewWriter(cfgCache, client, sf, logger, 0 /* defaultMaxEntryBytes */, metrics)
 
-	// Budget tracker: per-route daily embedding cost ceiling via Redis INCRBYFLOAT.
-	budgetTracker := budget.NewTracker(rdbClient, logger, namespace)
-
 	return SemanticDeps{
 		ConfigCache:    cfgCache,
 		IndexLifecycle: lifecycle,
 		Reader:         reader,
 		Writer:         writer,
-		BudgetTracker:  budgetTracker,
 		Detector:       detector,
 	}
 }

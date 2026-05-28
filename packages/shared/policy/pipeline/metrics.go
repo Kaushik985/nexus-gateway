@@ -22,7 +22,7 @@ type Metrics struct {
 }
 
 // RegisterMetrics creates and registers compliance metrics under the given
-// namespace (e.g. "nexus_agent", "nexus_compliance_proxy") on the supplied
+// namespace (e.g. "nexus") on the supplied
 // registerer. Pass nil to use prometheus.DefaultRegisterer.
 //
 // The first call also sets the package-level convenience vars (PipelineDuration

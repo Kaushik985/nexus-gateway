@@ -6,10 +6,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -146,22 +144,15 @@ func (e *Engine) CACert() *x509.Certificate {
 	return e.caCert
 }
 
-// IssueLeafCert generates a leaf certificate mimicking the upstream cert's Subject and SANs.
 // IssueLeafCertByHostname mints a leaf certificate keyed only on the
 // hostname — no upstream-cert probe required. Mirrors compliance-proxy's
-// cert.Issuer.SignCert pattern: client trusts the device CA root, agent
-// signs CN={hostname}, SAN={hostname}, 24h validity, done. The whole
-// "fetch upstream's actual cert and clone its CN/SAN" dance that
-// IssueLeafCert below requires is unnecessary — clients only validate
-// SAN against the host they connected to, which is what we set here.
-//
-// Why this exists: the legacy IssueLeafCert path forced a pre-bump
-// TLS probe of the upstream to get the cert. Strict-anti-bot upstreams
-// (Cursor api2.cursor.sh, certain Cloudflare endpoints) reject vanilla
-// Go TLS dials and forced agent into opaque-relay fallback —
-// inspection lost. By mirroring cp's hostname-only minting, the bridge
-// path skips the probe entirely and Cursor traffic flows through the
-// proper bump pipeline (method/path/body/hooks all captured).
+// cert.Issuer.SignCert pattern: the client trusts the device CA root, the
+// agent signs CN={hostname}, SAN={hostname}, 24h validity. Clients only
+// validate the SAN against the host they connected to, so the leaf needs
+// no data from the upstream's real certificate. Skipping the probe lets
+// strict-anti-bot upstreams (Cursor api2.cursor.sh, certain Cloudflare
+// endpoints that reject vanilla Go TLS dials) flow through the bump
+// pipeline with method/path/body/hooks captured.
 func (e *Engine) IssueLeafCertByHostname(hostname string) (*CachedCert, error) {
 	// Cache by hostname (vs by upstream-cert fingerprint in the legacy
 	// path). Same TTL bound; same eviction policy.
@@ -210,7 +201,8 @@ func (e *Engine) IssueLeafCertByHostname(hostname string) (*CachedCert, error) {
 
 	e.cacheMu.Lock()
 	if len(e.cache) >= e.maxCache {
-		// Same eviction policy as IssueLeafCert below.
+		// Evict the oldest 25% (min 1) rather than clearing the whole
+		// cache, to avoid a thundering herd of simultaneous re-mints.
 		type aged struct {
 			key string
 			t   time.Time
@@ -232,90 +224,6 @@ func (e *Engine) IssueLeafCertByHostname(hostname string) (*CachedCert, error) {
 	}
 	e.cache[cacheKey] = cached
 	e.cacheMu.Unlock()
-	return cached, nil
-}
-
-func (e *Engine) IssueLeafCert(upstreamCert *x509.Certificate) (*CachedCert, error) {
-	sum := sha256.Sum256(upstreamCert.Raw)
-	fingerprint := hex.EncodeToString(sum[:])
-
-	// Check cache
-	e.cacheMu.RLock()
-	if cached, ok := e.cache[fingerprint]; ok && time.Since(cached.CreatedAt) < e.cacheTTL {
-		e.cacheMu.RUnlock()
-		return cached, nil
-	}
-	e.cacheMu.RUnlock()
-
-	// Generate new leaf
-	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), tlsRandReader)
-	if err != nil {
-		return nil, fmt.Errorf("generate leaf key: %w", err)
-	}
-
-	serial, err := rand.Int(tlsRandReader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return nil, fmt.Errorf("generate serial: %w", err)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      upstreamCert.Subject,
-		DNSNames:     upstreamCert.DNSNames,
-		IPAddresses:  upstreamCert.IPAddresses,
-		NotBefore:    time.Now().Add(-5 * time.Minute),
-		NotAfter:     upstreamCert.NotAfter,
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-
-	certDER, err := x509.CreateCertificate(tlsRandReader, template, e.caCert, &leafKey.PublicKey, e.caKey)
-	if err != nil {
-		return nil, fmt.Errorf("create leaf cert: %w", err)
-	}
-
-	keyDER, err := x509.MarshalECPrivateKey(leafKey)
-	if err != nil {
-		return nil, fmt.Errorf("marshal leaf key: %w", err)
-	}
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-
-	cached := &CachedCert{
-		CertDER:   certDER,
-		Key:       leafKey,
-		CertPEM:   certPEM,
-		KeyPEM:    keyPEM,
-		CreatedAt: time.Now(),
-	}
-
-	// Store in cache
-	e.cacheMu.Lock()
-	if len(e.cache) >= e.maxCache {
-		// Evict oldest 25% to avoid thundering-herd of simultaneous cache
-		// misses that would occur if we cleared the entire cache at once.
-		type aged struct {
-			key string
-			t   time.Time
-		}
-		entries := make([]aged, 0, len(e.cache))
-		for k, v := range e.cache {
-			entries = append(entries, aged{k, v.CreatedAt})
-		}
-		slices.SortFunc(entries, func(a, b aged) int {
-			return cmp.Compare(a.t.UnixNano(), b.t.UnixNano())
-		})
-		evictCount := len(entries) / 4
-		if evictCount < 1 {
-			evictCount = 1
-		}
-		for i := range evictCount {
-			delete(e.cache, entries[i].key)
-		}
-	}
-	e.cache[fingerprint] = cached
-	e.cacheMu.Unlock()
-
 	return cached, nil
 }
 

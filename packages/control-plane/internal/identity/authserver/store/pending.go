@@ -25,8 +25,9 @@ type PendingAuthzEntry struct {
 	CodeChallenge string // S256 only
 	DeviceID      string // set for agent flows that passed a binding handle
 	// IdPID is the IdentityProvider.id the user chose at the method-picker step.
-	// Threaded from OIDCBeginHandler to OIDCCallbackHandler so the callback loads
-	// the correct per-IdP config. Empty for local-password login.
+	// Stamped by the SSO start handler and read back by OIDCCallbackHandler /
+	// SAMLACSHandler so the return leg loads the correct per-IdP config. Empty
+	// for local-password login.
 	IdPID     string
 	ExpiresAt time.Time
 }

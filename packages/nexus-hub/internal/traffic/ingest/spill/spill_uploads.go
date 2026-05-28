@@ -54,8 +54,9 @@ type SpillUploadAPI struct {
 	PerObjectCap int64
 
 	// Secrets serves Active() at mint time and Lookup() at verify time.
-	// Required.
-	Secrets *spillupload.SecretStore
+	// Required. Typed as the SecretSource interface (production passes a
+	// *spillupload.SecretStore) so the sign/verify failure modes are testable.
+	Secrets spillupload.SecretSource
 
 	// Dedup gates blob-endpoint replay protection. Required when
 	// SpillBackend == "localfs"; nil disables the dev sink with 503.
@@ -72,6 +73,19 @@ type SpillUploadAPI struct {
 	// Token bytes are NEVER logged; only structural fields (eventId,
 	// direction, sizeBytes, result) appear in logs.
 	Logger *slog.Logger
+
+	// Now is the clock used for token-expiry verification. Nil defaults to
+	// time.Now; tests inject a future clock to exercise the expired-token
+	// rejection path.
+	Now func() time.Time
+}
+
+// now returns the handler's clock (time.Now when unset).
+func (h *SpillUploadAPI) now() time.Time {
+	if h.Now != nil {
+		return h.Now()
+	}
+	return time.Now()
 }
 
 // SpillUploadMintRequest mirrors the OpenAPI schema in
@@ -251,7 +265,7 @@ func (h *SpillUploadAPI) PutSpillBlob(c echo.Context) error {
 		return badRequest(c, "missing token")
 	}
 
-	claims, err := spillupload.Verify(h.Secrets, token, time.Now())
+	claims, err := spillupload.Verify(h.Secrets, token, h.now())
 	switch {
 	case errors.Is(err, spillupload.ErrTokenExpired):
 		return c.JSON(http.StatusBadRequest, ErrorResponse{Error: "token expired", Code: "TOKEN_EXPIRED"})

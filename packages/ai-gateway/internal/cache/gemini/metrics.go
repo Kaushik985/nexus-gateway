@@ -20,7 +20,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	}
 	factory := func(name, help string, labels ...string) *prometheus.CounterVec {
 		cv := prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "nexus_aigw_gemini_cache_" + name + "_total",
+			Name: "nexus_gemini_cache_" + name + "_total",
 			Help: help,
 		}, labels)
 		reg.MustRegister(cv)

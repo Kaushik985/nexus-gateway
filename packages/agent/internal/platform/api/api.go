@@ -153,75 +153,34 @@ type InterceptionHealthReporter interface {
 	InterceptionHealth() InterceptionHealth
 }
 
-// FlowResult contains the full outcome of an intercepted flow, emitted after
-// the flow completes for audit recording.
+// FlowResult contains the outcome of a non-bumped intercepted flow
+// (passthrough / deny / inspect-fallback), emitted after the flow completes
+// for audit recording. Bumped inspect flows audit per-HTTP-request from
+// inside tlsbump and do not produce a FlowResult, so the fields here are
+// limited to what the transport layer observes without decrypting HTTP.
 type FlowResult struct {
-	FlowID         string
-	SrcIP          string
-	DstHost        string
-	DstIP          string
-	DstPort        int
-	Method         string // HTTP method when available from inspection
-	Path           string // HTTP request path when available from inspection
-	Process        ProcessMeta
-	Decision       Decision
-	PolicyRuleID   string // matched policy rule pattern (from policy engine)
-	BytesIn        int64
-	BytesOut       int64
-	DurationMs     int
-	BumpStatus     string
-	StartedAt      time.Time
-	HookDecision   string // Hook pipeline decision (approve/reject_hard/block_soft)
-	HookReason     string // Human-readable reason from hook pipeline
-	HookReasonCode string // Machine-readable reason code
-	// ComplianceTags is the merged compliance tag set emitted by the
-	// pipeline (severity:*, detector:*, category:*, …). Forwarded to the
-	// audit queue so OnFlowComplete can stamp it onto the uploaded event.
-	ComplianceTags []string
+	FlowID       string
+	SrcIP        string
+	DstHost      string
+	DstIP        string
+	DstPort      int
+	Process      ProcessMeta
+	Decision     Decision
+	PolicyRuleID string // matched policy rule pattern (from policy engine)
+	BytesIn      int64
+	BytesOut     int64
+	DurationMs   int
+	BumpStatus   string
+	StartedAt    time.Time
 
-	// Request-side LLM signals populated by the traffic adapter when
-	// InspectRequest ran for this flow. Empty when the flow did not match
-	// a known provider adapter or no request inspection occurred.
-	Provider          string
-	Model             string
-	ApiKeyClass       string
-	ApiKeyFingerprint string
-
-	// Response-side usage populated by the agent MITM relay's response
-	// inspection path (adapter DetectResponseUsage for JSON, UsageAccumulator
-	// for SSE). Token pointers are nil when usage was unavailable;
-	// UsageExtractionStatus matches traffic.UsageStatus values.
-	PromptTokens          *int
-	CompletionTokens      *int
-	UsageExtractionStatus string
-
-	// Payload capture bytes populated when the payload_capture.config admin
-	// toggle has the corresponding flag enabled. Bounded by the per-flow
-	// inspectBodyCap (spill.perObjectCap, default 256 MiB); the audit stamp
-	// at OnFlowComplete is a plain copy. Hub demuxes inline-vs-spill on
-	// receipt. Nil when capture is disabled.
-	PayloadRequest  []byte
-	PayloadResponse []byte
-
-	// Latency phase breakdown. Populated by proxy.MITMRelay from a per-flow
-	// traffic.PhaseSink attached to the upstream relayClient.Do context. Nil
-	// when the flow did not reach the upstream call (e.g. hook block,
-	// intercept-only). connectionBridge.OnFlowComplete copies these onto
+	// Upstream latency. On macOS the Swift flow_closed message surfaces these
+	// for non-bumped flows; Linux/Windows leave them nil (a raw relay has no
+	// distinct upstream call to time). LatencyBreakdown carries intercept_ms
+	// (the agent's own intercept overhead). OnFlowComplete copies these onto
 	// audit.Event for SQLite persistence + Hub upload.
 	UpstreamTtfbMs   *int
 	UpstreamTotalMs  *int
-	RequestHooksMs   *int
-	ResponseHooksMs  *int
 	LatencyBreakdown map[string]int
-
-	// Classification inputs propagated from the bridge / Swift side.
-	// DomainRuleID is the matched interception_domain.id (empty when host
-	// wasn't configured for inspection). PathAction is the resolved per-path
-	// action ("PROCESS"/"PASSTHROUGH"/"BLOCK"). connectionBridge.OnFlowComplete
-	// copies these onto audit.Event so audit.Classify() distinguishes Inspect
-	// (matched + PASSTHROUGH) from Processed (matched + PROCESS + hooks ran).
-	DomainRuleID string
-	PathAction   string
 }
 
 // FlowAuditor is an optional interface that ConnectionHandler implementations

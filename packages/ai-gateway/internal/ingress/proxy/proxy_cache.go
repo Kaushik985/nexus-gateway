@@ -42,6 +42,7 @@ import (
 	streampolicy "github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/streaming/policy"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/traffic"
 	"github.com/AlphaBitCore/nexus-gateway/packages/ai-gateway/internal/ingress/envelope"
+	"github.com/tidwall/gjson"
 )
 
 // copyUpstreamHeaders returns a defensive copy of src so the broker
@@ -348,52 +349,56 @@ func (h *Handler) handleNonStreamHit(
 		rec.Metadata = updateEmbeddingDimension(rec.Metadata, respBody)
 	}
 	ingress, _ := IngressFromContext(ctx)
-	// Egress reshape — B2 origin-tag gate. Cache entries are tagged at
-	// write time with the ingress wire shape that produced them
-	// (OriginWireShape). Cross-ingress shape contamination
-	// (e.g. /v1/chat/completions writer → /v1/responses reader sharing
-	// the same canonical-body cache key) is fixed by reshaping when
-	// the requesting ingress shape differs from the writer's.
-	//
-	// Decision matrix:
-	//   - Same shape (origin == ingress on both endpoint + body format):
-	//     no reshape; serve verbatim. Cheapest path.
-	//   - Legacy untagged entry (OriginWireShape == ""): fall back to
-	//     the pre-B2 canonical-assuming reshape behavior so entries
-	//     written before this fix continue to work until they TTL-expire.
-	//   - Different shape, tagged: two-step reshape via
-	//     ResponseAcrossFormats (DecodeResponse(origin) → canonical →
-	//     ResponseCanonicalToIngress(ingress)).
+	// Egress reshape — cache HIT non-stream ("canonical→A" on replay). The
+	// stored body's shape depends on the ORIGIN endpoint kind, tagged at write
+	// time by OriginWireShape:
+	//   - Chat-kind origins (openai-chat, anthropic /v1/messages, gemini
+	//     /v1beta, …) all store CANONICAL chat — their codecs DecodeResponse the
+	//     upstream to canonical OpenAI before caching. Re-encode canonical → the
+	//     CURRENT reader's ingress shape via ResponseCanonicalToIngress:
+	//     identity for OpenAI-family, content[]/candidates[] for anthropic/
+	//     gemini, output[] for a /v1/responses reader (E57 cross-shape). The
+	//     empty/legacy tag is also canonical → handled here.
+	//   - openai-responses origin stores RESPONSES-shape (native passthrough is
+	//     not canonicalised). Serve verbatim to a /v1/responses reader; for a
+	//     different reader, ResponseAcrossFormats decodes responses→canonical→
+	//     reader.
+	// This replaced the prior verbatim-on-same-shape gate, which returned
+	// canonical chat (`choices[]`) to a same-ingress anthropic/gemini reader
+	// instead of `content[]`/`candidates[]`.
 	if h.deps.CanonicalBridge != nil {
-		ingressShape := ingress.WireShape
-		sameShape := entry.OriginWireShape == ingressShape
-		if !sameShape {
-			if entry.OriginWireShape == "" {
-				// Legacy untagged entry — assume canonical body and run
-				// the prior reshape gate.
-				if ingress.WireShape == typology.WireShapeOpenAIChat ||
-					(ingress.WireShape == typology.WireShapeOpenAIResponses &&
-						!h.deps.CanonicalBridge.TargetNativelyServesResponsesAPI(provcore.Format(target.AdapterType))) {
-					shaped, err := h.deps.CanonicalBridge.ResponseCanonicalToIngress(ingress.BodyFormat, respBody)
-					if err != nil {
-						logger.Warn("cache HIT: ingress encode failed (legacy entry); serving canonical bytes", "error", err)
-					} else {
-						respBody = shaped
-					}
-				}
+		switch {
+		case gjson.GetBytes(respBody, "choices").Exists():
+			// Canonical OpenAI chat envelope (`choices[]`). Every chat-kind origin
+			// — openai-chat, anthropic /v1/messages, gemini /v1beta — stores
+			// canonical chat (their codecs DecodeResponse the upstream to
+			// canonical), and cross-format /v1/responses canonicalises before
+			// caching too. Reshape canonical → the CURRENT reader's ingress:
+			// identity for OpenAI-family, content[]/candidates[] for anthropic/
+			// gemini, output[] for a /v1/responses reader (E57 cross-shape).
+			shaped, err := h.deps.CanonicalBridge.ResponseCanonicalToIngress(ingress.BodyFormat, respBody)
+			if err != nil {
+				logger.Warn("cache HIT: ingress reshape failed; serving canonical bytes", "error", err)
 			} else {
-				shaped, err := h.deps.CanonicalBridge.ResponseAcrossFormats(entry.OriginWireShape, ingressShape, respBody)
-				if err != nil {
-					logger.Warn("cache HIT: cross-shape reshape failed; serving entry bytes",
-						"error", err,
-						"from", string(entry.OriginWireShape),
-						"to", string(ingressShape),
-					)
-				} else {
-					respBody = shaped
-				}
+				respBody = shaped
+			}
+		case entry.OriginWireShape != "" && ingress.WireShape != entry.OriginWireShape:
+			// Body is in the origin's own wire shape, not canonical chat (today
+			// only /v1/responses NATIVE passthrough = responses-shape `output[]`).
+			// Decode origin→canonical→reader. Sniffing `choices` rather than
+			// trusting OriginWireShape alone is necessary because native vs
+			// cross-format /v1/responses share the same tag but store different
+			// shapes (responses-shape vs canonical chat).
+			shaped, err := h.deps.CanonicalBridge.ResponseAcrossFormats(entry.OriginWireShape, ingress.WireShape, respBody)
+			if err != nil {
+				logger.Warn("cache HIT: cross-shape reshape failed; serving entry bytes",
+					"error", err, "from", string(entry.OriginWireShape), "to", string(ingress.WireShape))
+			} else {
+				respBody = shaped
 			}
 		}
+		// else: same-shape non-canonical body (responses-native → responses
+		// reader) → serve verbatim.
 	}
 
 	usage := metrics.Usage{
@@ -934,12 +939,10 @@ func (h *Handler) handleNonStreamWithSubscription(
 		if err != nil {
 			var pe *provcore.ProviderError
 			if errors.As(err, &pe) {
-				rec.StatusCode = pe.Status
-				writeDetailedError(w, pe.Status, pe.Code, pe.Message, "")
+				h.writeDetailedErr(w, rec, pe.Status, pe.Code, pe.Message, "")
 				return
 			}
-			rec.StatusCode = http.StatusBadGateway
-			writeJSONError(w, http.StatusBadGateway, err.Error())
+			h.writeError(w, rec, http.StatusBadGateway, err.Error())
 			return
 		}
 		if chunk.Delta != "" {
@@ -953,11 +956,11 @@ func (h *Handler) handleNonStreamWithSubscription(
 		}
 	}
 
-	// Response body in ingress wire shape. Non-stream MISS uses the
-	// upstream provider's body (already in ingress format on the
-	// passthrough path; canonical OpenAI on the cross-format path).
-	// Non-stream HIT_LIVE re-uses the same canonical bytes the leader
-	// will write to cache.
+	// canonicalBody is the canonical (OpenAI) response: the leader's
+	// upstream call decoded the target wire shape to canonical via
+	// SchemaCodec.DecodeResponse (specAdapter.Execute returns CanonicalBody),
+	// and the broker fans out those canonical bytes. egressReshapeNonStream
+	// below re-encodes it to the caller's ingress shape ("B→canonical→A").
 	respBody := canonicalBody
 
 	ingress, _ := IngressFromContext(ctx)
@@ -978,20 +981,17 @@ func (h *Handler) handleNonStreamWithSubscription(
 			logger,
 		)
 	}
-	// Egress reshape — broker HIT_LIVE non-stream. Same dual-endpoint
-	// guard as handleNonStream and the cache HIT path above; native
-	// Responses passthrough skips the reshape (already in correct
-	// shape — re-encoding would strip the original output[].text).
-	if h.deps.CanonicalBridge != nil &&
-		(ingress.WireShape == typology.WireShapeOpenAIChat ||
-			(ingress.WireShape == typology.WireShapeOpenAIResponses &&
-				!h.deps.CanonicalBridge.TargetNativelyServesResponsesAPI(provcore.Format(target.AdapterType)))) {
-		shaped, err := h.deps.CanonicalBridge.ResponseCanonicalToIngress(ingress.BodyFormat, respBody)
-		if err != nil {
-			logger.Error("response hub reshape failed (broker non-stream)", "error", err)
-			h.writeError(w, rec, http.StatusBadGateway, "upstream response could not be reshaped for ingress format")
-			return
-		}
+	// Egress reshape — broker MISS / HIT_LIVE non-stream. respBody is the
+	// canonical body; funnel through the single egress helper so the broker
+	// path obeys "B→canonical→A" for EVERY ingress (the prior
+	// WireShape==OpenAIChat-only guard silently returned canonical OpenAI for
+	// anthropic /v1/messages + gemini /v1beta — this is the prod path that
+	// produced the wrong-envelope responses).
+	if shaped, err := h.egressReshapeNonStream(ingress, target, respBody); err != nil {
+		logger.Error("response hub reshape failed (broker non-stream)", "error", err)
+		h.writeError(w, rec, http.StatusBadGateway, "upstream response could not be reshaped for ingress format")
+		return
+	} else {
 		respBody = shaped
 	}
 

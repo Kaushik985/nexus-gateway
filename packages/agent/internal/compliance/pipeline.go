@@ -91,7 +91,7 @@ func NewAgentPipeline(logger *slog.Logger) *AgentPipeline {
 // to inject a custom hook registry. Production code calls NewAgentPipeline,
 // which always passes the package-global hooks.Registry.
 func newAgentPipelineWithRegistry(logger *slog.Logger, registry *core.HookRegistry) *AgentPipeline {
-	reg := traffic.NewAdapterRegistry("nexus_agent")
+	reg := traffic.NewAdapterRegistry("nexus")
 	adapters.RegisterBuiltins(reg)
 	reg.Freeze()
 

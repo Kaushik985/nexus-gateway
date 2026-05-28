@@ -70,7 +70,7 @@ func TestBridge_IngressChatToWire_ResponsesSameShape(t *testing.T) {
 	out, err := b.IngressChatToWire(provcore.FormatOpenAIResponses, provcore.FormatOpenAI, body, provcore.CallTarget{
 		Format:          provcore.FormatOpenAI,
 		ProviderModelID: "gpt-5.2",
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("IngressChatToWire: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestBridge_IngressChatToWire_ResponsesCrossFormat(t *testing.T) {
 	out, err := b.IngressChatToWire(provcore.FormatOpenAIResponses, provcore.FormatAnthropic, body, provcore.CallTarget{
 		Format:          provcore.FormatAnthropic,
 		ProviderModelID: "claude-sonnet-4-6",
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("cross-format encode failed: %v", err)
 	}

@@ -76,11 +76,11 @@ func TestNormalizeBackfill_HappyPath(t *testing.T) {
 	rawReq := []byte(`{"model":"gpt-4o","messages":[]}`)
 	rawResp := []byte(`{"choices":[]}`)
 	rows := pgxmock.NewRows([]string{
-		"id", "path", "endpoint_type", "adapter_type", "model",
+		"id", "path", "adapter_type", "model",
 		"request_content_type", "response_content_type",
 		"inline_request_body", "inline_response_body",
 	}).AddRow(
-		"evt-1", "/v1/chat/completions", "chat", "openai", "gpt-4o",
+		"evt-1", "/v1/chat/completions", "openai", "gpt-4o",
 		ptrStr("application/json"), ptrStr("application/json"),
 		inlineBodyEnvelope(t, rawReq), inlineBodyEnvelope(t, rawResp),
 	)
@@ -120,11 +120,11 @@ func TestNormalizeBackfill_RegistryError(t *testing.T) {
 	defer mock.Close()
 
 	rows := pgxmock.NewRows([]string{
-		"id", "path", "endpoint_type", "adapter_type", "model",
+		"id", "path", "adapter_type", "model",
 		"request_content_type", "response_content_type",
 		"inline_request_body", "inline_response_body",
 	}).AddRow(
-		"evt-2", "/v1/chat/completions", "chat", "anthropic", "claude",
+		"evt-2", "/v1/chat/completions", "anthropic", "claude",
 		ptrStr("application/json"), ptrStr("application/json"),
 		inlineBodyEnvelope(t, []byte(`malformed`)), inlineBodyEnvelope(t, []byte(`{"ok":true}`)),
 	)
@@ -167,7 +167,7 @@ func TestNormalizeBackfill_NoCandidates(t *testing.T) {
 	defer mock.Close()
 
 	rows := pgxmock.NewRows([]string{
-		"id", "path", "endpoint_type", "adapter_type", "model",
+		"id", "path", "adapter_type", "model",
 		"request_content_type", "response_content_type",
 		"inline_request_body", "inline_response_body",
 	})
@@ -192,11 +192,11 @@ func TestNormalizeBackfill_SpillRefOnlySkipped(t *testing.T) {
 	defer mock.Close()
 
 	rows := pgxmock.NewRows([]string{
-		"id", "path", "endpoint_type", "adapter_type", "model",
+		"id", "path", "adapter_type", "model",
 		"request_content_type", "response_content_type",
 		"inline_request_body", "inline_response_body",
 	}).AddRow(
-		"evt-3", "/v1/messages", "chat", "anthropic", "claude",
+		"evt-3", "/v1/messages", "anthropic", "claude",
 		(*string)(nil), (*string)(nil),
 		nil, nil,
 	)
@@ -242,11 +242,11 @@ func TestNormalizeBackfill_BothDirectionsFailed(t *testing.T) {
 	defer mock.Close()
 
 	rows := pgxmock.NewRows([]string{
-		"id", "path", "endpoint_type", "adapter_type", "model",
+		"id", "path", "adapter_type", "model",
 		"request_content_type", "response_content_type",
 		"inline_request_body", "inline_response_body",
 	}).AddRow(
-		"evt-4", "/v1/chat/completions", "chat", "openai", "gpt-4o",
+		"evt-4", "/v1/chat/completions", "openai", "gpt-4o",
 		ptrStr("application/json"), ptrStr("application/json"),
 		inlineBodyEnvelope(t, []byte(`bad`)), inlineBodyEnvelope(t, []byte(`bad`)),
 	)

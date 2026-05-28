@@ -9,7 +9,7 @@ import (
 
 // Metrics is the registered Prometheus metric set for the normalize
 // package. Constructed once per data-plane service with the service's
-// own namespace (e.g. "nexus_ai_gateway"). Subsequent calls with the
+// own namespace (e.g. "nexus"). Subsequent calls with the
 // same namespace return the cached instance to avoid duplicate
 // registration panics in shared-package tests.
 type Metrics struct {

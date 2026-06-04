@@ -2,21 +2,19 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/context/ToastContext';
 import {
-  Dialog, Button, Switch, Tooltip, Stack, Card,
-  FormField, Select, Textarea,
+  Dialog, Button, Switch, Tooltip, Stack,
+  FormField,
   MultiSelectDropdown,
 } from '@/components/ui';
 import { useZodForm, FormInput, FormSelect } from '@/lib/forms';
-import { z } from 'zod';
 import { useMutation } from '@/hooks/useMutation';
 import { useSyncFeedback } from '@/hooks/useSyncFeedback';
-import { hookApi, serviceUrlsApi } from '@/api/services';
+import { serviceUrlsApi, hookApi } from '@/api/services';
 import type { HookWritePayload } from '@/api/services';
 import { useApi } from '@/hooks/useApi';
-import type { HookConfig, AdminHookImplementationsResponse, HookImplementationSummary } from '@/api/types';
+import type { HookConfig } from '@/api/types';
 import {
   HOOK_APPLICABLE_INGRESS,
-  HOOK_APPLICABLE_INGRESS_ORDER,
   HOOK_CATEGORY_AUTO_VALUE,
   HOOK_FAIL_BEHAVIOR,
   HOOK_FORM_DEFAULTS,
@@ -28,20 +26,21 @@ import {
   HOOK_STAGE,
   HOOK_UI_EMPTY,
 } from '@/constants/hooks';
-import { JsonSchemaHookConfigForm, buildDefaultsFromSchema } from '@/components/config/JsonSchemaHookConfigForm';
-import { validateDataAgainstJsonSchema } from '@/lib/validate-json-schema';
 import { aiguardComplianceWebhookUrl } from '@/lib/aiguardWebhook';
 import styles from './HookForm.module.css';
 import { HelpIconButton } from '@nexus-gateway/ui-shared';
-
-/**
- * Radix Select treats value="" as "no selection". Use a sentinel for the
- * "auto" category so Radix treats it as a real selected value.
- */
-const CATEGORY_AUTO_SENTINEL = '__auto__';
-const toCategorySentinel = (v: string) => (v === HOOK_CATEGORY_AUTO_VALUE ? CATEGORY_AUTO_SENTINEL : v);
-const fromCategorySentinel = (v: string) => (v === CATEGORY_AUTO_SENTINEL ? HOOK_CATEGORY_AUTO_VALUE : v);
-const INGRESS_ALLOWED = new Set<string>(HOOK_APPLICABLE_INGRESS_ORDER);
+import {
+  CATEGORY_AUTO_SENTINEL,
+  toCategorySentinel,
+  fromCategorySentinel,
+  normalizeApplicableIngress,
+  hookFormSchema,
+  type HookFormValues,
+  type WebhookTargetOption,
+} from './hookFormModel';
+import { useHookRegistry } from './useHookRegistry';
+import { useHookConfigState } from './useHookConfigState';
+import { ConfigSection } from './ConfigSection';
 
 interface HookFormProps {
   hook?: HookConfig;
@@ -50,72 +49,6 @@ interface HookFormProps {
   embedded?: boolean;
   onCreateSuccess?: (created: HookConfig) => void;
 }
-
-function normalizeApplicableIngress(
-  nextRaw: string[] | undefined,
-  prevRaw?: string[],
-): string[] {
-  const all = HOOK_APPLICABLE_INGRESS.ALL;
-  const canonicalize = (codes?: string[]) =>
-    Array.from(new Set(
-      (codes ?? [])
-        .map((code) => {
-          const normalized = (code ?? '').trim().toUpperCase();
-          return INGRESS_ALLOWED.has(normalized) ? normalized : '';
-        })
-        .filter(Boolean),
-    ));
-
-  const next = canonicalize(nextRaw);
-  const prev = canonicalize(prevRaw);
-  const hadAll = prev.includes(all);
-  const hasAll = next.includes(all);
-  const specifics = next.filter((code) => code !== all);
-
-  if (hasAll && specifics.length > 0) {
-    // User selected ALL from a specific subset: ALL wins.
-    if (!hadAll) return [all];
-    // User selected a specific ingress while ALL was active: specific wins.
-    return specifics;
-  }
-  if (hasAll) return [all];
-  if (specifics.length > 0) return specifics;
-  // Keep a valid non-empty value aligned with backend default semantics.
-  return [all];
-}
-
-function asConfigRecord(cfg: unknown): Record<string, unknown> {
-  if (cfg && typeof cfg === 'object' && !Array.isArray(cfg)) return cfg as Record<string, unknown>;
-  return {};
-}
-
-function implementationsForRow(
-  list: HookImplementationSummary[],
-  rowType: string,
-  stage: string,
-): HookImplementationSummary[] {
-  return list.filter((impl) => {
-    if (!impl.supportedStages.includes(stage)) return false;
-    if (rowType === HOOK_ROW_TYPE.WEBHOOK) return impl.implementationId === 'webhook.forward';
-    if (rowType === HOOK_ROW_TYPE.SCRIPT) return impl.implementationId === 'noop';
-    return impl.implementationId !== 'webhook.forward';
-  });
-}
-
-const hookFormSchema = z.object({
-  name: z.string().min(1),
-  type: z.string().min(1),
-  stage: z.string().min(1),
-  priority: z.coerce.number().int(),
-  timeoutMs: z.coerce.number().int().min(0),
-  failBehavior: z.string().min(1),
-  enabled: z.boolean(),
-  category: z.string(),
-  whEndpoint: z.string().optional().default(''),
-});
-
-type HookFormValues = z.infer<typeof hookFormSchema>;
-type WebhookTargetOption = 'custom' | 'aiguard';
 
 export function HookForm({ hook, onClose, onSaved, embedded, onCreateSuccess }: HookFormProps) {
   const { t } = useTranslation();
@@ -159,16 +92,21 @@ export function HookForm({ hook, onClose, onSaved, embedded, onCreateSuccess }: 
     return 'custom';
   });
 
-  const existingCfg = asConfigRecord(hook?.config);
-  const [registry, setRegistry] = useState<AdminHookImplementationsResponse | null>(null);
-  const [registryError, setRegistryError] = useState<string | null>(null);
+  const { registryError, implementations, hookCategories } = useHookRegistry();
 
-  const [selectedImplementationId, setSelectedImplementationId] = useState(hook?.implementationId ?? '');
-  const [configObject, setConfigObject] = useState<Record<string, unknown>>(() => ({ ...existingCfg }));
-  const [manualConfigJson, setManualConfigJson] = useState(() =>
-    hook ? JSON.stringify(existingCfg, null, 2) : '{}',
-  );
-  const [useManualConfigEditor, setUseManualConfigEditor] = useState(false);
+  const {
+    selectedImplementationId,
+    configObject,
+    setConfigObject,
+    manualConfigJson,
+    setManualConfigJson,
+    useManualConfigEditor,
+    setUseManualConfigEditor,
+    filteredImplementations,
+    selectedMeta,
+    handleImplementationChange,
+    buildConfigPayload,
+  } = useHookConfigState({ hook, implementations, type, stage, addToast });
 
   // applicableIngress: empty selection submits `undefined` (server keeps the
   // existing value / falls through to the `["ALL"]` default). The API rejects
@@ -185,19 +123,6 @@ export function HookForm({ hook, onClose, onSaved, embedded, onCreateSuccess }: 
       ),
     );
   }, [hook]);
-
-  const implementations = registry?.data ?? [];
-  const hookCategories = registry?.hookCategories ?? [];
-
-  const filteredImplementations = useMemo(
-    () => implementationsForRow(implementations, type, stage),
-    [implementations, type, stage],
-  );
-
-  const selectedMeta = useMemo(
-    () => filteredImplementations.find((i) => i.implementationId === selectedImplementationId),
-    [filteredImplementations, selectedImplementationId],
-  );
 
   const categorySelectOptions = useMemo(() => {
     if (hookCategories.length > 0) {
@@ -232,60 +157,6 @@ export function HookForm({ hook, onClose, onSaved, embedded, onCreateSuccess }: 
     if (webhookTargetOption !== 'custom') setWebhookTargetOption('custom');
   }, [type, whEndpoint, webhookTargetOption, aiguardWebhookUrl]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await hookApi.getImplementations();
-        if (!cancelled) {
-          setRegistry(res);
-          setRegistryError(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setRegistry(null);
-          setRegistryError(e instanceof Error ? e.message : 'Failed to load hook registry');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!filteredImplementations.length) return;
-    const ids = new Set(filteredImplementations.map((i) => i.implementationId));
-    if (selectedImplementationId && ids.has(selectedImplementationId)) return;
-
-    const first = filteredImplementations[0];
-    setSelectedImplementationId(first.implementationId);
-    const sch = first.configSchema as Record<string, unknown> | undefined;
-    const sameRow = hook?.implementationId === first.implementationId;
-    if (sch) {
-      setUseManualConfigEditor(false);
-      setConfigObject(
-        sameRow ? { ...buildDefaultsFromSchema(sch), ...asConfigRecord(hook?.config) } : { ...buildDefaultsFromSchema(sch) },
-      );
-    } else {
-      setUseManualConfigEditor(true);
-      setManualConfigJson(sameRow ? JSON.stringify(asConfigRecord(hook?.config), null, 2) : '{}');
-    }
-  }, [filteredImplementations, selectedImplementationId, hook]);
-
-  const handleImplementationChange = (id: string) => {
-    setSelectedImplementationId(id);
-    const impl = implementations.find((i) => i.implementationId === id);
-    const sch = impl?.configSchema as Record<string, unknown> | undefined;
-    if (sch) {
-      setConfigObject({ ...buildDefaultsFromSchema(sch) });
-      setUseManualConfigEditor(false);
-    } else {
-      setManualConfigJson('{}');
-      setUseManualConfigEditor(true);
-    }
-  };
-
   const { mutate, loading } = useMutation(
     (data: HookWritePayload) =>
       hook ? hookApi.update(hook.id, data) : hookApi.create(data),
@@ -305,36 +176,6 @@ export function HookForm({ hook, onClose, onSaved, embedded, onCreateSuccess }: 
       successMessage: hook ? t('pages:hooks.hookUpdated') : t('pages:hooks.hookCreated'),
     },
   );
-
-  const buildConfigPayload = (): Record<string, unknown> | null => {
-    const schema = selectedMeta?.configSchema as Record<string, unknown> | undefined;
-    if (schema && !useManualConfigEditor) {
-      const err = validateDataAgainstJsonSchema(schema, configObject);
-      if (err) {
-        addToast(`Config does not match schema: ${err}`, 'error');
-        return null;
-      }
-      return { ...configObject };
-    }
-    try {
-      const parsed = JSON.parse(manualConfigJson) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        addToast('Config must be a JSON object', 'error');
-        return null;
-      }
-      if (schema) {
-        const err = validateDataAgainstJsonSchema(schema, parsed);
-        if (err) {
-          addToast(`Config does not match schema: ${err}`, 'error');
-          return null;
-        }
-      }
-      return parsed;
-    } catch {
-      addToast('Invalid config JSON', 'error');
-      return null;
-    }
-  };
 
   const onSubmit = (values: HookFormValues) => {
     const parsedConfig = buildConfigPayload();
@@ -463,82 +304,24 @@ export function HookForm({ hook, onClose, onSaved, embedded, onCreateSuccess }: 
         />
       </FormField>
 
-      <Card>
-        <div className={styles.sectionTitle}>{t('pages:hooks.configurationSection')}</div>
-        {registryError ? (
-          <p className={styles.registryError}>{registryError}</p>
-        ) : null}
-
-        {implSelectOptions.length > 0 ? (
-          <FormField label={t('pages:hooks.implementationFieldLabel')} required helpText={t('pages:hooks.implementationFieldHelp')}>
-            <Select
-              value={selectedImplementationId || implSelectOptions[0]?.value || ''}
-              onValueChange={handleImplementationChange}
-              options={implSelectOptions}
-              placeholder={t('pages:hooks.selectImplementation')}
-            />
-          </FormField>
-        ) : (
-          <p className={styles.noImplementations}>
-            {t('pages:hooks.noImplementationsMatch')}
-          </p>
-        )}
-
-        {type === HOOK_ROW_TYPE.WEBHOOK ? (
-          <Stack gap="sm">
-            <FormField
-              label={t('pages:hooks.webhookTargetLabel', 'Webhook target')}
-              helpText={t(
-                'pages:hooks.webhookTargetHelp',
-                'Choose AIGuard for the built-in compliance endpoint, or keep custom for external webhooks.',
-              )}
-            >
-              <Select
-                value={webhookTargetOption}
-                onValueChange={(value) => {
-                  const option = value as WebhookTargetOption;
-                  setWebhookTargetOption(option);
-                  if (option === 'aiguard') {
-                    form.setValue('whEndpoint', aiguardWebhookUrl, { shouldDirty: true });
-                  }
-                }}
-                options={[
-                  { value: 'aiguard', label: t('pages:hooks.webhookTargetAIGuard', 'AIGuard') },
-                  { value: 'custom', label: t('pages:hooks.webhookTargetCustom', 'Custom') },
-                ]}
-              />
-            </FormField>
-            <FormInput form={form} name="whEndpoint" label={t('pages:hooks.endpointUrlLabel')} required helpText={t('pages:hooks.endpointUrlHelp')} type="url" placeholder={t('pages:hooks.endpointUrlPlaceholder')} />
-          </Stack>
-        ) : null}
-
-        <Stack direction="horizontal" gap="sm" className={styles.configRow}>
-          <label className={styles.enabledLabel}>{t('pages:hooks.manualJsonLabel')}</label>
-          <Tooltip content={t('pages:hooks.manualJsonTooltip')}>
-            <HelpIconButton aria-label={t('pages:hooks.manualJsonLabel')} />
-          </Tooltip>
-          <Switch
-            checked={useManualConfigEditor}
-            onCheckedChange={(c) => {
-              setUseManualConfigEditor(c);
-              if (c) setManualConfigJson(JSON.stringify(configObject, null, 2));
-            }}
-          />
-        </Stack>
-
-        {schema && !useManualConfigEditor ? (
-          <JsonSchemaHookConfigForm schema={schema} value={configObject} onChange={setConfigObject} />
-        ) : (
-          <FormField label={t('pages:hooks.configJsonLabel')}>
-            <Textarea
-              name="manual-config-json"
-              value={manualConfigJson}
-              onChange={(e) => setManualConfigJson(e.target.value)}
-              className={styles.monoTextarea}
-            />
-          </FormField>
-        )}
-      </Card>
+      <ConfigSection
+        form={form}
+        type={type}
+        registryError={registryError}
+        implSelectOptions={implSelectOptions}
+        selectedImplementationId={selectedImplementationId}
+        onImplementationChange={handleImplementationChange}
+        webhookTargetOption={webhookTargetOption}
+        setWebhookTargetOption={setWebhookTargetOption}
+        aiguardWebhookUrl={aiguardWebhookUrl}
+        schema={schema}
+        useManualConfigEditor={useManualConfigEditor}
+        setUseManualConfigEditor={setUseManualConfigEditor}
+        configObject={configObject}
+        setConfigObject={setConfigObject}
+        manualConfigJson={manualConfigJson}
+        setManualConfigJson={setManualConfigJson}
+      />
     </Stack>
   );
 

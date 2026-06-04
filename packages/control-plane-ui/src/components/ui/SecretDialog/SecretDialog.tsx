@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Dialog } from '../Dialog/Dialog';
 import { Button } from '@nexus-gateway/ui-shared';
 import { Stack } from '../Stack/Stack';
+import { Checkbox } from '../Checkbox/Checkbox';
 import styles from './SecretDialog.module.css';
 
 export interface SecretDialogProps {
@@ -11,11 +12,31 @@ export interface SecretDialogProps {
   title: string;
   warning: string;
   onClose: () => void;
+  /**
+   * Hard-gate the Close button behind an "I have copied and stored this secret
+   * securely" checkbox. Opt-in per caller — the personal API key flow leaves
+   * it off, the OAuth client create/rotate flow turns it on so the admin
+   * can't dismiss the modal without acknowledging the secret is one-shot.
+   * Defaults to false for backward compatibility with existing callers.
+   */
+  requireAcknowledgement?: boolean;
+  /** Label shown next to the acknowledgement checkbox. Required when requireAcknowledgement is true. */
+  acknowledgementLabel?: string;
 }
 
-export function SecretDialog({ open, secret, title, warning, onClose }: SecretDialogProps) {
+export function SecretDialog({
+  open,
+  secret,
+  title,
+  warning,
+  onClose,
+  requireAcknowledgement = false,
+  acknowledgementLabel,
+}: SecretDialogProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const ackId = useId();
 
   const handleCopy = useCallback(async () => {
     if (!secret) return;
@@ -24,12 +45,21 @@ export function SecretDialog({ open, secret, title, warning, onClose }: SecretDi
     setTimeout(() => setCopied(false), 2000);
   }, [secret]);
 
+  const handleClose = useCallback(() => {
+    onClose();
+    setCopied(false);
+    setAcknowledged(false);
+  }, [onClose]);
+
+  const closeDisabled = requireAcknowledgement && !acknowledged;
+
   return (
     <Dialog
       open={open}
-      onOpenChange={(o) => { if (!o) { onClose(); setCopied(false); } }}
+      onOpenChange={(o) => { if (!o && !closeDisabled) { handleClose(); } }}
       title={title}
       size="sm"
+      hideClose={closeDisabled}
     >
       <Stack gap="md">
         <p className={styles.warning}>{warning}</p>
@@ -54,7 +84,17 @@ export function SecretDialog({ open, secret, title, warning, onClose }: SecretDi
           </button>
         </div>
         {copied && <p className={styles.copiedHint}>{t('common:copied')}</p>}
-        <Button variant="secondary" onClick={onClose}>
+        {requireAcknowledgement && (
+          <label htmlFor={ackId} className={styles.ackRow}>
+            <Checkbox
+              id={ackId}
+              checked={acknowledged}
+              onCheckedChange={(c) => setAcknowledged(c === true)}
+            />
+            <span>{acknowledgementLabel}</span>
+          </label>
+        )}
+        <Button variant="secondary" onClick={handleClose} disabled={closeDisabled}>
           {t('common:close')}
         </Button>
       </Stack>

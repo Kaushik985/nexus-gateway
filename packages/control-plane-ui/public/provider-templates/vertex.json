@@ -1,7 +1,7 @@
 {
   "name": "vertex",
   "displayName": "Google Vertex AI",
-  "description": "Google Vertex AI \u2014 managed Gemini family + partner models on Google Cloud, with project-scoped IAM and regional hosts. Adapter is Vertex multi-model; admin must verify per-region availability against https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models before customer-facing use.",
+  "description": "Google Vertex AI — managed Gemini family + partner models on Google Cloud, with project-scoped IAM and regional hosts. Adapter is Vertex multi-model; admin must verify per-region availability against https://cloud.google.com/vertex-ai/generative-ai/docs/learn/models before customer-facing use.",
   "baseUrl": "https://us-central1-aiplatform.googleapis.com",
   "adapterType": "vertex",
   "models": [
@@ -17,8 +17,10 @@
         "tool_use"
       ],
       "maxContextTokens": 2097152,
-      "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputReadPricePerMillion": 0.13,
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 1.25,
+      "outputPricePerMillion": 10.0
     },
     {
       "code": "gemini-2.5-flash",
@@ -32,8 +34,10 @@
         "tool_use"
       ],
       "maxContextTokens": 1048576,
-      "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputReadPricePerMillion": 0.03,
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 0.3,
+      "outputPricePerMillion": 2.5
     },
     {
       "code": "gemini-2.0-flash",
@@ -47,7 +51,9 @@
       ],
       "maxContextTokens": 1048576,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 0.15,
+      "outputPricePerMillion": 0.6
     },
     {
       "code": "gemini-1.5-pro",
@@ -61,7 +67,8 @@
       ],
       "maxContextTokens": 2097152,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "gemini-1.5-flash",
@@ -75,7 +82,8 @@
       ],
       "maxContextTokens": 1048576,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     }
   ]
 }

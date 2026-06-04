@@ -1,0 +1,40 @@
+/* ScopeChip — semantic pill with inline plain-English explanation. */
+
+.chipNeutral,
+.chipWarning {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--g-space-2);
+  padding: var(--g-space-1) var(--g-space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--g-font-size-sm);
+  line-height: var(--g-line-height-tight);
+  border: 1px solid transparent;
+}
+
+.chipNeutral {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-subtle);
+}
+
+.chipWarning {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.scopeText {
+  font-family: var(--g-font-mono);
+  font-weight: var(--g-font-weight-semibold);
+}
+
+.scopeExplanation {
+  font-size: var(--g-font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.chipWarning .scopeExplanation {
+  color: var(--color-warning);
+  opacity: 0.85;
+}

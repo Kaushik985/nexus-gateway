@@ -1,7 +1,7 @@
 {
   "name": "mistral",
   "displayName": "Mistral",
-  "description": "Mistral La Plateforme \u2014 OpenAI-compatible API serving Mistral's flagship + specialist models.",
+  "description": "Mistral La Plateforme — OpenAI-compatible API serving Mistral's flagship + specialist models.",
   "baseUrl": "https://api.mistral.ai",
   "adapterType": "mistral",
   "models": [
@@ -35,8 +35,8 @@
         "json_mode",
         "vision"
       ],
-      "inputPricePerMillion": 0.4,
-      "outputPricePerMillion": 2.0,
+      "inputPricePerMillion": 1.5,
+      "outputPricePerMillion": 7.5,
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
@@ -52,8 +52,8 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 0.15,
-      "outputPricePerMillion": 0.6,
+      "inputPricePerMillion": 0.1,
+      "outputPricePerMillion": 0.3,
       "maxContextTokens": 262144,
       "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
@@ -86,7 +86,9 @@
       ],
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 0.4,
+      "outputPricePerMillion": 2.0
     },
     {
       "code": "magistral-medium-latest",
@@ -100,7 +102,9 @@
       ],
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 2.0,
+      "outputPricePerMillion": 5.0
     },
     {
       "code": "ministral-8b-latest",
@@ -112,8 +116,8 @@
         "function_calling",
         "streaming"
       ],
-      "inputPricePerMillion": 0.1,
-      "outputPricePerMillion": 0.1,
+      "inputPricePerMillion": 0.15,
+      "outputPricePerMillion": 0.15,
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
@@ -121,14 +125,14 @@
     {
       "code": "ministral-3b-latest",
       "name": "Ministral 3B",
-      "description": "Smallest Ministral tier \u2014 best for latency-sensitive deployments.",
+      "description": "Smallest Ministral tier — best for latency-sensitive deployments.",
       "providerModelId": "ministral-3b-latest",
       "type": "chat",
       "features": [
         "streaming"
       ],
-      "inputPricePerMillion": 0.04,
-      "outputPricePerMillion": 0.04,
+      "inputPricePerMillion": 0.1,
+      "outputPricePerMillion": 0.1,
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
@@ -142,7 +146,8 @@
       "features": [],
       "maxContextTokens": 8192,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 0.1
     }
   ]
 }

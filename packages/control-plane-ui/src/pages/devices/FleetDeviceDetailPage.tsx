@@ -5,18 +5,25 @@ import { useApi } from '@/hooks/useApi';
 import { useMutation } from '@/hooks/useMutation';
 import { usePermission } from '@/hooks/usePermission';
 import { devicesApi, fleetApi, diagModeApi } from '@/api/services';
-import type { AgentDevice, AgentAuditEvent, FleetAuditEvent, DeviceAssignmentDetail } from '@/api/types';
-import type { DataTableColumn, AdminListPageSize } from '@/components/ui';
+import type { AgentDevice, AgentAuditEvent } from '@/api/types';
+import type { AdminListPageSize } from '@/components/ui';
 import {
-  PageHeader, DataTable, Badge, Button, Stack, Card, Input,
-  Skeleton, ErrorBanner, Breadcrumb, Dialog, ListPagination,
+  PageHeader, Badge, Button, Stack,
+  Skeleton, ErrorBanner, Breadcrumb,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   DEFAULT_ADMIN_LIST_PAGE_SIZE,
 } from '@/components/ui';
-import { ThingStatsTab } from '@/pages/infrastructure/_shared/tabs/metrics/ThingStatsTab';
-import { DeviceTagEditor } from './DeviceTagEditor';
 import { thingStatusVariant } from '@/lib/thingStatus';
 import styles from './FleetDeviceDetailPage.module.css';
+import { IdentityCard } from './fleet-device-detail/IdentityCard';
+import { TrafficTab } from './fleet-device-detail/TrafficTab';
+import { ComplianceTab } from './fleet-device-detail/ComplianceTab';
+import { ConfigurationTab } from './fleet-device-detail/ConfigurationTab';
+import { SystemTab } from './fleet-device-detail/SystemTab';
+import { ActivityTab } from './fleet-device-detail/ActivityTab';
+import { RotateCertDialog } from './fleet-device-detail/RotateCertDialog';
+import { RevokeDeviceDialog } from './fleet-device-detail/RevokeDeviceDialog';
+import { DiagModeDialog } from './fleet-device-detail/DiagModeDialog';
 
 type Tab = 'traffic' | 'compliance' | 'configuration' | 'system' | 'activity';
 
@@ -153,67 +160,18 @@ export function FleetDeviceDetailPage() {
   // agent row that still carries data there. Both shapes are loose
   // JSON blobs (machineId / osName / cpuModel / cpuCores / totalMemMB /
   // networkInterfaces[]…), so typed as `any` to match the JSX below.
-   
+
   const staticInfo: any =
     device.metadata && typeof device.metadata === 'object'
       ? (device.metadata as Record<string, unknown>).staticInfo ?? null
       : null;
-   
+
   const legacySysinfo: any = device.sysinfo
     ? typeof device.sysinfo === 'string'
       ? JSON.parse(device.sysinfo as unknown as string)
       : device.sysinfo
     : null;
   const sysinfo = staticInfo ?? legacySysinfo;
-
-  const hookDecisionVariant = (d?: string | null) => {
-    if (!d) return 'default' as const;
-    const v = d.toLowerCase();
-    if (v === 'allow') return 'success' as const;
-    if (v === 'deny' || v === 'block' || v === 'block-hard') return 'danger' as const;
-    if (v === 'redact' || v === 'modify') return 'warning' as const;
-    return 'default' as const;
-  };
-
-  const trafficColumns: DataTableColumn<AgentAuditEvent>[] = [
-    { key: 'timestamp', label: t('pages:fleet.timestamp'), render: (r) => new Date(r.timestamp).toLocaleString() },
-    { key: 'sourceProcess', label: t('pages:fleet.source'), render: (r) => r.sourceProcess || '—' },
-    { key: 'destHost', label: t('pages:fleet.targetHost'), render: (r) => r.destHost ?? '—' },
-    { key: 'action', label: 'Action', render: (r) => <Badge variant="outline">{r.action || '—'}</Badge> },
-    {
-      key: 'requestHookDecision',
-      label: t('pages:fleet.hookDecision'),
-      render: (r) => r.requestHookDecision
-        ? <Badge variant={hookDecisionVariant(r.requestHookDecision)}>{r.requestHookDecision}</Badge>
-        : <span className={styles.dim}>—</span>,
-    },
-    {
-      key: 'duration',
-      label: 'Duration',
-      render: (r) => r.duration != null ? `${r.duration}ms` : <span className={styles.dim}>—</span>,
-    },
-  ];
-
-  const timelineColumns: DataTableColumn<DeviceAssignmentDetail>[] = [
-    { key: 'userDisplayName', label: t('pages:fleet.displayName'), render: (r) => r.userDisplayName ?? r.userId },
-    { key: 'userOsUsername', label: t('pages:fleet.osUsername'), render: (r) => r.userOsUsername ?? '—' },
-    { key: 'source', label: t('pages:fleet.source') },
-    { key: 'assignedAt', label: t('pages:fleet.assignedAt'), render: (r) => new Date(r.assignedAt).toLocaleString() },
-    {
-      key: 'releasedAt',
-      label: t('pages:fleet.releasedAt'),
-      render: (r) => r.releasedAt
-        ? new Date(r.releasedAt).toLocaleString()
-        : <Badge variant="success">{t('pages:fleet.currentAssignment')}</Badge>,
-    },
-  ];
-
-  const adminAuditColumns: DataTableColumn<FleetAuditEvent>[] = [
-    { key: 'timestamp', label: t('pages:fleet.timestamp'), render: (r) => new Date(r.timestamp).toLocaleString() },
-    { key: 'source', label: t('pages:fleet.source') },
-    { key: 'targetHost', label: t('pages:fleet.targetHost'), render: (r) => r.targetHost ?? '—' },
-    { key: 'requestHookDecision', label: t('pages:fleet.requestHookDecision'), render: (r) => r.requestHookDecision ?? '—' },
-  ];
 
   const diagActiveUntil = activeDiagWindow ? new Date(activeDiagWindow.endedAt).toLocaleString() : null;
 
@@ -291,72 +249,11 @@ export function FleetDeviceDetailPage() {
         }
       />
 
-      {/* Identity card — first-class natural-key identifiers + currently
-          bound user. Replaces the old simple kvGrid. */}
-      <Card>
-        <div className={styles.kvGrid}>
-          <span className={styles.kvLabel}>{t('pages:devices.identity.hostname')}</span>
-          <span className={styles.kvValue}>{device.hostname}</span>
-          {device.boundUserDisplayName && (
-            <>
-              <span className={styles.kvLabel}>{t('pages:devices.identity.boundUser')}</span>
-              <span className={styles.kvValue}>
-                {device.boundUserDisplayName}
-                {device.boundUserEmail && <span style={{ color: 'var(--color-text-muted)' }}>{' · '}{device.boundUserEmail}</span>}
-              </span>
-            </>
-          )}
-          {device.physicalId && (
-            <>
-              <span className={styles.kvLabel}>{t('pages:devices.identity.physicalId')}</span>
-              <span className={styles.kvValue}>
-                <code>{device.physicalId}</code>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(device.physicalId!)}
-                  title={t('common:copy')}
-                  style={{ marginLeft: 'var(--g-space-2)', padding: 'var(--g-space-0-5) var(--g-space-1-5)', border: '1px solid var(--color-border)', borderRadius: 'var(--g-radius-sm)', background: 'none', cursor: 'pointer' }}
-                >⧉</button>
-              </span>
-            </>
-          )}
-          <span className={styles.kvLabel}>{t('pages:devices.identity.thingId')}</span>
-          <span className={styles.kvValue}>
-            <code>{device.id}</code>
-            <button
-              type="button"
-              onClick={() => copyToClipboard(device.id)}
-              title={t('common:copy')}
-              style={{ marginLeft: 'var(--g-space-2)', padding: 'var(--g-space-0-5) var(--g-space-1-5)', border: '1px solid var(--color-border)', borderRadius: 'var(--g-radius-sm)', background: 'none', cursor: 'pointer' }}
-            >⧉</button>
-          </span>
-          {device.primaryIp && (
-            <>
-              <span className={styles.kvLabel}>{t('pages:devices.identity.ip')}</span>
-              <span className={styles.kvValue}><code>{device.primaryIp}</code></span>
-            </>
-          )}
-          <span className={styles.kvLabel}>{t('pages:fleet.os')}</span>
-          <span className={styles.kvValue}>{device.os === 'darwin' ? 'macOS' : device.os} {device.osVersion}</span>
-          <span className={styles.kvLabel}>{t('pages:fleet.agentVersion')}</span>
-          <span className={styles.kvValue}>{device.agentVersion}</span>
-          <span className={styles.kvLabel}>{t('pages:fleet.lastHeartbeat')}</span>
-          <span className={styles.kvValue}>{device.lastHeartbeat ? new Date(device.lastHeartbeat).toLocaleString() : '—'}</span>
-          <span className={styles.kvLabel}>{t('pages:devices.enrolledAt')}</span>
-          <span className={styles.kvValue}>{new Date(device.enrolledAt).toLocaleString()} {device.enrolledBy ? `· ${device.enrolledBy}` : ''}</span>
-        </div>
-        {/* Tag editor — below the kvGrid so it stays inside the Identity card */}
-        <div style={{ marginTop: 'var(--g-space-4)', paddingTop: 'var(--g-space-3)', borderTop: '1px solid var(--color-border)' }}>
-          <div style={{ fontSize: 'var(--g-font-size-sm)', fontWeight: 'var(--g-font-weight-semibold)', marginBottom: 'var(--g-space-2)' }}>
-            {t('pages:devices.tagsLabel', 'Tags')}
-          </div>
-          <DeviceTagEditor
-            deviceId={device.id}
-            initialTags={device.tags ?? []}
-            onSaved={() => refetch()}
-          />
-        </div>
-      </Card>
+      <IdentityCard
+        device={device}
+        copyToClipboard={copyToClipboard}
+        onTagsSaved={() => refetch()}
+      />
 
       <div className={styles.tabBar}>
         {(['traffic', 'compliance', 'configuration', 'system', 'activity'] as Tab[]).map(tab => (
@@ -371,162 +268,64 @@ export function FleetDeviceDetailPage() {
       </div>
 
       {activeTab === 'traffic' && (
-        <Stack gap="md">
-          {canViewStats && (
-            <Card>
-              <ThingStatsTab thingId={id!} thingType="agent" />
-            </Card>
-          )}
-          <Card>
-            <Stack gap="sm">
-              <h4 className={styles.sectionTitle}>{t('pages:fleet.trafficEventsTitle')}</h4>
-              <p className={styles.dim}>{t('pages:fleet.trafficEventsSubtitle')}</p>
-              <DataTable columns={trafficColumns} data={allEvents} hideSearch />
-              <ListPagination
-                total={eventsData?.total ?? 0}
-                offset={eventsOffset}
-                limit={eventsLimit}
-                onOffsetChange={setEventsOffset}
-                onLimitChange={setEventsLimit}
-              />
-            </Stack>
-          </Card>
-        </Stack>
+        <TrafficTab
+          id={id!}
+          canViewStats={canViewStats}
+          allEvents={allEvents}
+          eventsTotal={eventsData?.total ?? 0}
+          eventsOffset={eventsOffset}
+          eventsLimit={eventsLimit}
+          onOffsetChange={setEventsOffset}
+          onLimitChange={setEventsLimit}
+        />
       )}
 
       {activeTab === 'compliance' && (
-        <Card>
-          <Stack gap="sm">
-            <h4 className={styles.sectionTitle}>{t('pages:fleet.complianceEventsTitle')}</h4>
-            {complianceEvents.length === 0 ? (
-              <p className={styles.empty}>{t('pages:fleet.complianceEventsEmpty')}</p>
-            ) : (
-              <DataTable columns={trafficColumns} data={complianceEvents} hideSearch />
-            )}
-          </Stack>
-        </Card>
+        <ComplianceTab complianceEvents={complianceEvents} />
       )}
 
       {activeTab === 'configuration' && (
-        <Card>
-          <p className={styles.configNote}>{t('pages:fleet.effectiveConfig')}</p>
-          <pre className={styles.configPre}>{JSON.stringify(configData ?? {}, null, 2)}</pre>
-        </Card>
+        <ConfigurationTab configData={configData} />
       )}
 
       {activeTab === 'system' && (
-        <Card>
-          {sysinfo ? (
-            <Stack gap="md">
-              <div className={styles.kvGrid}>
-                <span className={styles.kvLabel}>{t('pages:fleet.machineId')}</span>
-                <span className={styles.kvValue}>{sysinfo.machineId ?? '—'}</span>
-                <span className={styles.kvLabel}>{t('pages:fleet.osName')}</span>
-                <span className={styles.kvValue}>{sysinfo.osName} {sysinfo.osVersion}</span>
-                <span className={styles.kvLabel}>{t('pages:fleet.cpuModel')}</span>
-                <span className={styles.kvValue}>{sysinfo.cpuModel ?? '—'}</span>
-                <span className={styles.kvLabel}>{t('pages:fleet.cpuCores')}</span>
-                <span className={styles.kvValue}>{sysinfo.cpuCores}</span>
-                <span className={styles.kvLabel}>{t('pages:fleet.totalMemMB')}</span>
-                <span className={styles.kvValue}>{sysinfo.totalMemMB?.toLocaleString() ?? '—'}</span>
-                <span className={styles.kvLabel}>{t('pages:fleet.serialNumber')}</span>
-                <span className={styles.kvValue}>{sysinfo.serialNumber ?? '—'}</span>
-                <span className={styles.kvLabel}>{t('pages:fleet.modelName')}</span>
-                <span className={styles.kvValue}>{sysinfo.modelName ?? '—'}</span>
-              </div>
-              {sysinfo.networkInterfaces?.length > 0 && (
-                <>
-                  <h4 className={styles.sectionTitle}>{t('pages:fleet.networkInterfaces')}</h4>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th className={styles.th}>{t('pages:fleet.ifName')}</th>
-                        <th className={styles.th}>{t('pages:fleet.macAddress')}</th>
-                        <th className={styles.th}>{t('pages:fleet.ips')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sysinfo.networkInterfaces.map((nif: { name: string; macAddress: string; ips: string[] }, i: number) => (
-                        <tr key={i}>
-                          <td className={styles.td}>{nif.name}</td>
-                          <td className={styles.td}>{nif.macAddress}</td>
-                          <td className={styles.td}>{nif.ips?.join(', ')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </>
-              )}
-            </Stack>
-          ) : (
-            <p className={styles.empty}>{t('pages:fleet.noSysinfo')}</p>
-          )}
-        </Card>
+        <SystemTab sysinfo={sysinfo} />
       )}
 
       {activeTab === 'activity' && (
-        <Stack gap="md">
-          <Card>
-            <Stack gap="sm">
-              <h4 className={styles.sectionTitle}>{t('pages:fleet.activityAssignments')}</h4>
-              <DataTable columns={timelineColumns} data={timelineData?.data ?? []} hideSearch />
-            </Stack>
-          </Card>
-          <Card>
-            <Stack gap="sm">
-              <h4 className={styles.sectionTitle}>{t('pages:fleet.activityAdminActions')}</h4>
-              <DataTable columns={adminAuditColumns} data={auditData?.data ?? []} hideSearch />
-              <ListPagination
-                total={auditData?.total ?? 0}
-                offset={auditOffset}
-                limit={auditLimit}
-                onOffsetChange={setAuditOffset}
-                onLimitChange={setAuditLimit}
-              />
-            </Stack>
-          </Card>
-        </Stack>
+        <ActivityTab
+          timelineRows={timelineData?.data ?? []}
+          auditRows={auditData?.data ?? []}
+          auditTotal={auditData?.total ?? 0}
+          auditOffset={auditOffset}
+          auditLimit={auditLimit}
+          onAuditOffsetChange={setAuditOffset}
+          onAuditLimitChange={setAuditLimit}
+        />
       )}
 
-      <Dialog open={rotateOpen} onOpenChange={setRotateOpen} title={t('pages:fleet.rotateCertConfirmTitle')}>
-        <Stack gap="md">
-          <p>{t('pages:fleet.rotateCertConfirmBody')}</p>
-          <Stack direction="horizontal" gap="sm" justify="end">
-            <Button variant="secondary" onClick={() => setRotateOpen(false)}>{t('common:cancel')}</Button>
-            <Button onClick={() => rotateCert(undefined)} loading={rotatingCert}>{t('pages:fleet.rotateCert')}</Button>
-          </Stack>
-        </Stack>
-      </Dialog>
+      <RotateCertDialog
+        open={rotateOpen}
+        onOpenChange={setRotateOpen}
+        onConfirm={() => rotateCert(undefined)}
+        loading={rotatingCert}
+      />
 
-      <Dialog open={revokeOpen} onOpenChange={setRevokeOpen} title={t('pages:fleet.revokeDeviceConfirmTitle')}>
-        <Stack gap="md">
-          <p>{t('pages:fleet.revokeDeviceConfirmBody')}</p>
-          <Stack direction="horizontal" gap="sm" justify="end">
-            <Button variant="secondary" onClick={() => setRevokeOpen(false)}>{t('common:cancel')}</Button>
-            <Button variant="danger" onClick={() => revokeDevice(undefined)} loading={revoking}>{t('pages:fleet.revokeDevice')}</Button>
-          </Stack>
-        </Stack>
-      </Dialog>
+      <RevokeDeviceDialog
+        open={revokeOpen}
+        onOpenChange={setRevokeOpen}
+        onConfirm={() => revokeDevice(undefined)}
+        loading={revoking}
+      />
 
-      <Dialog open={diagOpen} onOpenChange={setDiagOpen} title={t('pages:fleet.diagMode')}>
-        <Stack gap="md">
-          <p>
-            {diagPreset === '30m' && t('pages:fleet.diagModeEnable30m')}
-            {diagPreset === '2h' && t('pages:fleet.diagModeEnable2h')}
-            {diagPreset === '8h' && t('pages:fleet.diagModeEnable8h')}
-          </p>
-          <label className={styles.kvLabel}>{t('pages:fleet.diagModeReasonLabel')}</label>
-          <Input
-            placeholder={t('pages:fleet.diagModeReasonPlaceholder')}
-            value={diagReason}
-            onChange={(e) => setDiagReason(e.target.value)}
-          />
-          <Stack direction="horizontal" gap="sm" justify="end">
-            <Button variant="secondary" onClick={() => setDiagOpen(false)}>{t('common:cancel')}</Button>
-            <Button onClick={() => enableDiag(undefined)}>{t('pages:fleet.diagMode')}</Button>
-          </Stack>
-        </Stack>
-      </Dialog>
+      <DiagModeDialog
+        open={diagOpen}
+        onOpenChange={setDiagOpen}
+        diagPreset={diagPreset}
+        diagReason={diagReason}
+        onReasonChange={setDiagReason}
+        onConfirm={() => enableDiag(undefined)}
+      />
     </Stack>
   );
 }

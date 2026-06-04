@@ -1,7 +1,7 @@
 {
   "name": "azure-openai",
   "displayName": "Azure OpenAI",
-  "description": "Azure OpenAI Service \u2014 enterprise-hosted OpenAI models with data residency and compliance.",
+  "description": "Azure OpenAI Service — enterprise-hosted OpenAI models with data residency and compliance.",
   "baseUrl": "https://{resource}.openai.azure.com",
   "adapterType": "azure-openai",
   "models": [
@@ -17,11 +17,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 5.0,
-      "outputPricePerMillion": 15.0,
+      "inputPricePerMillion": 1.25,
+      "outputPricePerMillion": 10.0,
       "maxContextTokens": 256000,
       "maxOutputTokens": 32768,
-      "cachedInputReadPricePerMillion": 2.5,
+      "cachedInputReadPricePerMillion": 0.125,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -35,11 +35,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 0.5,
+      "inputPricePerMillion": 0.25,
       "outputPricePerMillion": 2.0,
       "maxContextTokens": 128000,
       "maxOutputTokens": 16384,
-      "cachedInputReadPricePerMillion": 0.25,
+      "cachedInputReadPricePerMillion": 0.025,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -58,7 +58,7 @@
       "outputPricePerMillion": 8.0,
       "maxContextTokens": 128000,
       "maxOutputTokens": 16384,
-      "cachedInputReadPricePerMillion": 1.0,
+      "cachedInputReadPricePerMillion": 0.5,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -71,11 +71,11 @@
         "streaming",
         "function_calling"
       ],
-      "inputPricePerMillion": 10.0,
-      "outputPricePerMillion": 40.0,
+      "inputPricePerMillion": 2.0,
+      "outputPricePerMillion": 8.0,
       "maxContextTokens": 200000,
       "maxOutputTokens": 100000,
-      "cachedInputReadPricePerMillion": 5.0,
+      "cachedInputReadPricePerMillion": 0.5,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -87,11 +87,11 @@
       "features": [
         "streaming"
       ],
-      "inputPricePerMillion": 0.6,
-      "outputPricePerMillion": 2.4,
+      "inputPricePerMillion": 1.1,
+      "outputPricePerMillion": 4.4,
       "maxContextTokens": 200000,
       "maxOutputTokens": 100000,
-      "cachedInputReadPricePerMillion": 0.3,
+      "cachedInputReadPricePerMillion": 0.275,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -149,7 +149,8 @@
       "maxContextTokens": 128000,
       "maxOutputTokens": 4096,
       "cachedInputReadPricePerMillion": 5.0,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "azure-o1",
@@ -177,7 +178,7 @@
       "features": [],
       "inputPricePerMillion": 0.02,
       "maxContextTokens": 8191,
-      "cachedInputReadPricePerMillion": 0.01,
+      "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -189,7 +190,7 @@
       "features": [],
       "inputPricePerMillion": 0.13,
       "maxContextTokens": 8191,
-      "cachedInputReadPricePerMillion": 0.065,
+      "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
     }
   ]

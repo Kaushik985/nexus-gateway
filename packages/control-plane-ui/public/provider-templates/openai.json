@@ -1,7 +1,7 @@
 {
   "name": "openai",
   "displayName": "OpenAI",
-  "description": "OpenAI API \u2014 GPT-5, GPT-4o, o-series reasoning, and embedding models.",
+  "description": "OpenAI API — GPT-5, GPT-4o, o-series reasoning, and embedding models.",
   "baseUrl": "https://api.openai.com",
   "adapterType": "openai",
   "models": [
@@ -60,7 +60,8 @@
       "maxContextTokens": 128000,
       "maxOutputTokens": 4096,
       "cachedInputReadPricePerMillion": 5.0,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "o1",
@@ -77,7 +78,8 @@
       "maxContextTokens": 200000,
       "maxOutputTokens": 100000,
       "cachedInputReadPricePerMillion": 7.5,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "disabled"
     },
     {
       "code": "o3-mini",
@@ -93,7 +95,8 @@
       "maxContextTokens": 200000,
       "maxOutputTokens": 100000,
       "cachedInputReadPricePerMillion": 0.55,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "o3",
@@ -125,7 +128,8 @@
       "maxContextTokens": 200000,
       "maxOutputTokens": 100000,
       "cachedInputReadPricePerMillion": 0.3,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "gpt-5.5",
@@ -139,11 +143,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 15.0,
-      "outputPricePerMillion": 60.0,
+      "inputPricePerMillion": 5.0,
+      "outputPricePerMillion": 30.0,
       "maxContextTokens": 256000,
       "maxOutputTokens": 32768,
-      "cachedInputReadPricePerMillion": 7.5,
+      "cachedInputReadPricePerMillion": 0.5,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -158,11 +162,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 5.0,
-      "outputPricePerMillion": 20.0,
+      "inputPricePerMillion": 2.5,
+      "outputPricePerMillion": 15.0,
       "maxContextTokens": 256000,
       "maxOutputTokens": 32768,
-      "cachedInputReadPricePerMillion": 2.5,
+      "cachedInputReadPricePerMillion": 0.25,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -177,11 +181,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 0.4,
-      "outputPricePerMillion": 1.6,
+      "inputPricePerMillion": 0.75,
+      "outputPricePerMillion": 4.5,
       "maxContextTokens": 128000,
       "maxOutputTokens": 16384,
-      "cachedInputReadPricePerMillion": 0.2,
+      "cachedInputReadPricePerMillion": 0.075,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -194,11 +198,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 0.15,
-      "outputPricePerMillion": 0.6,
+      "inputPricePerMillion": 0.2,
+      "outputPricePerMillion": 1.25,
       "maxContextTokens": 128000,
       "maxOutputTokens": 16384,
-      "cachedInputReadPricePerMillion": 0.075,
+      "cachedInputReadPricePerMillion": 0.02,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -229,7 +233,7 @@
       "features": [],
       "inputPricePerMillion": 0.02,
       "maxContextTokens": 8191,
-      "cachedInputReadPricePerMillion": 0.01,
+      "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -241,7 +245,7 @@
       "features": [],
       "inputPricePerMillion": 0.13,
       "maxContextTokens": 8191,
-      "cachedInputReadPricePerMillion": 0.065,
+      "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
     }
   ]

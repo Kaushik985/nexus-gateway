@@ -155,14 +155,14 @@ function retentionCap(retention: RetentionGetResponse | null, tier: 'runtime' | 
   const get = (k: string, d: number) => (r[k]?.value ?? d);
   if (tier === 'runtime') {
     return {
-      rawDays: get('runtime_raw', 7),
+      rawDays: get('runtime_5m', 7),
       oneHourDays: get('runtime_1h', 90),
       oneDayDays: get('runtime_1d', 365),
       oneMonthDays: get('runtime_1mo', 1825),
     };
   }
   return {
-    rawDays: get('business_raw', 7),
+    rawDays: get('business_5m', 7),
     oneHourDays: get('business_1h', 90),
     oneDayDays: get('business_1d', 365),
     oneMonthDays: get('business_1mo', 1825),

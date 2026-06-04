@@ -6,9 +6,28 @@
   "adapterType": "anthropic",
   "models": [
     {
+      "code": "claude-opus-4-8",
+      "name": "Claude Opus 4.8",
+      "description": "Latest top-tier Claude. Strongest reasoning, agentic, and coding model in the Claude 4 family.",
+      "providerModelId": "claude-opus-4-8",
+      "type": "chat",
+      "features": [
+        "vision",
+        "function_calling",
+        "streaming",
+        "thinking"
+      ],
+      "inputPricePerMillion": 5.0,
+      "outputPricePerMillion": 25.0,
+      "maxContextTokens": 1000000,
+      "maxOutputTokens": 131072,
+      "cachedInputReadPricePerMillion": 0.5,
+      "cachedInputWritePricePerMillion": 6.25
+    },
+    {
       "code": "claude-opus-4-7",
       "name": "Claude Opus 4.7",
-      "description": "Latest top-tier Claude. Strongest reasoning, agentic, and coding model in the Claude 4 family.",
+      "description": "Previous top-tier Claude Opus generation. Strong reasoning, agentic, and coding.",
       "providerModelId": "claude-opus-4-7",
       "type": "chat",
       "features": [

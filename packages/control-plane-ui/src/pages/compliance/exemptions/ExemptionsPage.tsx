@@ -8,35 +8,32 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/auth/context/AuthContext';
 import { useApi } from '@/hooks/useApi';
 import { complianceApi } from '@/api/services/compliance/compliance';
 import type {
-  CreateExemptionRequest,
   ExemptionListTab,
   UnifiedExemptionRow,
 } from '@/api/services/compliance/compliance';
 import {
-  AlertDialog,
   Badge,
   Button,
   Card,
-  Checkbox,
   DataTable,
-  Dialog,
   ErrorBanner,
-  FormField,
-  Input,
   ListPagination,
   DEFAULT_ADMIN_LIST_PAGE_SIZE,
   LoadingSpinner,
   PageHeader,
   Select,
   Stack,
-  Textarea,
 } from '@/components/ui';
 import type { AdminListPageSize, DataTableColumn } from '@/components/ui';
 import { useToast } from '@/context/ToastContext';
+import { ExemptionCreateDialog } from './ExemptionCreateDialog';
+import { ExemptionDeleteDialog } from './ExemptionDeleteDialog';
+import { ExemptionApproveDialog } from './ExemptionApproveDialog';
+import { ExemptionRejectDialog } from './ExemptionRejectDialog';
+import { useExemptionDialogs } from './useExemptionDialogs';
 
 const EM_DASH = '—';
 
@@ -51,7 +48,6 @@ export function ExemptionsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { email, keyName } = useAuth();
 
   const [statusFilter, setStatusFilter] = useState<ExemptionListTab>('all');
   const [offset, setOffset] = useState(0);
@@ -116,148 +112,23 @@ export function ExemptionsPage() {
   );
 
   const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<UnifiedExemptionRow | null>(null);
-  const [approveTarget, setApproveTarget] = useState<UnifiedExemptionRow | null>(null);
-  const [rejectTarget, setRejectTarget] = useState<UnifiedExemptionRow | null>(null);
-  const [rejectNote, setRejectNote] = useState('');
-  const [approveBusy, setApproveBusy] = useState(false);
-  const [rejectBusy, setRejectBusy] = useState(false);
   const [patchBusyId, setPatchBusyId] = useState<string | null>(null);
 
-  const [formSourceIp, setFormSourceIp] = useState('');
-  const [formTargetHost, setFormTargetHost] = useState('');
-  const [formDuration, setFormDuration] = useState('1440');
-  const [formReason, setFormReason] = useState('');
-  const [submitAsPending, setSubmitAsPending] = useState(false);
-
-  const durationOptions = useMemo(
-    () =>
-      [
-        { value: '60', labelKey: 'duration.1h' },
-        { value: '240', labelKey: 'duration.4h' },
-        { value: '720', labelKey: 'duration.12h' },
-        { value: '1440', labelKey: 'duration.24h' },
-        { value: '2880', labelKey: 'duration.48h' },
-        { value: '10080', labelKey: 'duration.7d' },
-      ].map((o) => ({
-        value: o.value,
-        label: t(`pages:compliance.exemptions.${o.labelKey}`),
-      })),
-    [t],
-  );
-
-  const resetForm = useCallback(() => {
-    setFormSourceIp('');
-    setFormTargetHost('');
-    setFormDuration('1440');
-    setFormReason('');
-    setSubmitAsPending(false);
-  }, []);
-
-  const handleCreate = useCallback(async () => {
-    if (!formSourceIp.trim() || !formTargetHost.trim()) {
-      addToast(t('pages:compliance.exemptions.validation.sourceTargetRequired'), 'error');
-      return;
-    }
-    const durationMinutes = parseInt(formDuration, 10);
-    if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
-      addToast(t('pages:compliance.exemptions.validation.durationPositive'), 'error');
-      return;
-    }
-    const reasonTrim = formReason.trim();
-    if (reasonTrim.length < 4 || reasonTrim.length > 500) {
-      addToast(t('pages:compliance.exemptions.validation.reasonLengthAdmin'), 'error');
-      return;
-    }
-    setCreating(true);
-    try {
-      if (submitAsPending) {
-        await complianceApi.createPendingExemptionRequest({
-          transactionId: crypto.randomUUID(),
-          sourceIp: formSourceIp.trim(),
-          targetHost: formTargetHost.trim(),
-          reason: reasonTrim,
-          durationMinutes,
-          requestedBy: (email && email.trim()) || keyName || 'admin-ui',
-        });
-        addToast(t('pages:compliance.exemptions.createPendingSuccess'), 'success');
-      } else {
-        const req: CreateExemptionRequest = {
-          sourceIp: formSourceIp.trim(),
-          targetHost: formTargetHost.trim(),
-          durationMinutes,
-          reason: reasonTrim,
-        };
-        await complianceApi.createExemptionGrant(req);
-        addToast(t('pages:compliance.exemptions.createSuccess', 'Exemption created'), 'success');
-      }
-      setShowCreate(false);
-      resetForm();
-      void refetch();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown error';
-      addToast(
-        submitAsPending
-          ? t('pages:compliance.exemptions.createPendingError', { error: msg })
-          : t('pages:compliance.exemptions.createError', { error: msg }),
-        'error',
-      );
-    } finally {
-      setCreating(false);
-    }
-  }, [formSourceIp, formTargetHost, formDuration, formReason, submitAsPending, email, keyName, addToast, t, resetForm, refetch]);
-
-  const handleDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    try {
-      await complianceApi.deleteExemptionGrant(deleteTarget.id);
-      addToast(t('pages:compliance.exemptions.deleteSuccess', 'Exemption deleted'), 'success');
-      setDeleteTarget(null);
-      void refetch();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown error';
-      addToast(t('pages:compliance.exemptions.deleteError', { error: msg }), 'error');
-    }
-  }, [deleteTarget, addToast, t, refetch]);
-
-  const handleApprove = useCallback(async () => {
-    if (!approveTarget) return;
-    setApproveBusy(true);
-    try {
-      await complianceApi.approveExemption(approveTarget.id);
-      addToast(t('pages:compliance.exemptions.approveSuccess'), 'success');
-      setApproveTarget(null);
-      void refetch();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown error';
-      addToast(t('pages:compliance.exemptions.approveError', { error: msg }), 'error');
-    } finally {
-      setApproveBusy(false);
-    }
-  }, [approveTarget, addToast, t, refetch]);
-
-  const handleReject = useCallback(async () => {
-    if (!rejectTarget) return;
-    const reason = rejectNote.trim();
-    if (reason.length < 2) {
-      addToast(t('pages:compliance.exemptions.validation.rejectReasonRequired'), 'error');
-      return;
-    }
-    setRejectBusy(true);
-    try {
-      await complianceApi.rejectExemption(rejectTarget.id, reason);
-      addToast(t('pages:compliance.exemptions.rejectSuccess'), 'success');
-      setRejectTarget(null);
-      setRejectNote('');
-      void refetch();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'unknown error';
-      addToast(t('pages:compliance.exemptions.rejectError', { error: msg }), 'error');
-    } finally {
-      setRejectBusy(false);
-    }
-  }, [rejectTarget, rejectNote, addToast, t, refetch]);
+  const {
+    deleteTarget,
+    setDeleteTarget,
+    approveTarget,
+    setApproveTarget,
+    rejectTarget,
+    setRejectTarget,
+    rejectNote,
+    setRejectNote,
+    approveBusy,
+    rejectBusy,
+    handleDelete,
+    handleApprove,
+    handleReject,
+  } = useExemptionDialogs(refetch);
 
   const handleToggleInactive = useCallback(
     async (row: UnifiedExemptionRow) => {
@@ -399,7 +270,7 @@ export function ExemptionsPage() {
         },
       },
     ],
-    [t, formatTs, relativeTime, patchBusyId, handleToggleInactive],
+    [t, formatTs, relativeTime, patchBusyId, handleToggleInactive, setApproveTarget, setRejectNote, setRejectTarget, setDeleteTarget],
   );
 
   // Initial-load fallback — show a full-page spinner only on the very first
@@ -466,184 +337,33 @@ export function ExemptionsPage() {
         </Stack>
       </Card>
 
-      <Dialog
+      <ExemptionCreateDialog
         open={showCreate}
-        onOpenChange={(open) => {
-          setShowCreate(open);
-          if (!open) resetForm();
-        }}
-        title={t('pages:compliance.exemptions.createTitle', 'Create temporary exemption')}
-        description={t(
-          'pages:compliance.exemptions.createDesc',
-          'Exempted traffic will still be TLS-bumped but will skip compliance hooks.',
-        )}
-      >
-        <Stack gap="md">
-          <FormField label={t('pages:compliance.exemptions.sourceIpLabel', 'Source IP or CIDR')}>
-            <Input
-              value={formSourceIp}
-              onChange={(e) => setFormSourceIp(e.target.value)}
-              placeholder={t(
-                'pages:compliance.exemptions.placeholder.sourceIp',
-                'e.g. 10.0.0.0/24 or 10.0.0.5',
-              )}
-            />
-          </FormField>
+        onOpenChange={setShowCreate}
+        refetch={refetch}
+      />
 
-          <FormField label={t('pages:compliance.exemptions.targetHostLabel', 'Target host')}>
-            <Input
-              value={formTargetHost}
-              onChange={(e) => setFormTargetHost(e.target.value)}
-              placeholder={t(
-                'pages:compliance.exemptions.placeholder.targetHost',
-                'e.g. api.openai.com or *.openai.com',
-              )}
-            />
-          </FormField>
-
-          <Stack direction="horizontal" gap="sm" align="center">
-            <Checkbox
-              id="exemption-submit-pending"
-              checked={submitAsPending}
-              onCheckedChange={(v) => setSubmitAsPending(v === true)}
-            />
-            <label
-              htmlFor="exemption-submit-pending"
-              style={{ cursor: 'pointer', fontSize: 'var(--g-font-size-sm)' }}
-            >
-              {t('pages:compliance.exemptions.submitAsPendingLabel')}
-            </label>
-          </Stack>
-          <p style={{ margin: 'var(--g-space-0)', fontSize: 'var(--g-font-size-xs)', color: 'var(--color-text-secondary)' }}>
-            {t('pages:compliance.exemptions.submitAsPendingHint')}
-          </p>
-
-          <FormField label={t('pages:compliance.exemptions.durationLabel', 'Duration')}>
-            <Select value={formDuration} onValueChange={setFormDuration} options={durationOptions} />
-          </FormField>
-
-          <FormField label={t('pages:compliance.exemptions.reasonLabel', 'Reason')}>
-            <Textarea
-              value={formReason}
-              onChange={(e) => setFormReason(e.target.value)}
-              placeholder={t(
-                'pages:compliance.exemptions.placeholder.reason',
-                'e.g. false positive investigation',
-              )}
-              rows={3}
-            />
-          </FormField>
-
-          <Stack direction="horizontal" gap="sm" justify="end">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowCreate(false);
-                resetForm();
-              }}
-              disabled={creating}
-            >
-              {t('common:cancel', 'Cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreate}
-              disabled={creating || !formSourceIp.trim() || !formTargetHost.trim()}
-            >
-              {creating
-                ? t('pages:compliance.exemptions.creating', 'Creating…')
-                : t('pages:compliance.exemptions.createBtn', 'Create')}
-            </Button>
-          </Stack>
-        </Stack>
-      </Dialog>
-
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-        title={t('pages:compliance.exemptions.deleteTitle', 'Delete exemption?')}
-        description={
-          deleteTarget
-            ? t('pages:compliance.exemptions.deleteDesc', {
-                sourceIp: deleteTarget.sourceIp,
-                targetHost: deleteTarget.targetHost,
-              })
-            : ''
-        }
-        confirmLabel={t('common:delete', 'Delete')}
-        cancelLabel={t('common:cancel', 'Cancel')}
+      <ExemptionDeleteDialog
+        deleteTarget={deleteTarget}
+        setDeleteTarget={setDeleteTarget}
         onConfirm={handleDelete}
-        variant="danger"
       />
 
-      <AlertDialog
-        open={approveTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setApproveTarget(null);
-        }}
-        title={t('pages:compliance.exemptions.approveTitle')}
-        description={
-          approveTarget
-            ? t('pages:compliance.exemptions.approveDesc', {
-                sourceIp: approveTarget.sourceIp,
-                targetHost: approveTarget.targetHost,
-              })
-            : ''
-        }
-        confirmLabel={t('pages:compliance.exemptions.approveConfirm')}
-        cancelLabel={t('common:cancel', 'Cancel')}
-        onConfirm={() => {
-          void handleApprove();
-        }}
-        loading={approveBusy}
-        variant="default"
+      <ExemptionApproveDialog
+        approveTarget={approveTarget}
+        setApproveTarget={setApproveTarget}
+        approveBusy={approveBusy}
+        onConfirm={handleApprove}
       />
 
-      <Dialog
-        open={rejectTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRejectTarget(null);
-            setRejectNote('');
-          }
-        }}
-        title={t('pages:compliance.exemptions.rejectTitle')}
-        description={t('pages:compliance.exemptions.rejectDesc')}
-      >
-        <Stack gap="md">
-          <FormField label={t('pages:compliance.exemptions.rejectReasonLabel')}>
-            <Textarea
-              value={rejectNote}
-              onChange={(e) => setRejectNote(e.target.value)}
-              placeholder={t('pages:compliance.exemptions.rejectReasonPlaceholder')}
-              rows={3}
-            />
-          </FormField>
-          <Stack direction="horizontal" gap="sm" justify="end">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setRejectTarget(null);
-                setRejectNote('');
-              }}
-              disabled={rejectBusy}
-            >
-              {t('common:cancel', 'Cancel')}
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => void handleReject()}
-              disabled={rejectBusy || rejectNote.trim().length < 2}
-            >
-              {rejectBusy
-                ? t('pages:compliance.exemptions.rejectSubmitting')
-                : t('pages:compliance.exemptions.rejectSubmit')}
-            </Button>
-          </Stack>
-        </Stack>
-      </Dialog>
+      <ExemptionRejectDialog
+        rejectTarget={rejectTarget}
+        setRejectTarget={setRejectTarget}
+        rejectNote={rejectNote}
+        setRejectNote={setRejectNote}
+        rejectBusy={rejectBusy}
+        onConfirm={handleReject}
+      />
     </>
   );
 }

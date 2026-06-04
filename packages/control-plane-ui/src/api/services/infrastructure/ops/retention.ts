@@ -2,7 +2,7 @@
  * Observability retention admin API service —
  * `GET / PUT /api/admin/observability/retention`.
  *
- * Eleven layers (per spec §5.5) live in `metric_ops_retention_config` and are
+ * Twelve layers (per spec §5.5) live in `metric_ops_retention_config` and are
  * re-read by Hub's ops-retention job on every tick. The server returns the
  * current value plus the allowed [min, max] day window per layer; PUT atomically
  * updates one or more layers and 400s on any out-of-range or unknown key.
@@ -15,14 +15,15 @@ import { api } from '../../../client';
 
 /** Catalog of known retention layers (spec §5.5). Forward-compat: the server may add new keys. */
 export type RetentionLayerName =
-  | 'runtime_raw'
-  | 'business_raw'
+  | 'runtime_5m'
+  | 'business_5m'
   | 'runtime_1h'
   | 'business_1h'
   | 'runtime_1d'
   | 'business_1d'
   | 'runtime_1mo'
   | 'business_1mo'
+  | 'diag_info'
   | 'diag_warn'
   | 'diag_error'
   | 'diag_fatal';

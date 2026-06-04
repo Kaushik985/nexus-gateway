@@ -1,14 +1,14 @@
 {
   "name": "cohere",
   "displayName": "Cohere",
-  "description": "Cohere Chat v2 \u2014 Command A/R family with native tool use, RAG citations, and multilingual support.",
+  "description": "Cohere Chat v2 — Command A/R family with native tool use, RAG citations, and multilingual support.",
   "baseUrl": "https://api.cohere.com",
   "adapterType": "cohere",
   "models": [
     {
       "code": "command-a-03-2025",
       "name": "Command A (2025-03)",
-      "description": "Cohere's current flagship. Excels at tool use, agentic tasks, and RAG \u2014 128k context.",
+      "description": "Cohere's current flagship. Excels at tool use, agentic tasks, and RAG — 128k context.",
       "providerModelId": "command-a-03-2025",
       "type": "chat",
       "features": [
@@ -48,7 +48,10 @@
       ],
       "maxContextTokens": 128000,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 2.5,
+      "outputPricePerMillion": 10.0,
+      "status": "deprecated"
     },
     {
       "code": "command-r-08-2024",

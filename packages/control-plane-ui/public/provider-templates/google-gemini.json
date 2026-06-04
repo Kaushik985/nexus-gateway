@@ -1,7 +1,7 @@
 {
   "name": "google-gemini",
   "displayName": "Google Gemini",
-  "description": "Google Gemini API \u2014 Gemini 2.5 and embedding models.",
+  "description": "Google Gemini API — Gemini 2.5 and embedding models.",
   "baseUrl": "https://generativelanguage.googleapis.com",
   "adapterType": "gemini",
   "models": [
@@ -22,7 +22,7 @@
       "outputPricePerMillion": 10.0,
       "maxContextTokens": 1048576,
       "maxOutputTokens": 65536,
-      "cachedInputReadPricePerMillion": 0.3125,
+      "cachedInputReadPricePerMillion": 0.125,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -37,11 +37,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 0.1,
-      "outputPricePerMillion": 0.4,
+      "inputPricePerMillion": 0.3,
+      "outputPricePerMillion": 2.5,
       "maxContextTokens": 1048576,
       "maxOutputTokens": 8192,
-      "cachedInputReadPricePerMillion": 0.025,
+      "cachedInputReadPricePerMillion": 0.03,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -56,11 +56,11 @@
         "streaming",
         "json_mode"
       ],
-      "inputPricePerMillion": 0.05,
-      "outputPricePerMillion": 0.2,
+      "inputPricePerMillion": 0.1,
+      "outputPricePerMillion": 0.4,
       "maxContextTokens": 1048576,
       "maxOutputTokens": 8192,
-      "cachedInputReadPricePerMillion": 0.0125,
+      "cachedInputReadPricePerMillion": 0.01,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -70,9 +70,9 @@
       "providerModelId": "gemini-embedding-001",
       "type": "embedding",
       "features": [],
-      "inputPricePerMillion": 0.025,
+      "inputPricePerMillion": 0.15,
       "maxContextTokens": 2048,
-      "cachedInputReadPricePerMillion": 0.0063,
+      "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
     },
     {
@@ -84,7 +84,7 @@
       "features": [],
       "inputPricePerMillion": 0.025,
       "maxContextTokens": 2048,
-      "cachedInputReadPricePerMillion": 0.0063,
+      "cachedInputReadPricePerMillion": null,
       "cachedInputWritePricePerMillion": null
     }
   ]

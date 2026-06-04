@@ -1,0 +1,63 @@
+import { useTranslation } from 'react-i18next';
+import { Card, Stack } from '@/components/ui';
+import styles from '../FleetDeviceDetailPage.module.css';
+
+interface SystemTabProps {
+  // Loose JSON blob (machineId / osName / cpuModel / cpuCores / totalMemMB /
+  // networkInterfaces[]…); typed as `any` to match the JSX below.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sysinfo: any;
+}
+
+export function SystemTab({ sysinfo }: SystemTabProps) {
+  const { t } = useTranslation();
+  return (
+    <Card>
+      {sysinfo ? (
+        <Stack gap="md">
+          <div className={styles.kvGrid}>
+            <span className={styles.kvLabel}>{t('pages:fleet.machineId')}</span>
+            <span className={styles.kvValue}>{sysinfo.machineId ?? '—'}</span>
+            <span className={styles.kvLabel}>{t('pages:fleet.osName')}</span>
+            <span className={styles.kvValue}>{sysinfo.osName} {sysinfo.osVersion}</span>
+            <span className={styles.kvLabel}>{t('pages:fleet.cpuModel')}</span>
+            <span className={styles.kvValue}>{sysinfo.cpuModel ?? '—'}</span>
+            <span className={styles.kvLabel}>{t('pages:fleet.cpuCores')}</span>
+            <span className={styles.kvValue}>{sysinfo.cpuCores}</span>
+            <span className={styles.kvLabel}>{t('pages:fleet.totalMemMB')}</span>
+            <span className={styles.kvValue}>{sysinfo.totalMemMB?.toLocaleString() ?? '—'}</span>
+            <span className={styles.kvLabel}>{t('pages:fleet.serialNumber')}</span>
+            <span className={styles.kvValue}>{sysinfo.serialNumber ?? '—'}</span>
+            <span className={styles.kvLabel}>{t('pages:fleet.modelName')}</span>
+            <span className={styles.kvValue}>{sysinfo.modelName ?? '—'}</span>
+          </div>
+          {sysinfo.networkInterfaces?.length > 0 && (
+            <>
+              <h4 className={styles.sectionTitle}>{t('pages:fleet.networkInterfaces')}</h4>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th className={styles.th}>{t('pages:fleet.ifName')}</th>
+                    <th className={styles.th}>{t('pages:fleet.macAddress')}</th>
+                    <th className={styles.th}>{t('pages:fleet.ips')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sysinfo.networkInterfaces.map((nif: { name: string; macAddress: string; ips: string[] }, i: number) => (
+                    <tr key={i}>
+                      <td className={styles.td}>{nif.name}</td>
+                      <td className={styles.td}>{nif.macAddress}</td>
+                      <td className={styles.td}>{nif.ips?.join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </Stack>
+      ) : (
+        <p className={styles.empty}>{t('pages:fleet.noSysinfo')}</p>
+      )}
+    </Card>
+  );
+}

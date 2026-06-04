@@ -1,7 +1,7 @@
 {
   "name": "perplexity",
   "displayName": "Perplexity Sonar",
-  "description": "Perplexity Sonar API \u2014 search-grounded chat with Chain-of-Thought reasoning options. OpenAI-compatible wire format.",
+  "description": "Perplexity Sonar API — search-grounded chat with Chain-of-Thought reasoning options. OpenAI-compatible wire format.",
   "baseUrl": "https://api.perplexity.ai",
   "adapterType": "perplexity",
   "models": [
@@ -24,7 +24,7 @@
     {
       "code": "sonar-pro",
       "name": "Sonar Pro",
-      "description": "Advanced search with grounding \u2014 supports complex queries and follow-ups.",
+      "description": "Advanced search with grounding — supports complex queries and follow-ups.",
       "providerModelId": "sonar-pro",
       "type": "chat",
       "features": [

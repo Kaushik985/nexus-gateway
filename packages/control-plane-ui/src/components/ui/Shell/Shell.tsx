@@ -5,6 +5,7 @@ import { SetupBanner } from '../../SetupBanner';
 import { cn } from '@/lib/utils';
 import { Sidebar } from '../Sidebar';
 import { Header } from '../Header';
+import { ChatWithNexus } from '@/components/assistant';
 
 /* ── Breakpoints ─────────────────────────────────────────────────────────── */
 
@@ -118,6 +119,8 @@ export function Shell() {
           </div>
         </main>
       </div>
+
+      <ChatWithNexus />
     </div>
   );
 }

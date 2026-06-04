@@ -41,3 +41,73 @@ describe('SecretDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('SecretDialog requireAcknowledgement extension', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function findSecondaryClose() {
+    const buttons = screen.getAllByRole('button', { name: 'Close' });
+    return buttons.find((b) => b.className.includes('secondary'))!;
+  }
+
+  it('disables the secondary Close button until the acknowledgement checkbox is ticked', () => {
+    const onClose = vi.fn();
+    renderWithProviders(
+      <SecretDialog
+        open
+        secret="nx_cs_gated"
+        title="Save secret"
+        warning="Save it now"
+        requireAcknowledgement
+        acknowledgementLabel="I have stored this secret securely."
+        onClose={onClose}
+      />,
+    );
+    const close = findSecondaryClose();
+    expect(close).toBeDisabled();
+
+    const ack = screen.getByRole('checkbox', { name: /I have stored this secret securely/i });
+    fireEvent.click(ack);
+
+    expect(close).toBeEnabled();
+    fireEvent.click(close);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores Radix overlay/Escape close attempts while the ack gate is still active', () => {
+    const onClose = vi.fn();
+    renderWithProviders(
+      <SecretDialog
+        open
+        secret="nx_cs_gated"
+        title="t"
+        warning="w"
+        requireAcknowledgement
+        acknowledgementLabel="ack"
+        onClose={onClose}
+      />,
+    );
+    // Pressing the disabled Close does nothing.
+    fireEvent.click(findSecondaryClose());
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Escape (which Radix forwards as onOpenChange(false)) is also a no-op
+    // because SecretDialog gates onOpenChange behind closeDisabled.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('keeps the default Close path enabled when requireAcknowledgement is omitted', () => {
+    const onClose = vi.fn();
+    renderWithProviders(
+      <SecretDialog
+        open
+        secret="nx_cs_default"
+        title="t"
+        warning="w"
+        onClose={onClose}
+      />,
+    );
+    expect(findSecondaryClose()).toBeEnabled();
+  });
+});

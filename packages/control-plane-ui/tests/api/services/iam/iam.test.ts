@@ -167,11 +167,11 @@ describe('iamApi — identity providers + SCIM + group mappings', () => {
     iamApi.listIdpGroupMappings('i1');
     iamApi.createIdpGroupMapping('i1', { externalGroupId: 'eg', iamGroupId: 'g1' });
     iamApi.deleteIdpGroupMapping('i1', 'mp1');
-    expect(m.get).toHaveBeenCalledWith('/api/admin/identity-provider/i1/scim-tokens');
-    expect(m.post).toHaveBeenCalledWith('/api/admin/identity-provider/i1/scim-tokens', { name: 'tok' });
-    expect(m.delete).toHaveBeenCalledWith('/api/admin/identity-provider/i1/scim-tokens/s1');
-    expect(m.get).toHaveBeenCalledWith('/api/admin/identity-provider/i1/group-mappings');
-    expect(m.post).toHaveBeenCalledWith('/api/admin/identity-provider/i1/group-mappings', { externalGroupId: 'eg', iamGroupId: 'g1' });
-    expect(m.delete).toHaveBeenCalledWith('/api/admin/identity-provider/i1/group-mappings/mp1');
+    expect(m.get).toHaveBeenCalledWith('/api/admin/identity-providers/i1/scim-tokens');
+    expect(m.post).toHaveBeenCalledWith('/api/admin/identity-providers/i1/scim-tokens', { name: 'tok' });
+    expect(m.delete).toHaveBeenCalledWith('/api/admin/identity-providers/i1/scim-tokens/s1');
+    expect(m.get).toHaveBeenCalledWith('/api/admin/identity-providers/i1/group-mappings');
+    expect(m.post).toHaveBeenCalledWith('/api/admin/identity-providers/i1/group-mappings', { externalGroupId: 'eg', iamGroupId: 'g1' });
+    expect(m.delete).toHaveBeenCalledWith('/api/admin/identity-providers/i1/group-mappings/mp1');
   });
 });

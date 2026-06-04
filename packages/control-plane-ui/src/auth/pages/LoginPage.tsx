@@ -15,6 +15,7 @@ import {
 } from '@/api/services';
 import { useTheme } from '@/theme/useTheme';
 import { useAuth } from '../context/AuthContext';
+import { getAccessToken } from '../tokens/tokenStore';
 import { SUPPORTED_LANGUAGES, LANGUAGE_STORAGE_KEY } from '../../i18n';
 import styles from './LoginPage.module.css';
 
@@ -73,8 +74,53 @@ export function LoginPage() {
   );
 
   useEffect(() => {
-    if (status === 'authenticated') navigate(postAuthPath, { replace: true });
-  }, [status, navigate, postAuthPath]);
+    // Two cases when the SPA is already authenticated:
+    //
+    //  1. No authctx — the operator just navigated to /login, send them on
+    //     to wherever they came from (or the dashboard).
+    //
+    //  2. An authctx IS present — they were bounced here by /oauth/authorize
+    //     (e.g. nexus-cli's PKCE flow opened a browser tab while a CP-UI
+    //     session is live in the same browser). Navigating to "/" would drop
+    //     the OAuth flow and leave the CLI's loopback listener hanging. The
+    //     right move is to consent on the operator's behalf via the bearer
+    //     session and navigate the browser to the registered redirect_uri so
+    //     the CLI's loopback callback fires. On any failure (expired authctx,
+    //     missing token, server error) we fall through to the normal login
+    //     form rather than wedge the user on a blank screen.
+    if (status !== 'authenticated') return;
+    if (!authctx) {
+      navigate(postAuthPath, { replace: true });
+      return;
+    }
+    const token = getAccessToken();
+    if (!token) {
+      navigate(postAuthPath, { replace: true });
+      return;
+    }
+    let cancelled = false;
+    authApi.approveAuthctx(authctx, token).then(
+      ({ redirectUri }) => {
+        if (cancelled) return;
+        window.location.assign(redirectUri);
+      },
+      (err) => {
+        if (cancelled) return;
+        // authctx no longer valid (expired / one-shot already consumed)
+        // — restart the dance instead of stranding the operator on /login.
+        if (err instanceof AuthserverError && err.code === 'authctx_expired') {
+          void login(postAuthPath);
+          return;
+        }
+        // Anything else: drop the authctx and send them home; they can
+        // re-run `nexus login` to mint a fresh one.
+        navigate(postAuthPath, { replace: true });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [status, authctx, navigate, postAuthPath, login]);
 
   useEffect(() => {
     const id = setTimeout(() => setMounted(true), 50);

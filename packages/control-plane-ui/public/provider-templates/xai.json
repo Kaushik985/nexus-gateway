@@ -1,14 +1,14 @@
 {
   "name": "xai",
   "displayName": "xAI",
-  "description": "xAI Grok \u2014 OpenAI-compatible API.",
+  "description": "xAI Grok — OpenAI-compatible API.",
   "baseUrl": "https://api.x.ai",
   "adapterType": "xai",
   "models": [
     {
       "code": "grok-4.3",
       "name": "Grok 4.3",
-      "description": "xAI Grok 4.3 \u2014 current flagship. 1M context, stronger reasoning and tool use at lower cost than Grok 4.",
+      "description": "xAI Grok 4.3 — current flagship. 1M context, stronger reasoning and tool use at lower cost than Grok 4.",
       "providerModelId": "grok-4.3",
       "type": "chat",
       "features": [
@@ -33,12 +33,13 @@
         "function_calling",
         "streaming"
       ],
-      "inputPricePerMillion": 3,
-      "outputPricePerMillion": 15,
+      "inputPricePerMillion": null,
+      "outputPricePerMillion": null,
       "maxContextTokens": 131072,
       "maxOutputTokens": 8192,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "grok-3-mini",
@@ -54,7 +55,8 @@
       "maxContextTokens": 131072,
       "maxOutputTokens": 8192,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     }
   ]
 }

@@ -73,6 +73,9 @@ describe('SettingsSiemTab', () => {
     wrap();
     fireEvent.click(screen.getByRole('button', { name: i18n.t('pages:settingsSiem.testButton') }));
     await waitFor(() => expect(sys.systemApi.sendSiemTestEvent).toHaveBeenCalled());
-    expect(screen.getByText(i18n.t('pages:settingsSiem.testSuccess'))).toBeInTheDocument();
+    // The success toast renders asynchronously after sendSiemTestEvent resolves,
+    // which is after the call above is observed — use findByText so the assertion
+    // waits for the toast instead of racing it (was an intermittent getByText miss).
+    expect(await screen.findByText(i18n.t('pages:settingsSiem.testSuccess'))).toBeInTheDocument();
   });
 });

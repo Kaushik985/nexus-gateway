@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import clsx from 'clsx';
-import { Card, Stack, Button, Switch, ErrorBanner, Input, Select, FormField } from '@/components/ui';
+import { Card, Stack, Button, Switch, ErrorBanner } from '@/components/ui';
 import styles from './SettingsAgentTab.module.css';
 import { useApi } from '@/hooks/useApi';
 import { useMutation } from '@/hooks/useMutation';
 import { devicesApi } from '@/api/services';
+import { QuitPolicyCard } from './QuitPolicyCard';
+import { ShutdownWarningCard } from './ShutdownWarningCard';
+import { RuntimeDefaultsCard } from './RuntimeDefaultsCard';
+import { QuicBundlesCard } from './QuicBundlesCard';
 
 const LOCALES = [
   { key: 'en', label: 'English' },
@@ -182,32 +185,11 @@ export function SettingsAgentTab() {
   return (
     <Stack gap="md">
       {/* Quit Policy */}
-      <Card>
-        <Stack gap="md">
-          <h3 style={{ margin: 'var(--g-space-0)' }}>{t('pages:settings.quitPolicyTitle', 'Agent Quit Policy')}</h3>
-          <p className={styles.helpTextSecondary}>
-            {t('pages:settings.quitPolicyDesc', 'Controls whether the agent menu bar exposes Restart Agent and Quit Nexus Agent items. Turn off for compliance always-on deployments — users cannot quit the agent process.')}
-          </p>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--g-space-3)', cursor: 'pointer' }}>
-            <Switch
-              checked={quitAllowed}
-              onCheckedChange={handleQuitToggle}
-              disabled={loading}
-            />
-            <div>
-              <div style={{ fontWeight: 'var(--g-font-weight-medium)' }}>
-                {t('pages:settings.quitAllowedLabel', 'Allow users to quit the agent')}
-              </div>
-              <div className={styles.hintTextMuted}>
-                {quitAllowed
-                  ? t('pages:settings.quitAllowedOnHint', 'Restart Agent and Quit Nexus Agent menu items are visible.')
-                  : t('pages:settings.quitAllowedOffHint', 'Restart Agent and Quit Nexus Agent menu items are hidden — only Restart App is available.')}
-              </div>
-            </div>
-          </label>
-        </Stack>
-      </Card>
+      <QuitPolicyCard
+        quitAllowed={quitAllowed}
+        onQuitToggle={handleQuitToggle}
+        loading={loading}
+      />
 
       {/* Agent Attestation — fleet-wide opt-in for the agent → CP
           trust-bypass path. When enabled, the agent signs every outbound
@@ -249,62 +231,18 @@ export function SettingsAgentTab() {
       </Card>
 
       {/* Shutdown Warning (only meaningful when quit is allowed) */}
-      <Card>
-        <Stack gap="md">
-          <h3 style={{ margin: 'var(--g-space-0)' }}>{t('pages:settings.agentShutdownWarningTitle')}</h3>
-          <p className={styles.helpTextSecondary}>
-            {quitAllowed
-              ? t('pages:settings.agentShutdownWarningDesc')
-              : t('pages:settings.shutdownWarningDisabledHint', 'This text only appears when "Allow users to quit the agent" is turned on. Edit it now so the message is ready when quit is enabled.')}
-          </p>
-
-          {/* shutdownWarningEnabled gate. Admin can prepare the
-              warning text but suppress the dialog (text saved but
-              not shown). Mirrors the field the agent's
-              agent_settings handler now reads (see #83). */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--g-space-3)', cursor: 'pointer' }}>
-            <Switch
-              checked={shutdownWarningEnabled}
-              onCheckedChange={(next) => { setShutdownWarningEnabled(next); setDirty(true); }}
-              disabled={loading}
-            />
-            <div style={{ fontWeight: 'var(--g-font-weight-medium)' }}>
-              {t('pages:settings.shutdownWarningEnabledLabel', 'Show this warning when the user clicks Quit')}
-            </div>
-          </label>
-
-          {/* Locale tabs */}
-          <div className={styles.tabRow}>
-            {LOCALES.map(loc => (
-              <button
-                key={loc.key}
-                onClick={() => setActiveLocale(loc.key)}
-                className={clsx(styles.localeTab, activeLocale === loc.key && styles.localeTabActive)}
-              >
-                {loc.label}
-              </button>
-            ))}
-          </div>
-
-          <textarea
-            value={warnings[activeLocale] ?? ''}
-            onChange={e => handleWarningChange(e.target.value)}
-            rows={4}
-            className={styles.warningTextarea}
-            placeholder={t('pages:settings.agentShutdownWarningPlaceholder')}
-            disabled={loading}
-          />
-
-          {/* When the live blob has no shutdownWarning field yet (or this
-              locale is empty after the merge) tell the user we're showing a
-              default placeholder so a "Save" click doesn't seem surprising. */}
-          {!data?.shutdownWarning?.[activeLocale] && (
-            <p className={styles.helpTextSecondarySmall}>
-              {t('pages:settings.agentWarningUsingDefault')}
-            </p>
-          )}
-        </Stack>
-      </Card>
+      <ShutdownWarningCard
+        quitAllowed={quitAllowed}
+        shutdownWarningEnabled={shutdownWarningEnabled}
+        onShutdownWarningEnabledChange={(next) => { setShutdownWarningEnabled(next); setDirty(true); }}
+        locales={LOCALES}
+        activeLocale={activeLocale}
+        onActiveLocaleChange={setActiveLocale}
+        warnings={warnings}
+        onWarningChange={handleWarningChange}
+        loading={loading}
+        shutdownWarningData={data?.shutdownWarning}
+      />
 
       {/* Runtime defaults — the timing / cadence / updater / log
           fields admin couldn't previously edit. Empty input means
@@ -312,128 +250,28 @@ export function SettingsAgentTab() {
           explicit override that the agent's agent_settings handler
           honours on next shadow tick. Server clamps intervals to
           [10s, 86400s] so a stray "1" doesn't DoS Hub. */}
-      <Card>
-        <Stack gap="md">
-          <h3 style={{ margin: 'var(--g-space-0)' }}>{t('pages:settings.agentRuntimeTitle', 'Runtime defaults')}</h3>
-          <p className={styles.helpTextSecondary}>
-            {t('pages:settings.agentRuntimeDesc', 'Fleet-wide reporting cadence, updater channel, and log level. Leave a field empty to fall back to the agent\'s YAML default.')}
-          </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--g-space-3)' }}>
-            <FormField label={t('pages:settings.heartbeatIntervalSec')}>
-              <Input
-                type="number"
-                value={heartbeat}
-                onChange={(e) => { setHeartbeat(e.target.value); setDirty(true); }}
-                placeholder="60"
-                min={10}
-                max={86400}
-              />
-            </FormField>
-            <FormField label={t('pages:settings.auditDrainIntervalSec')}>
-              <Input
-                type="number"
-                value={auditDrain}
-                onChange={(e) => { setAuditDrain(e.target.value); setDirty(true); }}
-                placeholder="30"
-                min={10}
-                max={86400}
-              />
-            </FormField>
-            <FormField label={t('pages:settings.configSyncIntervalSec')}>
-              <Input
-                type="number"
-                value={configSync}
-                onChange={(e) => { setConfigSync(e.target.value); setDirty(true); }}
-                placeholder="300"
-                min={10}
-                max={86400}
-              />
-            </FormField>
-            <FormField label={t('pages:settings.auditBatchSize')}>
-              <Input
-                type="number"
-                value={auditBatch}
-                onChange={(e) => { setAuditBatch(e.target.value); setDirty(true); }}
-                placeholder="100"
-                min={1}
-                max={10000}
-              />
-            </FormField>
-            <FormField label={t('pages:settings.logLevel')}>
-              <Select
-                value={logLevel}
-                onValueChange={(v) => { setLogLevel(v); setDirty(true); }}
-                options={[
-                  { value: 'debug', label: 'debug' },
-                  { value: 'info', label: 'info' },
-                  { value: 'warn', label: 'warn' },
-                  { value: 'error', label: 'error' },
-                ]}
-              />
-            </FormField>
-            <FormField label={t('pages:settings.autoUpdateChannel')}>
-              <Select
-                value={autoUpdateChannel}
-                onValueChange={(v) => { setAutoUpdateChannel(v); setDirty(true); }}
-                options={[
-                  { value: 'stable', label: 'stable' },
-                  { value: 'beta', label: 'beta' },
-                ]}
-              />
-            </FormField>
-            <FormField
-              label={t('pages:settings.trafficUploadLevel.label', 'Traffic upload level')}
-              helpText={
-                trafficUploadLevel === 'all'
-                  ? t('pages:settings.trafficUploadLevel.helpAll', 'Every captured flow is uploaded — including untracked hosts and inspect-but-passthrough rows. Highest cost; useful for audit windows.')
-                  : trafficUploadLevel === 'blocked'
-                    ? t('pages:settings.trafficUploadLevel.helpBlocked', 'Only blocked / denied / bump-failed flows reach Hub. Silent operation; compliance evidence preserved.')
-                    : t('pages:settings.trafficUploadLevel.helpProcessed', 'Processed (hooks ran), Blocked, and Bump-failed flows reach Hub. Untracked hosts and Inspect-only rows (matched but admin set passthrough) stay local. Recommended for production.')
-              }
-            >
-              <Select
-                value={trafficUploadLevel}
-                onValueChange={(v) => { setTrafficUploadLevel(v); setDirty(true); }}
-                options={[
-                  { value: 'all', label: t('pages:settings.trafficUploadLevel.optAll', 'All flows') },
-                  { value: 'processed', label: t('pages:settings.trafficUploadLevel.optProcessed', 'Processed / Blocked / Bump-failed (recommended)') },
-                  { value: 'blocked', label: t('pages:settings.trafficUploadLevel.optBlocked', 'Blocked / Bump-failed only') },
-                ]}
-              />
-            </FormField>
-            <FormField
-              label={t('pages:settings.agentThemeId.label', 'Agent Dashboard theme')}
-              helpText={t(
-                'pages:settings.agentThemeId.help',
-                'Forces every agent Dashboard in the fleet to render with this theme pack. Empty means each user keeps their own local pick. Unknown IDs fall back to the bundled default theme.',
-              )}
-            >
-              <Select
-                value={themeId}
-                onValueChange={(v) => { setThemeId(v); setDirty(true); }}
-                options={[
-                  { value: '', label: t('pages:settings.agentThemeId.optUserPick', 'Let each user choose (no fleet override)') },
-                  { value: 'default', label: t('pages:settings.agentThemeId.optDefault', 'Default (monochrome, Geist)') },
-                  { value: 'morningstar', label: 'Morningstar' },
-                  { value: 'rbc', label: 'RBC' },
-                ]}
-              />
-            </FormField>
-          </div>
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--g-space-3)', cursor: 'pointer' }}>
-            <Switch
-              checked={autoUpdateEnabled}
-              onCheckedChange={(next) => { setAutoUpdateEnabled(next); setDirty(true); }}
-              disabled={loading}
-            />
-            <div style={{ fontWeight: 'var(--g-font-weight-medium)' }}>
-              {t('pages:settings.autoUpdateEnabledLabel', 'Auto-install signed updates')}
-            </div>
-          </label>
-        </Stack>
-      </Card>
+      <RuntimeDefaultsCard
+        heartbeat={heartbeat}
+        setHeartbeat={setHeartbeat}
+        auditDrain={auditDrain}
+        setAuditDrain={setAuditDrain}
+        configSync={configSync}
+        setConfigSync={setConfigSync}
+        auditBatch={auditBatch}
+        setAuditBatch={setAuditBatch}
+        logLevel={logLevel}
+        setLogLevel={setLogLevel}
+        autoUpdateChannel={autoUpdateChannel}
+        setAutoUpdateChannel={setAutoUpdateChannel}
+        trafficUploadLevel={trafficUploadLevel}
+        setTrafficUploadLevel={setTrafficUploadLevel}
+        themeId={themeId}
+        setThemeId={setThemeId}
+        autoUpdateEnabled={autoUpdateEnabled}
+        setAutoUpdateEnabled={setAutoUpdateEnabled}
+        setDirty={setDirty}
+        loading={loading}
+      />
 
       {/* QUIC fallback bundles — bundle-ID allowlist that the macOS NE
           extension consults to decide which apps' UDP flows to close.
@@ -443,99 +281,13 @@ export function SettingsAgentTab() {
           dhcp, ntp) MUST NOT be added — closing their UDP took the host
           network down (incident 2026-05-15). Empty list disables QUIC
           blocking entirely (admin's escape hatch). */}
-      <Card>
-        <Stack gap="md">
-          <h3 style={{ margin: 'var(--g-space-0)' }}>
-            {t('pages:settings.quicFallback.title', 'QUIC fallback bundles (macOS)')}
-          </h3>
-          <p className={styles.helpTextSecondary}>
-            {t('pages:settings.quicFallback.desc', 'macOS bundle IDs of apps whose UDP flows the agent will close to force HTTP/3 → HTTP/2 fallback. Browsers and Electron AI clients prefer h3 to QUIC-friendly endpoints (ChatGPT, Claude.ai, Cloudflare-fronted services); without this list the agent\'s TCP path never sees their requests. Add Chromium-based desktop apps you also want intercepted (Cursor, Claude Desktop, etc.). NEVER add system processes (com.apple.mDNSResponder, dhcpcd, etc.) — that breaks DNS and takes the host network down.')}
-          </p>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--g-space-2)' }}>
-            {quicBundles.map((b) => (
-              <span
-                key={b}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 'var(--g-space-2)',
-                  padding: 'var(--g-space-1) var(--g-space-3)',
-                  background: 'var(--color-surface-2)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 'var(--radius-pill)',
-                  fontSize: 'var(--font-size-sm)',
-                  fontFamily: 'var(--g-font-family-mono)',
-                }}
-              >
-                {b}
-                <button
-                  type="button"
-                  aria-label={t('pages:settings.quicFallback.remove', 'Remove')}
-                  onClick={() => {
-                    setQuicBundles((prev) => prev.filter((x) => x !== b));
-                    setDirty(true);
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 'var(--g-space-0)',
-                    color: 'var(--color-text-muted)',
-                    fontSize: 'var(--font-size-md)',
-                    lineHeight: 1,
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            {quicBundles.length === 0 && (
-              <span className={styles.hintTextMuted}>
-                {t('pages:settings.quicFallback.empty', 'No bundles configured — agent will not close any UDP flows.')}
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: 'var(--g-space-2)', alignItems: 'center' }}>
-            <Input
-              type="text"
-              value={quicInputDraft}
-              onChange={(e) => setQuicInputDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const v = quicInputDraft.trim();
-                  if (v && !quicBundles.includes(v)) {
-                    setQuicBundles((prev) => [...prev, v]);
-                    setDirty(true);
-                  }
-                  setQuicInputDraft('');
-                }
-              }}
-              placeholder={t('pages:settings.quicFallback.placeholder', 'com.example.MyBrowser — press Enter to add')}
-              style={{ flex: 1 }}
-            />
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const v = quicInputDraft.trim();
-                if (v && !quicBundles.includes(v)) {
-                  setQuicBundles((prev) => [...prev, v]);
-                  setDirty(true);
-                }
-                setQuicInputDraft('');
-              }}
-              disabled={!quicInputDraft.trim()}
-            >
-              {t('pages:settings.quicFallback.add', 'Add')}
-            </Button>
-          </div>
-          <p className={styles.helpTextSecondarySmall}>
-            {t('pages:settings.quicFallback.howToFind', 'Find a Mac app\'s bundle ID with: defaults read /Applications/SomeApp.app/Contents/Info.plist CFBundleIdentifier')}
-          </p>
-        </Stack>
-      </Card>
+      <QuicBundlesCard
+        quicBundles={quicBundles}
+        setQuicBundles={setQuicBundles}
+        quicInputDraft={quicInputDraft}
+        setQuicInputDraft={setQuicInputDraft}
+        setDirty={setDirty}
+      />
 
       <div>
         <Button onClick={() => save(undefined)} loading={saving} disabled={!dirty}>

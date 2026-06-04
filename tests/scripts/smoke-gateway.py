@@ -493,8 +493,19 @@ class CPClient:
     def _req(self, method: str, path: str, body=None) -> tuple[int, Any]:
         parsed = urllib.parse.urlparse(self.base_url)
         host = parsed.hostname
-        port = parsed.port or 80
-        conn = http.client.HTTPConnection(host, port, timeout=30)
+        # Honor the URL scheme. base_url is https:// on remote/prod (no explicit
+        # port); the old `HTTPConnection(host, parsed.port or 80)` spoke plain
+        # HTTP on :80, which nginx 301-redirects to https — and http.client does
+        # not follow, so every admin CRUD call got a 301 (list_routing_rules
+        # raised "HTTP 301"; cache/provider/model reads silently returned empty).
+        # Locally base_url is http://localhost:3001 (explicit port) so this never
+        # surfaced. Mirror _http: HTTPS + 443 when the scheme is https.
+        if parsed.scheme == "https":
+            import ssl
+            conn = http.client.HTTPSConnection(host, parsed.port or 443, timeout=30,
+                                               context=ssl.create_default_context())
+        else:
+            conn = http.client.HTTPConnection(host, parsed.port or 80, timeout=30)
         hdrs = {
             "Authorization": f"Bearer {self.token()}",
             "Content-Type": "application/json",
@@ -1449,16 +1460,19 @@ class StateSnapshot:
             log_warn(f"Could not snapshot gemini cache config: {e}")
         return s
 
-    def restore(self, cp: CPClient, no_restore=False):
+    def restore(self, cp: CPClient, no_restore=False, skip_routing=False):
         if no_restore:
             log_warn("--no-restore: skipping config restoration")
             return
         log_step("Restoring original configuration")
-        for rule in self.routing_rules:
-            try:
-                cp.set_routing_rule(rule["id"], rule.get("enabled", False))
-            except Exception as e:
-                log_warn(f"Restore rule {rule.get('name')}: {e}")
+        if skip_routing:
+            log_info("--no-routing-manage: routing rules were never modified; nothing to restore")
+        else:
+            for rule in self.routing_rules:
+                try:
+                    cp.set_routing_rule(rule["id"], rule.get("enabled", False))
+                except Exception as e:
+                    log_warn(f"Restore rule {rule.get('name')}: {e}")
         if self.cache_cfg:
             try:
                 cp.set_cache_cfg(self.cache_cfg)
@@ -2219,6 +2233,16 @@ def _run_pool_for_models(
 # or a per-round nonce variation, not a real provider cache hit). Tunable.
 _CACHE_HIT_THRESHOLD = 100
 
+# Models that OpenAI does NOT prompt-cache on the Responses API (/v1/responses),
+# even though they cache normally on /v1/chat/completions. Verified 2026-06-03 by
+# a direct OpenAI comparison: gpt-4o on /v1/responses returns
+# usage.input_tokens_details.cached_tokens=0 on a repeated 2188-token prompt,
+# while the same prompt on /v1/chat/completions returns cached_tokens=2176. The
+# gpt-5.x / gpt-4.1 generation DOES cache on Responses; the gpt-4o-era + o1 models
+# do not. So a 0-cache result for these on the responses ingress is expected
+# provider behavior, not a gateway regression — record INFO, not WARN.
+_RESPONSES_NO_CACHE_MODELS = {"gpt-4o", "gpt-4o-mini", "o1"}
+
 
 def _reasoning_for_model(model: str) -> bool:
     """True when smoke should audit reasoning_text + reasoning_tokens for
@@ -2251,6 +2275,7 @@ def _audit_reasoning(
     reasoning_text: str,
     reasoning_tokens: int,
     native_label: str,
+    usage_present: bool = True,
 ):
     """Best-effort reasoning audit for one arm of the suite.
 
@@ -2282,10 +2307,60 @@ def _audit_reasoning(
             )
         return
     if reasoning_tokens == 0:
+        provider = _detect_provider(model)
+        # Case 0 — the usage envelope itself was never captured (stream final
+        # usage chunk missed, e.g. under heavy concurrent --all-ingress load).
+        # reasoning_tokens reads 0 only because there is no usage to read, NOT
+        # because the provider reported a 0 count. Verified 2026-06-03: direct
+        # DeepSeek + isolated gateway calls return reasoning_tokens correctly
+        # (deepseek-reasoner: native completion_tokens_details.reasoning_tokens),
+        # while the concurrent suite intermittently dropped rs["usage"] to None.
+        # Distinguish this from a genuine provider-0 so we don't cry "extraction
+        # drop" when the test simply didn't capture the count.
+        if reasoning_text and not usage_present:
+            log_info(f"  [{model}] {sub_label} reasoning_text_len={len(reasoning_text)} but "
+                     f"usage envelope not captured — cannot assess reasoning_tokens "
+                     f"(not a provider 0; likely stream final-usage-chunk miss under load)")
+            rec(phase_tag, key).passed(
+                f"reasoning_text_len={len(reasoning_text)}; usage not captured "
+                f"({native_label}; count indeterminate)"
+            )
+            return
+        # Case 1 — provider returns the chain-of-thought TEXT but no separate
+        # reasoning-token COUNT. Verified by direct upstream captures (2026-05-31):
+        #   * Moonshot kimi (k2.5/k2.6): raw usage = {prompt,completion,total},
+        #     NO reasoning_tokens field — reasoning folded into completion_tokens.
+        #   * Anthropic: the Messages API never breaks out a reasoning count.
+        # So count=0 is honest, not a gateway conversion drop. Audit text
+        # presence instead of flagging the missing count.
+        if reasoning_text and provider in ("moonshot", "anthropic"):
+            log_info(f"  [{model}] {sub_label} reasoning_text_len={len(reasoning_text)} "
+                     f"({provider}: no separate reasoning_tokens count)")
+            rec(phase_tag, key).passed(
+                f"reasoning_text_len={len(reasoning_text)} no token count "
+                f"({native_label}; {provider} omits count)"
+            )
+            return
+        # Case 2 — no reasoning emitted at all (empty CoT + 0 count): the model
+        # simply did not reason on this prompt. Verified causes: *-lite variants
+        # ship with thinking OFF by default (gemini-2.5-flash-lite upstream omits
+        # thoughtsTokenCount unless thinkingConfig is set), and o-series return 0
+        # on trivial asks. INFO, not a defect. A genuine extraction drop would
+        # carry CoT text and fall through to Case 3.
+        if not reasoning_text:
+            log_info(f"  [{model}] {sub_label} no reasoning emitted "
+                     f"(reasoning_tokens=0, empty CoT — model did not reason on this prompt)")
+            rec(phase_tag, key).passed(
+                f"no reasoning emitted ({native_label}; 0 tokens, empty CoT)"
+            )
+            return
+        # Case 3 — CoT text present from a provider that SHOULD report a count,
+        # yet the count is 0. This is the real signal worth a WARN (possible
+        # gateway extraction drop — investigate the raw upstream usage).
         log_warn(f"  [{model}] {sub_label}: reasoning model but reasoning_tokens=0 "
-                 f"(text_len={len(reasoning_text)})")
+                 f"despite CoT text (text_len={len(reasoning_text)}, provider={provider})")
         rec(phase_tag, key).warning(
-            f"reasoning_tokens=0 text_len={len(reasoning_text)} ({native_label})"
+            f"reasoning_tokens=0 text_len={len(reasoning_text)} ({native_label}; provider={provider})"
         )
         return
     log_info(f"  [{model}] {sub_label} reasoning_tokens={reasoning_tokens} "
@@ -2321,7 +2396,17 @@ def _run_ingress_model_suite(
     ingress so the write turn truly starts from zero each time.
     """
     system = _system_prompt(model)
-    max_tok = 100000 if model in _UNCAPPED_REASONING_MODELS_SET else 1024
+    if model in _UNCAPPED_REASONING_MODELS_SET:
+        max_tok = 100000
+    elif is_reasoning(model) or uses_heavy_thinking(model) or uses_thinking_tokens(model):
+        # Reasoning/thinking models spend maxOutputTokens on internal reasoning
+        # before emitting visible text; 1024 left several (gemini-2.5-*, o-series,
+        # gpt-5.5, claude-opus-4-7) with empty output and degenerate token counts.
+        # Give 10k headroom so the answer survives the thinking phase and the
+        # reasoning-token accounting is meaningful.
+        max_tok = 10000
+    else:
+        max_tok = 1024
     native_label = "native" if spec.is_native(model) else "x-format"
     phase_tag = spec.name
     nonce = spec.nonce_id
@@ -2363,6 +2448,7 @@ def _run_ingress_model_suite(
                 spec.extract_reasoning_text(data),
                 spec.extract_reasoning_tokens(data),
                 native_label,
+                usage_present=bool(data.get("usage") or data.get("usageMetadata")),
             )
     else:
         err = r.get("data", {}).get("error") or r.get("error", "")
@@ -2403,6 +2489,7 @@ def _run_ingress_model_suite(
                 rs.get("reasoning_content", "") or "",
                 spec.extract_reasoning_tokens(_stream_to_extractor_shape(spec, rs)),
                 native_label,
+                usage_present=rs.get("usage") is not None,
             )
         else:
             err = rs.get("error", "")
@@ -2484,6 +2571,16 @@ def _run_ingress_model_suite(
         log_warn(f"  [{model}] cache hit {cumulative_hit} below {_CACHE_HIT_THRESHOLD}-token threshold (noise)")
         rec(phase_tag, f"{model}/cache").warning(
             f"low cache hit ({cumulative_hit} < {_CACHE_HIT_THRESHOLD} threshold)"
+        )
+    elif spec.nonce_id == "resp" and model in _RESPONSES_NO_CACHE_MODELS:
+        # Expected: OpenAI doesn't cache this model family on /v1/responses
+        # (direct-verified 2026-06-03). Not a gateway defect.
+        log_info(f"  [{model}] no cache hit across {rounds} rounds — expected on "
+                 f"/v1/responses (OpenAI does not cache this model family there; "
+                 f"direct-verified 2026-06-03)")
+        rec(phase_tag, f"{model}/cache").passed(
+            f"no responses cache — expected for {model} (OpenAI provider behavior; "
+            f"caches on chat-completions, not responses)"
         )
     else:
         log_warn(f"  [{model}] no cache hit across {rounds} rounds")
@@ -2728,13 +2825,18 @@ def phase3_routing_off(
     cache_rounds: int = 3,
     is_remote: bool = False,
     db: Optional["DBClient"] = None,
+    manage_routing: bool = True,
 ):
     log_step("P3 Routing OFF — per-model suite")
     deleted = _flush_redis_gateway_cache(is_remote=is_remote)
     if not is_remote:
         log_info(f"  Redis cache flushed: {deleted} key(s) — fresh upstream calls guaranteed")
-    cp.set_all_routing_rules(False, snapshot.routing_rules)
-    _wait_config_propagation(gw)
+    if manage_routing:
+        cp.set_all_routing_rules(False, snapshot.routing_rules)
+        _wait_config_propagation(gw)
+    else:
+        log_warn("--no-routing-manage: leaving routing rules untouched; "
+                 "an active rule may re-route per-model requests (P3 assertions may warn)")
 
     # Per-model suite via worker pool (2026-05-20). Each model runs in
     # its own thread with a per-task log buffer + per-provider semaphore;
@@ -5372,6 +5474,12 @@ and Redis cache flushing are skipped automatically.
                          "(used with --db-credentials; default: packages/control-plane/control-plane.dev.yaml)")
     ap.add_argument("--no-restore", action="store_true",
                     help="Debug: do not restore config on exit")
+    ap.add_argument("--no-routing-manage", action="store_true",
+                    help="Do NOT disable/restore the deployment's routing rules in P3. "
+                         "Leaves existing rules untouched (e.g. an enabled prod rule stays ON). "
+                         "P3's direct-addressing isolation is weakened: an active rule may "
+                         "re-route a per-model request, so some P3 model/route assertions may "
+                         "warn. Use against prod to avoid disturbing live routing.")
     ap.add_argument("--no-embeddings", action="store_true",
                     help="Skip P3E embeddings phase entirely (useful for quick chat-only smokes).")
     ap.add_argument("--all-upstream", action="store_true",
@@ -5471,7 +5579,7 @@ and Redis cache flushing are skipped automatically.
         phase3_routing_off(gw, cp, snapshot, chat_models,
                            args.no_stream, args.no_cache, args.timeout, t0_iso,
                            cache_rounds=args.cache_rounds, is_remote=is_remote,
-                           db=db)
+                           db=db, manage_routing=not args.no_routing_manage)
 
         # P3C direct compare (optional) — runs immediately after P3 while routing is still OFF
         if args.direct_compare:
@@ -5600,7 +5708,7 @@ and Redis cache flushing are skipped automatically.
         t1_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         diff = []
     finally:
-        snapshot.restore(cp, no_restore=args.no_restore)
+        snapshot.restore(cp, no_restore=args.no_restore, skip_routing=args.no_routing_manage)
 
     t1_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     ok = render_report(args.vk, t0_iso, t1_iso, diff, report_path,

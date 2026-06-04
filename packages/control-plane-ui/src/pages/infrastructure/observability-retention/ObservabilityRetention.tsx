@@ -4,9 +4,9 @@
  * Surfaces the 11 retention layers backed by `metric_ops_retention_config`
  * (spec §5.5):
  *
- *   Operational metrics — Runtime: runtime_raw, runtime_1h, runtime_1d, runtime_1mo
- *   Operational metrics — Business: business_raw, business_1h, business_1d, business_1mo
- *   Diagnostic events: diag_warn, diag_error, diag_fatal
+ *   Operational metrics — Runtime: runtime_5m, runtime_1h, runtime_1d, runtime_1mo
+ *   Operational metrics — Business: business_5m, business_1h, business_1d, business_1mo
+ *   Diagnostic events: diag_info, diag_warn, diag_error, diag_fatal
  *
  * The GET endpoint returns each layer's current value and `[min, max]` bounds
  * (rendered as placeholder hints next to each input). Save submits **only the
@@ -35,23 +35,26 @@ import styles from './ObservabilityRetention.module.css';
 /**
  * Layer ordering + grouping. The server returns rows alphabetically, but the
  * spec calls out a deliberate UI order (runtime tier before business tier;
- * raw → 1h → 1d → 1mo within each tier; diag ordered by severity).
+ * 5m → 1h → 1d → 1mo within each tier; diag ordered by severity). Raw is not a
+ * retention layer — metric_ops_raw is day-partitioned and aged out by dropping
+ * whole-day partitions, so the smallest editable tier here is the 5m rollup.
  */
-const RUNTIME_LAYERS = ['runtime_raw', 'runtime_1h', 'runtime_1d', 'runtime_1mo'] as const;
-const BUSINESS_LAYERS = ['business_raw', 'business_1h', 'business_1d', 'business_1mo'] as const;
-const DIAG_LAYERS = ['diag_warn', 'diag_error', 'diag_fatal'] as const;
+const RUNTIME_LAYERS = ['runtime_5m', 'runtime_1h', 'runtime_1d', 'runtime_1mo'] as const;
+const BUSINESS_LAYERS = ['business_5m', 'business_1h', 'business_1d', 'business_1mo'] as const;
+const DIAG_LAYERS = ['diag_info', 'diag_warn', 'diag_error', 'diag_fatal'] as const;
 
 /** Spec §5.5 defaults — used by the "Reset to defaults" action and as the
  *  fallback when a layer is missing from the GET response. */
 const DEFAULTS: Record<string, number> = {
-  runtime_raw: 7,
+  runtime_5m: 7,
   runtime_1h: 90,
   runtime_1d: 365,
   runtime_1mo: 1825,
-  business_raw: 7,
+  business_5m: 7,
   business_1h: 90,
   business_1d: 365,
   business_1mo: 1825,
+  diag_info: 14,
   diag_warn: 30,
   diag_error: 180,
   diag_fatal: 365,
@@ -61,14 +64,15 @@ const DEFAULTS: Record<string, number> = {
  *  Save before the server 400s. The server is authoritative — we never lower
  *  these bounds, only echo them. */
 const BOUNDS: Record<string, { min: number; max: number }> = {
-  runtime_raw: { min: 1, max: 30 },
+  runtime_5m: { min: 1, max: 30 },
   runtime_1h: { min: 30, max: 365 },
   runtime_1d: { min: 90, max: 1095 },
   runtime_1mo: { min: 365, max: 3650 },
-  business_raw: { min: 1, max: 30 },
+  business_5m: { min: 1, max: 30 },
   business_1h: { min: 30, max: 365 },
   business_1d: { min: 90, max: 1095 },
   business_1mo: { min: 365, max: 3650 },
+  diag_info: { min: 1, max: 90 },
   diag_warn: { min: 7, max: 90 },
   diag_error: { min: 30, max: 730 },
   diag_fatal: { min: 90, max: 1825 },

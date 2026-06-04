@@ -269,3 +269,78 @@ export function describeLiveTrafficFilters(filters: LiveTrafficFiltersState): st
 export function countLiveTrafficFilters(filters: LiveTrafficFiltersState): number {
   return describeLiveTrafficFilters(filters).length;
 }
+
+/* -- Web-assistant navigation params (#17 C1, e90-s4 §5) -- */
+
+/**
+ * Parsed result of the "Chat with Nexus" assistant's navigation query params.
+ * The assistant navigates to `/traffic` with optional params to pre-focus the
+ * page: `?eventId` drills into one event (open its drawer), `?status` / `?model`
+ * pre-filter the live list. `consumedKeys` lists which nav keys were present so
+ * the consumer can strip them after applying — the params are one-shot
+ * ("consume OR drop") and must never linger in the address bar.
+ */
+export interface TrafficNavParams {
+  /** Traffic event id to open in the drawer, or null when absent/empty. */
+  eventId: string | null;
+  /** Partial filter state to merge into draft + applied (model / status). */
+  filterPatch: Partial<LiveTrafficFiltersState>;
+  /** Nav keys that were present and must be stripped from the URL. */
+  consumedKeys: string[];
+  /** True when at least one nav param was present. */
+  hasNav: boolean;
+}
+
+// The assistant's `status` directive is the kernel's StatusRange vocabulary
+// ("4xx" | "5xx" | "error"). "error" (server-side failures) folds into the
+// "5xx" range because the Live-Traffic status control is a single-select that
+// cannot express "4xx and 5xx" at once. "2xx" passes through for completeness.
+// Anything unrecognized yields null (the param is still stripped, just unused).
+function navStatusToRange(status: string): LiveTrafficStatusRange | null {
+  switch (status) {
+    case '2xx':
+    case '4xx':
+    case '5xx':
+      return status;
+    case 'error':
+      return '5xx';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Parse the assistant navigation params off the current URL search params.
+ * Pure (no side effects) so it can be unit-tested directly and reused by the
+ * reactive consumer effect in TrafficTab.
+ */
+export function parseTrafficNavParams(searchParams: URLSearchParams): TrafficNavParams {
+  const eventId = searchParams.get('eventId');
+  const status = searchParams.get('status');
+  const model = searchParams.get('model');
+
+  const filterPatch: Partial<LiveTrafficFiltersState> = {};
+  const consumedKeys: string[] = [];
+
+  if (eventId !== null) consumedKeys.push('eventId');
+  if (status !== null) {
+    consumedKeys.push('status');
+    const range = navStatusToRange(status);
+    if (range !== null) filterPatch.statusRange = range;
+  }
+  if (model !== null) {
+    consumedKeys.push('model');
+    // An empty `?model=` is stripped but applies no filter.
+    if (model) {
+      filterPatch.modelUsed = model;
+      filterPatch._modelLabel = model;
+    }
+  }
+
+  return {
+    eventId: eventId || null,
+    filterPatch,
+    consumedKeys,
+    hasNav: consumedKeys.length > 0,
+  };
+}

@@ -36,22 +36,17 @@ import { useTranslation } from 'react-i18next';
 import { useApi } from '@/hooks/useApi';
 import { hubApi } from '@/api/services/infrastructure/nodes/hub';
 import type {
-  AppliedConfigEntry,
   AppliedConfigResponse,
   NodeAppliedOutcome,
 } from '@/api/services/infrastructure/nodes/hub';
-import {
-  Button,
-  ErrorBanner,
-  Skeleton,
-  Tooltip,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui';
+import { ErrorBanner, Skeleton } from '@/components/ui';
 import { useToast } from '@/context/ToastContext';
 import { OverrideEditorDrawer } from '../../../overrides/OverrideEditorDrawer';
+import { ConfigurationToolbar } from './ConfigurationToolbar';
+import { KillswitchBanner } from './KillswitchBanner';
+import { ConfigTable } from './ConfigTable';
+import { NON_OVERRIDABLE, detectKillswitchBypass } from './configHelpers';
+import type { EditorState } from './configHelpers';
 import styles from './ConfigurationTab.module.css';
 
 export interface ConfigurationTabProps {
@@ -69,44 +64,8 @@ export interface ConfigurationTabProps {
   appliedOutcomes?: Record<string, NodeAppliedOutcome> | null;
 }
 
-/**
- * Mirrors `configtypes.IsBlacklisted` on the Go side (the unexported
- * `nonOverridableConfigKeys` map). Keep these two lists in sync — the server
- * enforces the policy, the UI uses the list to pre-emptively grey out the row
- * + disable the override action.
- */
-const NON_OVERRIDABLE: ReadonlySet<string> = new Set(['credentials', 'virtual_keys']);
-
-type EditorState = { mode: 'add' | 'edit'; configKey: string };
-
-function renderJson(value: unknown): string {
-  if (value === null || value === undefined) return '—';
-  return JSON.stringify(value, null, 2);
-}
-
-function deepEqualJson(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Detects an active override on `killswitch` whose state turns the killswitch
- * off. Used to render the bypass banner. We treat any payload whose
- * `engaged === false` as a deliberate disable; everything else (including a
- * missing field) is left to the server's policy semantics.
- */
-function detectKillswitchBypass(entry: AppliedConfigEntry | undefined): boolean {
-  if (!entry || !entry.override) return false;
-  const state = entry.override.state as { engaged?: unknown } | null | undefined;
-  return state !== null && typeof state === 'object' && state.engaged === false;
-}
-
 export function ConfigurationTab({ thingId, thingType, appliedOutcomes }: ConfigurationTabProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { addToast } = useToast();
 
   const { data, loading, error, refetch } = useApi<AppliedConfigResponse>(
@@ -261,265 +220,31 @@ export function ConfigurationTab({ thingId, thingType, appliedOutcomes }: Config
 
   return (
     <>
-      <div className={styles.toolbar}>
-        <div className={styles.counters}>
-          <span>
-            {t('pages:infrastructure.configuration.targetApplied', {
-              target: desiredVer,
-              applied: reportedVer,
-            })}
-          </span>
-          <span>
-            <span className={styles.counterDot}>{'·'}</span>
-            {t('pages:infrastructure.configuration.nKeysOverridden', {
-              count: overrideCount,
-            })}
-          </span>
-          {staleCount > 0 && (
-            <span>
-              <span className={styles.counterDot}>{'·'}</span>
-              {t('pages:infrastructure.configuration.nStale', {
-                count: staleCount,
-              })}
-            </span>
-          )}
-        </div>
-        <div className={styles.toolbarActions}>
-          <Button
-            variant="primary"
-            size="sm"
-            loading={resyncingAll}
-            disabled={resyncingKey !== null}
-            onClick={handleResyncAll}
-          >
-            {t('pages:infrastructure.configuration.forceResyncAll')}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={addableKeys.length === 0}
-              >
-                {t('pages:infrastructure.configuration.addOverride')}
-                {' ▾'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {addableKeys.map((k) => (
-                <DropdownMenuItem
-                  key={k}
-                  onSelect={() => openEditor('add', k)}
-                >
-                  <code>{k}</code>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+      <ConfigurationToolbar
+        desiredVer={desiredVer}
+        reportedVer={reportedVer}
+        overrideCount={overrideCount}
+        staleCount={staleCount}
+        resyncingAll={resyncingAll}
+        resyncingKey={resyncingKey}
+        handleResyncAll={handleResyncAll}
+        addableKeys={addableKeys}
+        openEditor={openEditor}
+      />
 
-      {showKillswitchBanner && killswitchEntry?.override && (
-        <div className={styles.killswitchBanner} role="alert">
-          <span className={styles.killswitchIcon} aria-hidden="true">{'⚠'}</span>
-          <span>
-            {t('pages:infrastructure.configuration.killswitchBypassBanner', {
-              actor: killswitchEntry.override.setBy,
-              when: new Date(killswitchEntry.override.setAt).toLocaleString(i18n.language),
-            })}
-          </span>
-        </div>
-      )}
+      <KillswitchBanner show={showKillswitchBanner} killswitchEntry={killswitchEntry} />
 
-      <div className={styles.tableWrap}>
-        <div className={styles.table} role="table">
-          <div className={styles.headerRow} role="row">
-            <div className={styles.headerCell} role="columnheader">
-              {t('pages:infrastructure.configuration.colKey')}
-            </div>
-            <div className={styles.headerCell} role="columnheader">
-              {t('pages:infrastructure.configuration.colTemplate')}
-            </div>
-            <div className={styles.headerCell} role="columnheader">
-              {t('pages:infrastructure.configuration.colOverride')}
-            </div>
-            <div className={styles.headerCell} role="columnheader">
-              {t('pages:infrastructure.configuration.colApplied')}
-            </div>
-            <div className={styles.headerCell} role="columnheader">
-              {t('pages:infrastructure.configuration.actions')}
-            </div>
-          </div>
-
-          {sortedKeys.map((configKey) => {
-            const entry = data.configs[configKey];
-            const isBlacklisted = NON_OVERRIDABLE.has(configKey);
-            const hasOverride = !!entry.override;
-            const stale = !!entry.override?.stale;
-            const outcome = appliedOutcomes?.[configKey] ?? null;
-            const applyError = outcome?.applyError ?? null;
-
-            const appliedEqualsTemplate =
-              entry.templateState !== undefined &&
-              deepEqualJson(entry.appliedConfig, entry.templateState);
-            const appliedEqualsOverride =
-              entry.override !== undefined &&
-              deepEqualJson(entry.appliedConfig, entry.override.state);
-
-            const rowClass = [
-              styles.row,
-              hasOverride ? styles.overrideRow : '',
-              isBlacklisted ? styles.blacklistRow : '',
-              applyError ? styles.applyErrorRow : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-
-            return (
-              <div key={configKey} className={rowClass} role="row">
-                <div className={styles.cell} role="cell">
-                  <div className={styles.keyCell}>
-                    <div className={styles.keyHeading}>
-                      <code className={styles.keyCode}>{configKey}</code>
-                      {hasOverride && (
-                        <span className={styles.overrideBadge}>
-                          {t('pages:infrastructure.configuration.overrideBadge')}
-                        </span>
-                      )}
-                      {stale && (
-                        <span className={styles.staleBadge}>
-                          {t('pages:infrastructure.configuration.staleBadge')}
-                        </span>
-                      )}
-                      {isBlacklisted && (
-                        <span className={styles.globalOnlyBadge}>
-                          {t('pages:infrastructure.configuration.globalOnlyBadge')}
-                        </span>
-                      )}
-                    </div>
-                    <span className={styles.keyMeta}>
-                      {t('pages:infrastructure.configuration.templateNoteAtVer', {
-                        n: entry.templateVer ?? 0,
-                      })}
-                    </span>
-                    {outcome?.appliedAt && (
-                      <span className={styles.keyMeta}>
-                        {t('pages:infrastructure.configuration.lastAppliedAt', {
-                          when: new Date(outcome.appliedAt).toLocaleString(i18n.language),
-                          version: outcome.appliedVersion ?? 0,
-                        })}
-                      </span>
-                    )}
-                    {applyError && (
-                      <span
-                        className={styles.applyErrorPill}
-                        title={`${applyError.message}\n@ ${new Date(applyError.at).toLocaleString(i18n.language)}`}
-                      >
-                        <span className={styles.applyErrorIcon} aria-hidden="true">{'⚠'}</span>
-                        {t('pages:infrastructure.configuration.applyErrorBadge')}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className={styles.cell} role="cell">
-                  <pre
-                    className={styles.jsonCell}
-                    data-testid={`config-template-${configKey}`}
-                  >
-                    {renderJson(entry.templateState)}
-                  </pre>
-                </div>
-
-                <div className={styles.cell} role="cell">
-                  {hasOverride ? (
-                    <pre
-                      className={styles.jsonCell}
-                      data-testid={`config-override-${configKey}`}
-                    >
-                      {renderJson(entry.override?.state)}
-                    </pre>
-                  ) : (
-                    <span className={styles.dash}>{'—'}</span>
-                  )}
-                </div>
-
-                <div className={styles.cell} role="cell">
-                  {appliedEqualsOverride && hasOverride ? (
-                    <span className={styles.equalsHint}>
-                      {t('pages:infrastructure.configuration.equalsOverride')}
-                    </span>
-                  ) : appliedEqualsTemplate && !hasOverride ? (
-                    <span className={styles.equalsHint}>
-                      {t('pages:infrastructure.configuration.equalsTemplate')}
-                    </span>
-                  ) : (
-                    <pre
-                      className={styles.jsonCell}
-                      data-testid={`config-applied-${configKey}`}
-                    >
-                      {renderJson(entry.appliedConfig)}
-                    </pre>
-                  )}
-                </div>
-
-                <div className={styles.cell} role="cell">
-                  <div className={styles.actions}>
-                    {hasOverride ? (
-                      <>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          disabled={isBlacklisted}
-                          onClick={() => openEditor('edit', configKey)}
-                        >
-                          {t('pages:infrastructure.configuration.editOverride')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          loading={clearingKey === configKey}
-                          disabled={isBlacklisted}
-                          onClick={() => handleClearOverride(configKey)}
-                        >
-                          {t('pages:infrastructure.configuration.clearOverride')}
-                        </Button>
-                      </>
-                    ) : isBlacklisted ? (
-                      <Tooltip content={t('pages:infrastructure.configuration.globalOnlyTooltip')}>
-                        <span>
-                          <Button variant="secondary" size="sm" disabled>
-                            {t('pages:infrastructure.configuration.addOverride')}
-                          </Button>
-                        </span>
-                      </Tooltip>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openEditor('add', configKey)}
-                      >
-                        {t('pages:infrastructure.configuration.addOverride')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      loading={resyncingKey === configKey}
-                      disabled={resyncingAll}
-                      onClick={() => handleResyncKey(configKey)}
-                    >
-                      {entry.inSync
-                        ? t('pages:infrastructure.configuration.forceResync')
-                        : t('pages:infrastructure.configuration.syncNow')}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <ConfigTable
+        data={data}
+        sortedKeys={sortedKeys}
+        appliedOutcomes={appliedOutcomes}
+        resyncingKey={resyncingKey}
+        resyncingAll={resyncingAll}
+        clearingKey={clearingKey}
+        openEditor={openEditor}
+        handleClearOverride={handleClearOverride}
+        handleResyncKey={handleResyncKey}
+      />
 
       {editorState && (() => {
         const entry = data.configs[editorState.configKey];

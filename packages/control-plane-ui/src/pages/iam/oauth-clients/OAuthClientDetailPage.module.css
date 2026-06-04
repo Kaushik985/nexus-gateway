@@ -1,0 +1,137 @@
+/* OAuthClientDetailPage — 5-card layout for the OAuth client admin detail view. */
+
+.subtitle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--g-space-3);
+  flex-wrap: wrap;
+}
+
+.idMono {
+  font-family: var(--g-font-mono);
+  font-size: var(--g-font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.typeBadgePublic,
+.typeBadgeConfidential {
+  display: inline-block;
+  padding: var(--g-space-0-5) var(--g-space-2);
+  font-size: var(--g-font-size-xs);
+  font-weight: var(--g-font-weight-semibold);
+  border-radius: var(--radius-pill);
+}
+
+.typeBadgePublic {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+.typeBadgeConfidential {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.createdAt {
+  font-size: var(--g-font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--g-font-size-md);
+  font-weight: var(--g-font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: var(--g-space-3);
+  font-size: var(--g-font-size-sm);
+}
+
+.fieldLabel {
+  flex: 0 0 180px;
+  color: var(--color-text-muted);
+  font-weight: var(--g-font-weight-medium);
+}
+
+.fieldValue {
+  color: var(--color-text-primary);
+}
+
+.fieldValueMono {
+  font-family: var(--g-font-mono);
+  color: var(--color-text-primary);
+}
+
+.fieldHint {
+  color: var(--color-text-muted);
+  font-size: var(--g-font-size-xs);
+}
+
+.secretMask {
+  font-family: var(--g-font-mono);
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+.lastRotated {
+  font-size: var(--g-font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.publicNoSecret {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.uriList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--g-space-2);
+}
+
+.uriRow {
+  display: flex;
+  align-items: center;
+  gap: var(--g-space-2);
+}
+
+.uriValue {
+  font-family: var(--g-font-mono);
+  font-size: var(--g-font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface-2);
+  padding: var(--g-space-1) var(--g-space-2);
+  border-radius: var(--g-radius-sm);
+  word-break: break-all;
+}
+
+.scopeGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--g-space-2);
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: var(--g-space-1);
+  border-radius: var(--g-radius-sm);
+  color: var(--color-text-muted);
+  transition: background-color var(--g-transition-fast), color var(--g-transition-fast);
+}
+
+.copyButton:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}

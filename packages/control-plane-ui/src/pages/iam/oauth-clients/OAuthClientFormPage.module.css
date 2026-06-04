@@ -1,0 +1,22 @@
+.redirectRow {
+  align-items: flex-start;
+}
+
+.checkboxRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--g-space-2);
+  font-size: var(--g-font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.fieldHint {
+  color: var(--color-text-muted);
+  font-size: var(--g-font-size-xs);
+}
+
+.formActions {
+  justify-content: flex-end;
+  margin-top: var(--g-space-3);
+}

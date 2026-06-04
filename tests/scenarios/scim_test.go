@@ -38,7 +38,7 @@ import (
 //	(6) admin revokes the SCIM token; subsequent SCIM calls 401.
 //
 // Cross-service: CP only — admin API (/api/admin/identity-providers,
-// /api/admin/identity-provider/:idpId/scim-tokens) + SCIM endpoints
+// /api/admin/identity-providers/:idpId/scim-tokens) + SCIM endpoints
 // (/scim/v2/Users, /scim/v2/ServiceProviderConfig). DB rows hit:
 // IdentityProvider, ScimToken, NexusUser, UserFederatedIdentity (via
 // LinkUserToIdP). No Hub / AI Gw / Compliance Proxy touched.
@@ -128,18 +128,16 @@ func TestS070_SCIMTokenRoundTrip(t *testing.T) {
 	// ─── Step 2 — mint a SCIM token scoped to that IdP ───────────────────────
 	tokenName := "test-scim-token-" + nonce
 	mintBody := mustMarshal(t, map[string]any{"name": tokenName})
-	// Note: the SCIM token route uses SINGULAR "/identity-provider/", not
-	// the plural form used by IdP CRUD — handler is registered at
-	// /api/admin/identity-provider/:idpId/scim-tokens (see
-	// identity_provider.go:74-76).
-	mintPath := "/api/admin/identity-provider/" + idpID + "/scim-tokens"
+	// SCIM tokens are an IdP sub-resource under the canonical plural path:
+	// /api/admin/identity-providers/:idpId/scim-tokens.
+	mintPath := "/api/admin/identity-providers/" + idpID + "/scim-tokens"
 	mintStatus, mintResp, err := helpers.CPDoJSON(ctx, sc.Env, token,
 		http.MethodPost, mintPath, mintBody)
 	if err != nil {
 		t.Fatalf("mint SCIM token: %v", err)
 	}
 	if mintStatus == http.StatusNotFound {
-		t.Fatalf("S-070 requires SCIM endpoints; got %d body=%q — /api/admin/identity-provider/:id/scim-tokens must be registered",
+		t.Fatalf("S-070 requires SCIM endpoints; got %d body=%q — /api/admin/identity-providers/:id/scim-tokens must be registered",
 			mintStatus, truncate(mintResp, 200))
 	}
 	if mintStatus != http.StatusCreated {

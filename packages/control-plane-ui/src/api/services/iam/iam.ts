@@ -281,17 +281,17 @@ export const iamApi = {
 
   // SCIM tokens
   listScimTokens: (idpId: string) =>
-    api.get<{ data: ScimToken[]; total: number }>(`/api/admin/identity-provider/${idpId}/scim-tokens`),
+    api.get<{ data: ScimToken[]; total: number }>(`/api/admin/identity-providers/${idpId}/scim-tokens`),
   createScimToken: (idpId: string, name: string) =>
-    api.post<ScimToken & { token: string }>(`/api/admin/identity-provider/${idpId}/scim-tokens`, { name }),
+    api.post<ScimToken & { token: string }>(`/api/admin/identity-providers/${idpId}/scim-tokens`, { name }),
   revokeScimToken: (idpId: string, tokenId: string) =>
-    api.delete(`/api/admin/identity-provider/${idpId}/scim-tokens/${tokenId}`),
+    api.delete(`/api/admin/identity-providers/${idpId}/scim-tokens/${tokenId}`),
 
   // IdP group → IamGroup mappings
   listIdpGroupMappings: (idpId: string) =>
-    api.get<{ data: IdpGroupMapping[]; total: number }>(`/api/admin/identity-provider/${idpId}/group-mappings`),
+    api.get<{ data: IdpGroupMapping[]; total: number }>(`/api/admin/identity-providers/${idpId}/group-mappings`),
   createIdpGroupMapping: (idpId: string, data: { externalGroupId: string; externalGroupName?: string; iamGroupId: string }) =>
-    api.post<IdpGroupMapping>(`/api/admin/identity-provider/${idpId}/group-mappings`, data),
+    api.post<IdpGroupMapping>(`/api/admin/identity-providers/${idpId}/group-mappings`, data),
   deleteIdpGroupMapping: (idpId: string, mappingId: string) =>
-    api.delete(`/api/admin/identity-provider/${idpId}/group-mappings/${mappingId}`),
+    api.delete(`/api/admin/identity-providers/${idpId}/group-mappings/${mappingId}`),
 };

@@ -1,7 +1,7 @@
 {
   "name": "replicate",
   "displayName": "Replicate",
-  "description": "Replicate predictions API \u2014 open-weight LLMs hosted as versioned models. Each model is identified as `owner/name:version`; the Replicate codec wraps OpenAI-canonical chat into the prediction `{version, input}` envelope. Model list per 2026-04 vendor docs; admin should pin specific versions and verify availability against https://replicate.com/explore before customer-facing use.",
+  "description": "Replicate predictions API — open-weight LLMs hosted as versioned models. Each model is identified as `owner/name:version`; the Replicate codec wraps OpenAI-canonical chat into the prediction `{version, input}` envelope. Model list per 2026-04 vendor docs; admin should pin specific versions and verify availability against https://replicate.com/explore before customer-facing use.",
   "baseUrl": "https://api.replicate.com",
   "adapterType": "replicate",
   "models": [
@@ -42,7 +42,8 @@
       ],
       "maxContextTokens": 32768,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     }
   ]
 }

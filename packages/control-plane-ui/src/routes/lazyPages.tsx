@@ -125,6 +125,9 @@ export const LazyIamSimulatorPage = L(() => import('../pages/iam/simulator/IamSi
 export const LazyIamPrincipalPoliciesPage = L(() => import('../pages/iam/policies/IamPrincipalPolicies').then((m) => ({ default: m.IamPrincipalPolicies })));
 export const LazyIamRoleListPage = L(() => import('../pages/iam/roles/IamRoleList').then((m) => ({ default: m.IamRoleList })));
 export const LazyIamRoleDetailPage = L(() => import('../pages/iam/roles/IamRoleDetail').then((m) => ({ default: m.IamRoleDetail })));
+export const LazyOAuthClientsListPage = L(() => import('../pages/iam/oauth-clients/OAuthClientsListPage').then((m) => ({ default: m.OAuthClientsListPage })));
+export const LazyOAuthClientDetailPage = L(() => import('../pages/iam/oauth-clients/OAuthClientDetailPage').then((m) => ({ default: m.OAuthClientDetailPage })));
+export const LazyOAuthClientFormPage = L(() => import('../pages/iam/oauth-clients/OAuthClientFormPage').then((m) => ({ default: m.OAuthClientFormPage })));
 
 // ── Proxy (operational pages, not deleted) ──
 export const LazyRejectConfigPage = L(() => import('../pages/proxy/reject/RejectConfigPage').then((m) => ({ default: m.RejectConfigPage })));
@@ -144,6 +147,7 @@ export const LazyInfraCrashReportsPage = L(() => import('../pages/infrastructure
 export const LazyInfraDiagModePage = L(() => import('../pages/infrastructure/diag-mode/InfraDiagModePage'));
 export const LazyInfraProxySetupPage = L(() => import('../pages/infrastructure/proxy-rollout/InfraProxySetupPage'));
 export const LazyInfraAgentSetupPage = L(() => import('../pages/infrastructure/agent-setup/InfraAgentSetupPage'));
+export const LazyInfraCliSetupPage = L(() => import('../pages/infrastructure/cli-setup/InfraCliSetupPage'));
 export const LazyProxySetupPage = L(() => import('../pages/proxy/setup/ProxySetupPage'));
 
 // ── Status ──

@@ -199,6 +199,15 @@ export type { CreatePersonalVKInput } from './ai-gateway/personalVirtualKeys';
 export { personalApiKeyApi } from './iam/personalApiKeys';
 export type { CreatePersonalApiKeyInput } from './iam/personalApiKeys';
 
+export { oauthClientApi } from './iam/oauthClients';
+export type {
+  OAuthClient,
+  OAuthClientCreateResponse,
+  OAuthClientRotateResponse,
+  CreateOAuthClientInput,
+  UpdateOAuthClientInput,
+} from './iam/oauthClients';
+
 export { quotaAnalyticsApi } from './ai-gateway/quotaAnalytics';
 export type { QuotaUsageRow, QuotaTrendPoint, QuotaTopConsumer } from './ai-gateway/quotaAnalytics';
 

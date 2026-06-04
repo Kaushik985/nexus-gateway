@@ -232,7 +232,7 @@ func simulateJITProvision(
 // The administrator has pre-configured IdpGroupMapping rows so external
 // JWT group "admins" maps to the local IAM group "super-admins" and
 // "viewers" maps to "viewers". The mapping rows are addressable via the
-// admin API: POST /api/admin/identity-provider/:idpId/group-mappings,
+// admin API: POST /api/admin/identity-providers/:idpId/group-mappings,
 // GET (list) returns them, DELETE removes them.
 //
 // Cross-service: CP only — admin API CRUD + DB ground truth. The
@@ -339,9 +339,8 @@ func TestS125_JITProvisioningFromOIDC(t *testing.T) {
 	})
 
 	// ─── Step 2 — admin: create two IdpGroupMapping rows ───────────────────
-	// Mapping note: route uses SINGULAR "/identity-provider/" — same quirk
-	// as the SCIM-token mint path in scim_test.go.
-	mappingPath := "/api/admin/identity-provider/" + idpID + "/group-mappings"
+	// Group mappings are an IdP sub-resource under the canonical plural path.
+	mappingPath := "/api/admin/identity-providers/" + idpID + "/group-mappings"
 	type mappingPair struct {
 		ExternalGroup string
 		IamGroupID    string

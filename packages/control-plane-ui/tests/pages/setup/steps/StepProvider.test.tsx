@@ -50,8 +50,13 @@ describe('StepProvider', () => {
     const { container } = wrap({ status: 'incomplete', data: { providers: [], credentials: [] } });
     await waitFor(() => expect(screen.getByRole('combobox').querySelectorAll('option').length).toBeGreaterThan(1));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'openai' } });
+    // Selecting a template kicks off an async loadTemplateDetail; under full-run
+    // load it resolves after the change event, so wait for the API-key input it
+    // renders before clicking Create — otherwise validation runs against a
+    // not-yet-ready form and the toast never fires (full-run flake).
+    await waitFor(() => expect(container.querySelector('input[type=password]')).toBeTruthy());
     fireEvent.click(createBtn());
-    expect(addToast).toHaveBeenCalledWith(i18n.t('pages:setup.apiKeyRequired', 'API Key is required'), 'error');
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith(i18n.t('pages:setup.apiKeyRequired', 'API Key is required'), 'error'));
     expect(container.querySelector('input[type=password]')).toBeTruthy();
   });
 

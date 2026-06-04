@@ -1,7 +1,7 @@
 {
   "name": "together",
   "displayName": "Together AI",
-  "description": "Together AI serverless \u2014 OpenAI-compatible API serving open-weight models (Llama, Qwen, Mixtral, DeepSeek). Model list per 2026-04 vendor docs; admin should verify against https://docs.together.ai/docs/serverless-models before customer-facing use.",
+  "description": "Together AI serverless — OpenAI-compatible API serving open-weight models (Llama, Qwen, Mixtral, DeepSeek). Model list per 2026-04 vendor docs; admin should verify against https://docs.together.ai/docs/serverless-models before customer-facing use.",
   "baseUrl": "https://api.together.xyz",
   "adapterType": "together",
   "models": [
@@ -18,7 +18,9 @@
       ],
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 1.04,
+      "outputPricePerMillion": 1.04
     },
     {
       "code": "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
@@ -32,7 +34,8 @@
       ],
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "status": "deprecated"
     },
     {
       "code": "Qwen/Qwen2.5-72B-Instruct-Turbo",
@@ -46,7 +49,9 @@
       ],
       "maxContextTokens": 131072,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 1.2,
+      "outputPricePerMillion": 1.2
     },
     {
       "code": "mistralai/Mixtral-8x7B-Instruct-v0.1",
@@ -60,7 +65,9 @@
       ],
       "maxContextTokens": 32768,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 0.6,
+      "outputPricePerMillion": 0.6
     },
     {
       "code": "deepseek-ai/DeepSeek-V3",
@@ -74,7 +81,9 @@
       ],
       "maxContextTokens": 65536,
       "cachedInputReadPricePerMillion": null,
-      "cachedInputWritePricePerMillion": null
+      "cachedInputWritePricePerMillion": null,
+      "inputPricePerMillion": 1.25,
+      "outputPricePerMillion": 1.25
     }
   ]
 }

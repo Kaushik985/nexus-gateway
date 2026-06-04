@@ -1,0 +1,11 @@
+.body {
+  margin: 0;
+  font-size: var(--g-font-size-sm);
+  color: var(--color-text-primary);
+  line-height: var(--g-line-height-normal);
+}
+
+.actions {
+  justify-content: flex-end;
+  margin-top: var(--g-space-2);
+}

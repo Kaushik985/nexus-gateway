@@ -24,10 +24,7 @@ import { usePermission } from '@/hooks/usePermission';
 import {
   passthroughApi,
   validatePassthroughPayload,
-  PASSTHROUGH_MIN_REASON_LEN,
-  PASSTHROUGH_MAX_EXPIRY_HOURS,
   type PassthroughSnapshot,
-  type PassthroughPayload,
   type PassthroughTier,
 } from '@/api/services';
 import { providerApi } from '@/api/services';
@@ -38,80 +35,25 @@ import {
   Card,
   Stack,
   Button,
-  Switch,
-  Input,
-  FormField,
   Badge,
   Dialog,
   Skeleton,
   ErrorBanner,
+  FormField,
   Select,
 } from '@/components/ui';
+import {
+  emptyTier,
+  tierToForm,
+  formToPayload,
+  bypassSummary,
+  type TierFormState,
+} from './passthroughForm';
+import { ActiveBanner } from './ActiveBanner';
+import { Countdown } from './Countdown';
+import { TierEditor } from './TierEditor';
+import { EnableConfirmDialog } from './EnableConfirmDialog';
 import styles from './PassthroughPage.module.css';
-
-type TierKind = 'global' | 'adapter' | 'provider';
-
-interface TierFormState {
-  enabled: boolean;
-  bypassHooks: boolean;
-  bypassCache: boolean;
-  bypassNormalize: boolean;
-  expiresAt: string; // ISO local datetime-local input
-  reason: string;
-}
-
-const EMPTY_FORM: TierFormState = {
-  enabled: false,
-  bypassHooks: false,
-  bypassCache: false,
-  bypassNormalize: false,
-  expiresAt: '',
-  reason: '',
-};
-
-function tierToForm(t: PassthroughTier | undefined): TierFormState {
-  if (!t) return EMPTY_FORM;
-  return {
-    enabled: t.enabled,
-    bypassHooks: t.bypassHooks,
-    bypassCache: t.bypassCache,
-    bypassNormalize: t.bypassNormalize,
-    expiresAt: t.expiresAt ? toLocalInputValue(t.expiresAt) : '',
-    reason: t.reason ?? '',
-  };
-}
-
-/** Convert ISO to the `<input type="datetime-local">` value (no Z, no ms). */
-function toLocalInputValue(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function formToPayload(f: TierFormState): PassthroughPayload {
-  return {
-    enabled: f.enabled,
-    bypassHooks: f.bypassHooks,
-    bypassCache: f.bypassCache,
-    bypassNormalize: f.bypassNormalize,
-    expiresAt: f.enabled && f.expiresAt ? new Date(f.expiresAt).toISOString() : null,
-    reason: f.reason,
-  };
-}
-
-/** Default expiresAt for newly-enabled rows: NOW + 1 hour, rounded to the minute. */
-function defaultExpiresAt(): string {
-  const d = new Date(Date.now() + 60 * 60 * 1000);
-  d.setSeconds(0, 0);
-  return toLocalInputValue(d.toISOString());
-}
-
-function maxExpiresAt(): string {
-  const d = new Date(Date.now() + PASSTHROUGH_MAX_EXPIRY_HOURS * 60 * 60 * 1000);
-  d.setSeconds(0, 0);
-  return toLocalInputValue(d.toISOString());
-}
 
 export function PassthroughPage() {
   const { t } = useTranslation();
@@ -138,156 +80,6 @@ export function PassthroughPage() {
         <ProviderOverridesPanel snapshot={snap} onChange={refetch} canEnable={canEmergencyEnable} canDelete={canDelete} />
       </Stack>
     </>
-  );
-}
-
-function emptyTier(): PassthroughTier {
-  return {
-    enabled: false,
-    bypassHooks: false,
-    bypassCache: false,
-    bypassNormalize: false,
-  };
-}
-
-function ActiveBanner({ snapshot }: { snapshot: PassthroughSnapshot }) {
-  const { t } = useTranslation();
-  // Count enabled rows across all tiers.
-  const enabledTiers: { kind: string; key: string; tier: PassthroughTier }[] = [];
-  if (snapshot.global.enabled) enabledTiers.push({ kind: 'global', key: 'global', tier: snapshot.global });
-  for (const [k, v] of Object.entries(snapshot.adapters)) if (v.enabled) enabledTiers.push({ kind: 'adapter', key: k, tier: v });
-  for (const [k, v] of Object.entries(snapshot.providers)) if (v.enabled) enabledTiers.push({ kind: 'provider', key: k, tier: v });
-
-  if (enabledTiers.length === 0) {
-    return (
-      <div className={styles.bannerInactive}>
-        <strong>{t('pages:passthrough.banner.inactiveTitle')}</strong>
-        <span>{t('pages:passthrough.banner.inactiveBody')}</span>
-      </div>
-    );
-  }
-  return (
-    <div className={styles.bannerActive}>
-      <div className={styles.bannerTitleRow}>
-        <span className={styles.bannerDot} aria-hidden />
-        <strong>{t('pages:passthrough.banner.activeTitle', { count: enabledTiers.length })}</strong>
-      </div>
-      <div className={styles.bannerBody}>{t('pages:passthrough.banner.activeBody')}</div>
-      <ul className={styles.bannerList}>
-        {enabledTiers.map(e => (
-          <li key={`${e.kind}:${e.key}`}>
-            <Badge variant="danger">{e.kind}</Badge> <code>{e.key}</code>{' '}
-            {bypassSummary(e.tier)} · <Countdown expiresAt={e.tier.expiresAt} />
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function bypassSummary(t: PassthroughTier): string {
-  const flags: string[] = [];
-  if (t.bypassHooks) flags.push('hooks');
-  if (t.bypassCache) flags.push('cache');
-  if (t.bypassNormalize) flags.push('normalize');
-  return flags.length ? `[${flags.join(',')}]` : '';
-}
-
-function Countdown({ expiresAt }: { expiresAt?: string | null }) {
-  const { t } = useTranslation();
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, []);
-  if (!expiresAt) return <span>{t('pages:passthrough.countdown.noExpiry')}</span>;
-  const remainingMs = new Date(expiresAt).getTime() - now;
-  if (remainingMs <= 0) return <span className={styles.countdownExpired}>{t('pages:passthrough.countdown.expired')}</span>;
-  const totalSec = Math.floor(remainingMs / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return <span className={styles.countdownActive}>{h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`}</span>;
-}
-
-function TierEditor({
-  form,
-  setForm,
-  disabled,
-  showEnabledByline,
-  enabledBy,
-}: {
-  form: TierFormState;
-  setForm: (next: TierFormState) => void;
-  disabled?: boolean;
-  showEnabledByline?: boolean;
-  enabledBy?: string;
-}) {
-  const { t } = useTranslation();
-  // Cross-constraint: bypassNormalize requires bypassCache.
-  const setBypass = (key: 'bypassHooks' | 'bypassCache' | 'bypassNormalize', v: boolean) => {
-    const next = { ...form, [key]: v };
-    if (key === 'bypassNormalize' && v) next.bypassCache = true;
-    if (key === 'bypassCache' && !v) next.bypassNormalize = false;
-    setForm(next);
-  };
-  return (
-    <Stack gap="md">
-      <FormField label={t('pages:passthrough.fields.enabled')} helpText={t('pages:passthrough.fields.enabledHint')}>
-        <Switch
-          checked={form.enabled}
-          disabled={disabled}
-          onCheckedChange={v => {
-            const next = { ...form, enabled: v };
-            // First enable in this session: prefill expires + reset reason char counter.
-            if (v && !form.expiresAt) next.expiresAt = defaultExpiresAt();
-            setForm(next);
-          }}
-        />
-      </FormField>
-
-      <div className={styles.flagGrid}>
-        <FormField label={t('pages:passthrough.fields.bypassHooks')} helpText={t('pages:passthrough.fields.bypassHooksHint')}>
-          <Switch checked={form.bypassHooks} disabled={disabled} onCheckedChange={v => setBypass('bypassHooks', v)} />
-        </FormField>
-        <FormField label={t('pages:passthrough.fields.bypassCache')} helpText={t('pages:passthrough.fields.bypassCacheHint')}>
-          <Switch checked={form.bypassCache} disabled={disabled || form.bypassNormalize} onCheckedChange={v => setBypass('bypassCache', v)} />
-        </FormField>
-        <FormField label={t('pages:passthrough.fields.bypassNormalize')} helpText={t('pages:passthrough.fields.bypassNormalizeHint')}>
-          <Switch checked={form.bypassNormalize} disabled={disabled} onCheckedChange={v => setBypass('bypassNormalize', v)} />
-        </FormField>
-      </div>
-
-      <FormField
-        label={t('pages:passthrough.fields.expiresAt')}
-        helpText={t('pages:passthrough.fields.expiresAtHint', { hours: PASSTHROUGH_MAX_EXPIRY_HOURS })}
-      >
-        <Input
-          type="datetime-local"
-          value={form.expiresAt}
-          max={maxExpiresAt()}
-          disabled={disabled || !form.enabled}
-          onChange={e => setForm({ ...form, expiresAt: e.target.value })}
-        />
-      </FormField>
-
-      <FormField
-        label={t('pages:passthrough.fields.reason', { count: PASSTHROUGH_MIN_REASON_LEN })}
-        helpText={t('pages:passthrough.fields.reasonHint', { count: form.reason.length, min: PASSTHROUGH_MIN_REASON_LEN })}
-      >
-        <textarea
-          className={styles.reasonInput}
-          value={form.reason}
-          disabled={disabled || !form.enabled}
-          rows={3}
-          onChange={e => setForm({ ...form, reason: e.target.value })}
-        />
-      </FormField>
-
-      {showEnabledByline && enabledBy && (
-        <div className={styles.byline}>{t('pages:passthrough.enabledByLine', { user: enabledBy })}</div>
-      )}
-    </Stack>
   );
 }
 
@@ -645,36 +437,6 @@ function ProviderEditorDialog({
         scopeKey={selectedProvider}
         form={form}
       />
-    </Dialog>
-  );
-}
-
-function EnableConfirmDialog({
-  open, onClose, onConfirm, scope, scopeKey, form,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  scope: TierKind;
-  scopeKey: string;
-  form: TierFormState;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }} title={t('pages:passthrough.confirm.title')}>
-      <Stack gap="md">
-        <p className={styles.confirmBody}>{t('pages:passthrough.confirm.body')}</p>
-        <ul className={styles.confirmList}>
-          <li>{t('pages:passthrough.confirm.scope', { scope, scopeKey })}</li>
-          <li>{t('pages:passthrough.confirm.flags', { flags: bypassSummary(form as unknown as PassthroughTier) || t('pages:passthrough.confirm.flagsNone') })}</li>
-          <li>{t('pages:passthrough.confirm.expires', { expires: form.expiresAt ? new Date(form.expiresAt).toLocaleString() : '?' })}</li>
-          <li>{t('pages:passthrough.confirm.reason', { reason: form.reason })}</li>
-        </ul>
-        <Stack direction="horizontal" gap="sm" justify="end">
-          <Button variant="secondary" onClick={onClose}>{t('common:cancel')}</Button>
-          <Button variant="danger" onClick={onConfirm}>{t('pages:passthrough.confirm.confirmBtn')}</Button>
-        </Stack>
-      </Stack>
     </Dialog>
   );
 }

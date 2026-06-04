@@ -14,7 +14,7 @@
       "description": "Anthropic API — Claude 4.x model family.",
       "baseUrl": "https://api.anthropic.com",
       "adapterType": "anthropic",
-      "modelCount": 6
+      "modelCount": 7
     },
     {
       "name": "google-gemini",
@@ -22,7 +22,7 @@
       "description": "Google Gemini API — Gemini 3 Pro, 2.5 Pro/Flash, 2.0 Flash, and embedding models.",
       "baseUrl": "https://generativelanguage.googleapis.com",
       "adapterType": "gemini",
-      "modelCount": 9
+      "modelCount": 5
     },
     {
       "name": "azure-openai",
@@ -30,7 +30,7 @@
       "description": "Azure OpenAI Service — enterprise-hosted OpenAI models with data residency and compliance.",
       "baseUrl": "https://{resource}.openai.azure.com",
       "adapterType": "azure-openai",
-      "modelCount": 7
+      "modelCount": 11
     },
     {
       "name": "deepseek",
@@ -38,7 +38,7 @@
       "description": "DeepSeek API — chat, code, and reasoning models.",
       "baseUrl": "https://api.deepseek.com",
       "adapterType": "deepseek",
-      "modelCount": 4
+      "modelCount": 2
     },
     {
       "name": "minimax",
@@ -54,7 +54,7 @@
       "description": "Zhipu AI API — GLM-4 series models.",
       "baseUrl": "https://open.bigmodel.cn",
       "adapterType": "glm",
-      "modelCount": 4
+      "modelCount": 6
     },
     {
       "name": "moonshot",
@@ -62,7 +62,7 @@
       "description": "Moonshot OpenAI-compatible API — Kimi models.",
       "baseUrl": "https://api.moonshot.cn",
       "adapterType": "moonshot",
-      "modelCount": 3
+      "modelCount": 6
     },
     {
       "name": "xai",
@@ -70,7 +70,7 @@
       "description": "xAI Grok — OpenAI-compatible API.",
       "baseUrl": "https://api.x.ai",
       "adapterType": "xai",
-      "modelCount": 4
+      "modelCount": 3
     },
     {
       "name": "groq",
@@ -94,7 +94,7 @@
       "description": "Perplexity Sonar API — search-grounded chat with Chain-of-Thought reasoning options.",
       "baseUrl": "https://api.perplexity.ai",
       "adapterType": "perplexity",
-      "modelCount": 5
+      "modelCount": 4
     },
     {
       "name": "fireworks",
@@ -110,7 +110,7 @@
       "description": "Mistral La Plateforme — flagship + specialist models including Codestral, Ministral, Magistral.",
       "baseUrl": "https://api.mistral.ai",
       "adapterType": "mistral",
-      "modelCount": 8
+      "modelCount": 9
     },
     {
       "name": "cohere",

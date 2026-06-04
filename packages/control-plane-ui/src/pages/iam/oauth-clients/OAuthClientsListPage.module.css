@@ -1,0 +1,32 @@
+/* OAuth Clients list page — minimal styling, leans on shared IAM tokens. */
+
+.typeBadgePublic {
+  display: inline-block;
+  padding: var(--g-space-0-5) var(--g-space-2);
+  font-size: var(--g-font-size-xs);
+  font-weight: var(--g-font-weight-semibold);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+.typeBadgeConfidential {
+  display: inline-block;
+  padding: var(--g-space-0-5) var(--g-space-2);
+  font-size: var(--g-font-size-xs);
+  font-weight: var(--g-font-weight-semibold);
+  border-radius: var(--radius-pill);
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.idCell {
+  font-family: var(--g-font-mono);
+  font-size: var(--g-font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.countCell {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}

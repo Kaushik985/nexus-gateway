@@ -387,6 +387,7 @@ export const mockMePermissions: string[] = [
   'admin:hook.read', 'admin:hook.read', 'admin:hook.create', 'admin:hook.update', 'admin:hook.update', 'admin:hook.delete',
   'admin:user.read', 'admin:user.create', 'admin:user.update', 'admin:user.delete',
   'admin:api-key.read', 'admin:api-key.create', 'admin:api-key.update', 'admin:api-key.delete',
+  'admin:oauth-client.read', 'admin:oauth-client.create', 'admin:oauth-client.update', 'admin:oauth-client.delete', 'admin:oauth-client.rotate',
   'admin:organization.read', 'admin:organization.create', 'admin:organization.update', 'admin:organization.delete',
   'admin:project.read', 'admin:project.create', 'admin:project.update', 'admin:project.delete',
   'admin:iam-policy.read', 'admin:iam-policy.create', 'admin:iam-policy.update', 'admin:iam-policy.delete',
@@ -784,14 +785,15 @@ export const defaultHandlers = [
   http.get('/api/admin/observability/retention', () =>
     HttpResponse.json({
       retention: {
-        runtime_raw: { value: 7, min: 1, max: 30 },
+        runtime_5m: { value: 7, min: 1, max: 30 },
         runtime_1h: { value: 90, min: 30, max: 365 },
         runtime_1d: { value: 365, min: 90, max: 1095 },
         runtime_1mo: { value: 1825, min: 365, max: 3650 },
-        business_raw: { value: 7, min: 1, max: 30 },
+        business_5m: { value: 7, min: 1, max: 30 },
         business_1h: { value: 90, min: 30, max: 365 },
         business_1d: { value: 365, min: 90, max: 1095 },
         business_1mo: { value: 1825, min: 365, max: 3650 },
+        diag_info: { value: 14, min: 1, max: 90 },
         diag_warn: { value: 30, min: 7, max: 90 },
         diag_error: { value: 180, min: 30, max: 730 },
         diag_fatal: { value: 365, min: 90, max: 1825 },

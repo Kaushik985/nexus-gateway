@@ -74,4 +74,25 @@ export const authApi = {
     if (!res.ok) await parseError(res);
     return (await res.json()) as PasswordSubmitResponse;
   },
+
+  /**
+   * Complete a pending OAuth authorize using the caller's existing session
+   * (bearer token in localStorage). Used when an operator lands on /login with
+   * an authctx already signed in — e.g. nexus-cli's PKCE flow opening the
+   * browser tab while the SPA session is live. Without this the page would
+   * navigate to "/" and the CLI's loopback listener would hang.
+   */
+  async approveAuthctx(authctx: string, accessToken: string): Promise<PasswordSubmitResponse> {
+    const res = await fetch(new URL('/authserver/approve', window.location.origin).toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ authctx }),
+    });
+    if (!res.ok) await parseError(res);
+    return (await res.json()) as PasswordSubmitResponse;
+  },
 };

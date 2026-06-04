@@ -384,6 +384,8 @@ function navIconNameForPath(path: string): NavIconName {
       return 'file';
     case '/iam/policies':
       return 'fileCheck';
+    case '/iam/oauth-clients':
+      return 'cube';
     case '/ai-gateway/passthrough':
       return 'bolt';
     case '/compliance/hooks':

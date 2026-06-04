@@ -67,11 +67,11 @@ describe('MetricsTab', () => {
       http.get('/api/admin/observability/retention', () =>
         HttpResponse.json({
           retention: {
-            runtime_raw: { value: 1, min: 1, max: 30 },
+            runtime_5m: { value: 1, min: 1, max: 30 },
             runtime_1h: { value: 1, min: 30, max: 365 },
             runtime_1d: { value: 1, min: 90, max: 1095 },
             runtime_1mo: { value: 1, min: 365, max: 3650 },
-            business_raw: { value: 7, min: 1, max: 30 },
+            business_5m: { value: 7, min: 1, max: 30 },
             business_1h: { value: 90, min: 30, max: 365 },
             business_1d: { value: 365, min: 90, max: 1095 },
             business_1mo: { value: 1825, min: 365, max: 3650 },

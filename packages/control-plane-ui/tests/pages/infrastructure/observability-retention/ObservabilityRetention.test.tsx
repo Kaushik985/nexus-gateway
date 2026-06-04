@@ -13,21 +13,22 @@ function renderPage() {
 }
 
 const allLayers = [
-  'runtime_raw', 'runtime_1h', 'runtime_1d', 'runtime_1mo',
-  'business_raw', 'business_1h', 'business_1d', 'business_1mo',
-  'diag_warn', 'diag_error', 'diag_fatal',
+  'runtime_5m', 'runtime_1h', 'runtime_1d', 'runtime_1mo',
+  'business_5m', 'business_1h', 'business_1d', 'business_1mo',
+  'diag_info', 'diag_warn', 'diag_error', 'diag_fatal',
 ];
 
 const seedRetention = {
   retention: {
-    runtime_raw: { value: 7, min: 1, max: 30 },
+    runtime_5m: { value: 7, min: 1, max: 30 },
     runtime_1h: { value: 90, min: 30, max: 365 },
     runtime_1d: { value: 365, min: 90, max: 1095 },
     runtime_1mo: { value: 1825, min: 365, max: 3650 },
-    business_raw: { value: 7, min: 1, max: 30 },
+    business_5m: { value: 7, min: 1, max: 30 },
     business_1h: { value: 90, min: 30, max: 365 },
     business_1d: { value: 365, min: 90, max: 1095 },
     business_1mo: { value: 1825, min: 365, max: 3650 },
+    diag_info: { value: 14, min: 1, max: 90 },
     diag_warn: { value: 30, min: 7, max: 90 },
     diag_error: { value: 180, min: 30, max: 730 },
     diag_fatal: { value: 365, min: 90, max: 1825 },
@@ -35,7 +36,7 @@ const seedRetention = {
 };
 
 describe('ObservabilityRetention', () => {
-  it('TestRetentionPage_RendersAllElevenLayers', async () => {
+  it('TestRetentionPage_RendersAllTwelveLayers', async () => {
     server.use(
       http.get('/api/admin/observability/retention', () => HttpResponse.json(seedRetention)),
     );
@@ -57,7 +58,7 @@ describe('ObservabilityRetention', () => {
     const user = userEvent.setup();
     renderPage();
 
-    const input = await screen.findByLabelText('runtime_raw');
+    const input = await screen.findByLabelText('runtime_5m');
     await user.clear(input);
     await user.type(input, '999'); // out of range (max 30)
 
@@ -86,7 +87,7 @@ describe('ObservabilityRetention', () => {
     const user = userEvent.setup();
     renderPage();
 
-    const input = await screen.findByLabelText('runtime_raw');
+    const input = await screen.findByLabelText('runtime_5m');
     await user.clear(input);
     await user.type(input, '14');
 
@@ -100,7 +101,7 @@ describe('ObservabilityRetention', () => {
       expect(putBody).not.toBeNull();
       const body = putBody as Record<string, number>;
       // Only the diverged key is present.
-      expect(body).toEqual({ runtime_raw: 14 });
+      expect(body).toEqual({ runtime_5m: 14 });
     });
   });
 
@@ -111,7 +112,7 @@ describe('ObservabilityRetention', () => {
           retention: {
             ...seedRetention.retention,
             // Pre-existing non-default value so we can see reset overwrite it.
-            runtime_raw: { value: 28, min: 1, max: 30 },
+            runtime_5m: { value: 28, min: 1, max: 30 },
           },
         }),
       ),
@@ -128,7 +129,7 @@ describe('ObservabilityRetention', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await screen.findByLabelText('runtime_raw');
+    await screen.findByLabelText('runtime_5m');
 
     await user.click(screen.getByRole('button', { name: /reset/i }));
     const dialog = await screen.findByRole('alertdialog');
@@ -137,14 +138,15 @@ describe('ObservabilityRetention', () => {
     await waitFor(() => {
       expect(putBody).not.toBeNull();
       const body = putBody as Record<string, number>;
-      expect(body.runtime_raw).toBe(7);
+      expect(body.runtime_5m).toBe(7);
       expect(body.runtime_1h).toBe(90);
       expect(body.runtime_1d).toBe(365);
       expect(body.runtime_1mo).toBe(1825);
-      expect(body.business_raw).toBe(7);
+      expect(body.business_5m).toBe(7);
       expect(body.business_1h).toBe(90);
       expect(body.business_1d).toBe(365);
       expect(body.business_1mo).toBe(1825);
+      expect(body.diag_info).toBe(14);
       expect(body.diag_warn).toBe(30);
       expect(body.diag_error).toBe(180);
       expect(body.diag_fatal).toBe(365);

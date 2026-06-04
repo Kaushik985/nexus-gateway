@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import clsx from 'clsx';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  
+
   Breadcrumb,
   Button,
   Card,
@@ -12,7 +11,6 @@ import {
   Switch,
   Tooltip
 } from '@/components/ui';
-import type { AdminModelsByProvider } from '@/api/types';
 import type { StrategyType } from '../_shared/routing-rule-config';
 import { ConditionalRoutingEditor } from '../editor/ConditionalRoutingEditor';
 import { RoutingPrimaryWinnerCallout } from '../_shared/RoutingPrimaryWinnerCallout';
@@ -24,69 +22,12 @@ import {
 } from '../_shared/routing-rule-field-help';
 import { useRoutingRuleCreate } from './useRoutingRuleCreate';
 import styles from './RoutingRuleCreate.module.css';
-import { HelpIconButton, IconButton } from "@nexus-gateway/ui-shared";
-
-const WIZARD_STEP_KEYS = [
-  'wizardStepBasicInfo',
-  'wizardStepConfiguration',
-  'wizardStepFallback',
-  'wizardStepMatchConditions',
-] as const;
-const WIZARD_TOTAL_STEPS = WIZARD_STEP_KEYS.length;
-
-function WizardStepBar({ current, onStepClick }: { current: number; onStepClick: (step: number) => void }) {
-  const { t } = useTranslation();
-  const labels = WIZARD_STEP_KEYS.map(k => t(`pages:routing.${k}`));
-
-  return (
-    <div className={styles.wizardStepBar}>
-      {labels.map((label, i) => {
-        const isActive = i === current;
-        const isCompleted = i < current;
-
-        return (
-          <div key={label} className={styles.wizardStepItem} onClick={() => onStepClick(i)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onStepClick(i); }}>
-            <div className={styles.wizardStepContent}>
-              <div
-                className={clsx(
-                  styles.wizardStepCircle,
-                  isActive && styles.wizardStepCircleActive,
-                  isCompleted && styles.wizardStepCircleCompleted,
-                  !isActive && !isCompleted && styles.wizardStepCirclePending,
-                )}
-              >
-                {isCompleted ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                ) : (
-                  i + 1
-                )}
-              </div>
-              <span
-                className={clsx(
-                  isActive && styles.wizardStepLabelActiveColor,
-                  isCompleted && styles.wizardStepLabelCompleted,
-                  !isActive && !isCompleted && styles.wizardStepLabelMuted,
-                )}
-              >
-                {label}
-              </span>
-            </div>
-            {i < labels.length - 1 && (
-              <div
-                className={clsx(
-                  styles.wizardStepConnector,
-                  isCompleted ? styles.wizardStepConnectorCompleted : styles.wizardStepConnectorPending,
-                )}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+import { HelpIconButton } from "@nexus-gateway/ui-shared";
+import { WizardStepBar, WIZARD_TOTAL_STEPS } from './WizardStepBar';
+import { MatchModelSelector } from './MatchModelSelector';
+import { CreatePolicyModelSelect } from './CreatePolicyModelSelect';
+import { CreatePolicyProviderCheckboxes } from './CreatePolicyProviderCheckboxes';
+import { ProviderModelSelect } from './ProviderModelSelect';
 
 function useStrategyOptions() {
   const { t } = useTranslation();
@@ -98,225 +39,6 @@ function useStrategyOptions() {
     { value: 'ab_split', label: t('pages:routing.strategyAbSplit') },
     { value: 'smart', label: t('pages:routing.strategySmart') },
   ];
-}
-
-/** Model selector for Match Conditions — excludes models already used in Configuration */
-function MatchModelSelector({
-  selected,
-  onChange,
-  providerGroups,
-  excludeModels,
-}: {
-  selected: string[];
-  onChange: (v: string[]) => void;
-  providerGroups: AdminModelsByProvider[];
-  excludeModels: Set<string>;
-}) {
-  const { t } = useTranslation();
-  const handleAdd = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (val && !selected.includes(val)) {
-      onChange([...selected, val]);
-    }
-    e.target.value = '';
-  };
-
-  const handleRemove = (model: string) => {
-    onChange(selected.filter(m => m !== model));
-  };
-
-  const labelMap = new Map<string, string>();
-  for (const g of providerGroups) {
-    for (const m of g.models) {
-      labelMap.set(m.id, `${g.provider?.displayName?.trim() || g.provider?.name} / ${m.name}`);
-    }
-  }
-
-  return (
-    <div>
-      <div className={`${styles.tagContainer} ${selected.length === 0 ? styles.tagContainerHidden : styles.tagContainerVisible}`}>
-        {selected.map(modelId => (
-          <span key={modelId} className={styles.tag}>
-            {labelMap.get(modelId) ?? modelId}
-            <IconButton size="sm" aria-label={t('pages:routing.removeAria')} onClick={() => handleRemove(modelId)}>×</IconButton>
-          </span>
-        ))}
-      </div>
-      <select onChange={handleAdd} value="" className={styles.selectInputFull}>
-        <option value="">{t('pages:routing.addModelToMatch')}</option>
-        {providerGroups.map(g => {
-          const available = g?.models?.filter(m => !selected.includes(m.id) && !excludeModels.has(m.id));
-          if (available.length === 0) return null;
-          return (
-            <optgroup key={g.provider?.id} label={g.provider?.displayName?.trim() || g.provider?.name}>
-              {available.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.providerModelId})
-                </option>
-              ))}
-            </optgroup>
-          );
-        })}
-      </select>
-    </div>
-  );
-}
-
-function CreatePolicyModelSelect({
-  selected,
-  onChange,
-  providerGroups,
-  label,
-}: {
-  selected: string[];
-  onChange: (v: string[]) => void;
-  providerGroups: AdminModelsByProvider[];
-  label: string;
-}) {
-  const { t } = useTranslation();
-  const handleAdd = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (val && !selected.includes(val)) {
-      onChange([...selected, val]);
-    }
-    e.target.value = '';
-  };
-
-  const handleRemove = (id: string) => {
-    onChange(selected.filter(m => m !== id));
-  };
-
-  const labelMap = new Map<string, string>();
-  for (const g of providerGroups) {
-    for (const m of g.models) {
-      labelMap.set(m.id, `${g.provider?.displayName?.trim() || g.provider?.name} / ${m.name}`);
-    }
-  }
-
-  return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.fieldLabel}>{label}</label>
-      {selected.length > 0 && (
-        <div className={`${styles.tagContainer} ${styles.tagContainerVisible}`}>
-          {selected.map(id => (
-            <span key={id} className={styles.tag}>
-              {labelMap.get(id) ?? id}
-              <IconButton size="sm" aria-label={t('pages:routing.removeAria')} onClick={() => handleRemove(id)}>×</IconButton>
-            </span>
-          ))}
-        </div>
-      )}
-      <select onChange={handleAdd} value="" className={styles.selectInputFull}>
-        <option value="">{t('pages:routing.addModelToPolicy')}</option>
-        {providerGroups.map(g => {
-          const available = g?.models?.filter(m => !selected.includes(m.id));
-          if (!available || available.length === 0) return null;
-          return (
-            <optgroup key={g.provider?.id} label={g.provider?.displayName?.trim() || g.provider?.name}>
-              {available.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.providerModelId})
-                </option>
-              ))}
-            </optgroup>
-          );
-        })}
-      </select>
-    </div>
-  );
-}
-
-function CreatePolicyProviderCheckboxes({
-  selected,
-  onChange,
-  providerGroups,
-  label,
-}: {
-  selected: string[];
-  onChange: (v: string[]) => void;
-  providerGroups: AdminModelsByProvider[];
-  label: string;
-}) {
-  const toggle = (id: string) => {
-    if (selected.includes(id)) {
-      onChange(selected.filter(x => x !== id));
-    } else {
-      onChange([...selected, id]);
-    }
-  };
-
-  return (
-    <div className={styles.fieldGroup}>
-      <label className={styles.fieldLabel}>{label}</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--g-space-2) var(--g-space-4)', marginTop: 'var(--g-space-1)' }}>
-        {providerGroups
-          .filter(g => g.provider?.enabled)
-          .map(g => (
-            <label key={g.provider?.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--g-space-1)', fontSize: 'var(--g-font-size-sm)' }}>
-              <input
-                type="checkbox"
-                checked={selected.includes(g.provider?.id)}
-                onChange={() => toggle(g.provider?.id)}
-              />
-              {g.provider?.displayName?.trim() || g.provider?.name}
-            </label>
-          ))}
-      </div>
-    </div>
-  );
-}
-
-/** Provider+Model cascading selector */
-function ProviderModelSelect({
-  providerValue,
-  modelValue,
-  onProviderChange,
-  onModelChange,
-  providerGroups,
-  className,
-}: {
-  providerValue: string;
-  modelValue: string;
-  onProviderChange: (v: string) => void;
-  onModelChange: (v: string) => void;
-  providerGroups: AdminModelsByProvider[];
-  className?: string;
-}) {
-  const { t } = useTranslation();
-  const modelsForProvider = providerGroups.find(g => g.provider?.name === providerValue)?.models ?? [];
-
-  return (
-    <div className={`${styles.providerModelRow} ${className ?? ''}`}>
-      <select
-        value={providerValue}
-        onChange={e => {
-          onProviderChange(e.target.value);
-          onModelChange('');
-        }}
-        className={styles.selectInput}
-      >
-        <option value="">{t('pages:routing.selectProvider')}</option>
-        {providerGroups.map(g => (
-          <option key={g.provider?.id} value={g.provider?.name}>
-            {g.provider?.displayName?.trim() || g.provider?.name} ({g?.models?.length})
-          </option>
-        ))}
-      </select>
-      <select
-        value={modelValue}
-        onChange={e => onModelChange(e.target.value)}
-        className={styles.selectInput}
-        disabled={!providerValue}
-      >
-        <option value="">{providerValue ? t('pages:routing.selectModel') : t('pages:routing.selectProviderFirst')}</option>
-        {modelsForProvider.map(m => (
-          <option key={m.id} value={m.providerModelId}>
-            {m.name} ({m.providerModelId})
-          </option>
-        ))}
-      </select>
-    </div>
-  );
 }
 
 /* ── Component ──────────────────────────────────────────────────────────── */

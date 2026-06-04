@@ -363,6 +363,10 @@ export const SHELL_ROUTES: ShellRouteConfig[] = [
   // operator is in the per-node setup drill-down.
   { path: 'infrastructure/proxy-rollout', LazyPage: L.LazyProxySetupPage, allowedActions: ['admin:node.read'], nav: { sectionKey: 'infrastructure', labelKey: 'proxySetup', to: '/infrastructure/proxy-rollout', allowedActions: ['admin:node.read'], order: 10, relatedPaths: ['^/infrastructure/nodes/[^/]+/setup$'] } },
   { path: 'infrastructure/agent-setup', LazyPage: L.LazyInfraAgentSetupPage, allowedActions: ['admin:settings.read'], nav: { sectionKey: 'infrastructure', labelKey: 'agentSetup', to: '/infrastructure/agent-setup', allowedActions: ['admin:settings.read'], order: 11 } },
+  // CLI Setup: download + manual for the nexus operator toolkit. Read-only
+  // download/docs page; gated on the same admin:settings.read tier as agent-setup
+  // (no new IAM verb — static page, no handler; UI allowedActions matches).
+  { path: 'infrastructure/cli-setup', LazyPage: L.LazyInfraCliSetupPage, allowedActions: ['admin:settings.read'], nav: { sectionKey: 'infrastructure', labelKey: 'cliSetup', to: '/infrastructure/cli-setup', allowedActions: ['admin:settings.read'], order: 11.5 } },
   { path: 'infrastructure/kill-switch', LazyPage: L.LazyInfraKillSwitchPage, allowedActions: ['admin:kill-switch.toggle'], nav: { sectionKey: 'infrastructure', labelKey: 'killSwitch', to: '/infrastructure/kill-switch', allowedActions: ['admin:kill-switch.toggle'], order: 12 } },
 
   // ── IAM ──
@@ -410,6 +414,15 @@ export const SHELL_ROUTES: ShellRouteConfig[] = [
   { path: 'iam/policies/new', LazyPage: L.LazyIamPolicyEditorPage, allowedActions: ['admin:iam-policy.create'] },
   { path: 'iam/policies/:id/edit', LazyPage: L.LazyIamPolicyEditorPage, allowedActions: ['admin:iam-policy.update'] },
   { path: 'iam/policies/:id', LazyPage: L.LazyIamPolicyDetailPage, allowedActions: ['admin:iam-policy.read'] },
+  {
+    path: 'iam/oauth-clients',
+    LazyPage: L.LazyOAuthClientsListPage,
+    allowedActions: ['admin:oauth-client.read'],
+    nav: { sectionKey: 'iam', labelKey: 'oauthClients', to: '/iam/oauth-clients', allowedActions: ['admin:oauth-client.read'], order: 6 },
+  },
+  { path: 'iam/oauth-clients/new', LazyPage: L.LazyOAuthClientFormPage, allowedActions: ['admin:oauth-client.create'] },
+  { path: 'iam/oauth-clients/:id/edit', LazyPage: L.LazyOAuthClientFormPage, allowedActions: ['admin:oauth-client.update'] },
+  { path: 'iam/oauth-clients/:id', LazyPage: L.LazyOAuthClientDetailPage, allowedActions: ['admin:oauth-client.read'] },
   {
     path: 'iam/simulator',
     LazyPage: L.LazyIamSimulatorPage,

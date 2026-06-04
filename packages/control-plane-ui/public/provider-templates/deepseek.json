@@ -1,7 +1,7 @@
 {
   "name": "deepseek",
   "displayName": "DeepSeek",
-  "description": "DeepSeek API \u2014 V4 chat and reasoning models.",
+  "description": "DeepSeek API — V4 chat and reasoning models.",
   "baseUrl": "https://api.deepseek.com",
   "adapterType": "deepseek",
   "models": [
@@ -20,7 +20,7 @@
       "outputPricePerMillion": 0.28,
       "maxContextTokens": 65536,
       "maxOutputTokens": 8192,
-      "cachedInputReadPricePerMillion": 0.014,
+      "cachedInputReadPricePerMillion": 0.0028,
       "cachedInputWritePricePerMillion": 0
     },
     {
@@ -38,7 +38,7 @@
       "outputPricePerMillion": 0.87,
       "maxContextTokens": 128000,
       "maxOutputTokens": 16384,
-      "cachedInputReadPricePerMillion": 0.0435,
+      "cachedInputReadPricePerMillion": 0.003625,
       "cachedInputWritePricePerMillion": 0
     }
   ]

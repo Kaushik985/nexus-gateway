@@ -25,6 +25,14 @@ export interface DialogProps {
   variant?: 'modal' | 'drawer';
   /** Additional class name for the content panel. */
   className?: string;
+  /**
+   * Hide the built-in X close button. Use when the dialog is gated behind
+   * a custom condition (e.g. an acknowledgement checkbox) — the X would
+   * otherwise dispatch onOpenChange(false) and be silently ignored by the
+   * parent, leaving the user clicking a dead control with no feedback.
+   * @default false
+   */
+  hideClose?: boolean;
 }
 
 export function Dialog({
@@ -36,6 +44,7 @@ export function Dialog({
   size,
   variant = 'modal',
   className,
+  hideClose = false,
 }: DialogProps) {
   const { t } = useTranslation();
   const resolvedSize = size ?? (variant === 'drawer' ? 'xl' : 'md');
@@ -60,11 +69,13 @@ export function Dialog({
             </RadixDialog.Description>
           )}
           <div className={styles.body}>{children}</div>
-          <RadixDialog.Close asChild>
-            <button data-design-system-escape="primitive-internal" className={styles.close} aria-label={t('common:close')}>
-              &times;
-            </button>
-          </RadixDialog.Close>
+          {!hideClose && (
+            <RadixDialog.Close asChild>
+              <button data-design-system-escape="primitive-internal" className={styles.close} aria-label={t('common:close')}>
+                &times;
+              </button>
+            </RadixDialog.Close>
+          )}
         </RadixDialog.Content>
       </RadixDialog.Portal>
     </RadixDialog.Root>

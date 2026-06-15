@@ -1,0 +1,1809 @@
+[
+  {
+    "id": "01e0dc25-7270-47d1-a2d2-3b304683b95b",
+    "domain_id": "efff5771-f56a-4ff0-8aad-fbf34a5b7f03",
+    "path_pattern": [
+      "/exa."
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Codeium inference gRPC-style service calls",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:23.557+00:00",
+    "updated_at": "2026-05-11T14:44:23.557+00:00"
+  },
+  {
+    "id": "0645da2a-921d-411b-aa5b-cb8f28b94d32",
+    "domain_id": "e7e53805-b566-4e9d-af6f-cbc7d2efb3bd",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:48:01.294+00:00",
+    "updated_at": "2026-05-11T14:48:01.294+00:00"
+  },
+  {
+    "id": "06831b8a-e9d4-4763-b0a8-dc0c8405f85d",
+    "domain_id": "09785f75-4bf3-485f-a14d-93068f4f9ea3",
+    "path_pattern": [
+      "/openai/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 8,
+    "description": "Azure OpenAI v1 unified endpoint (2024+)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:21.426+00:00",
+    "updated_at": "2026-05-11T14:42:21.426+00:00"
+  },
+  {
+    "id": "080461b0-f2dc-45c1-956b-2351602bdb16",
+    "domain_id": "bd90e13e-27be-44dd-8482-06fbbb8b776b",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:27.468+00:00",
+    "updated_at": "2026-05-11T14:40:27.468+00:00"
+  },
+  {
+    "id": "0cbe8312-47ff-4555-b323-358a90987696",
+    "domain_id": "cdb64b0f-0784-4622-b2b9-07f8ee1ca9ba",
+    "path_pattern": [
+      "/v1/complete"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Legacy completions — compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:03.855+00:00",
+    "updated_at": "2026-05-10T16:45:03.855+00:00"
+  },
+  {
+    "id": "0d321700-b8a3-4ea1-978b-00d4af77093f",
+    "domain_id": "fc6674bb-2071-4aa1-8a2a-bb01ca776c96",
+    "path_pattern": [
+      "/openai/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:23.006+00:00",
+    "updated_at": "2026-05-11T14:40:23.006+00:00"
+  },
+  {
+    "id": "0d5dad0e-8e1e-4200-88a2-16a18277b83c",
+    "domain_id": "eed61a1b-78f3-4575-afed-f32a5f200859",
+    "path_pattern": [
+      "/v1/projects/*/locations/*/publishers/google/models/*:streamGenerateContent"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "Vertex streamGenerateContent — streaming",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:25.336+00:00",
+    "updated_at": "2026-05-11T14:42:25.336+00:00"
+  },
+  {
+    "id": "11fc97cf-0604-4afc-a647-e19f578e71c1",
+    "domain_id": "f9704ff9-4dae-4bdd-9e93-c3eb912f30e3",
+    "path_pattern": [
+      "^/api/organizations/[^/]+/chat_conversations"
+    ],
+    "match_type": "REGEX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:33:09.621+00:00",
+    "updated_at": "2026-05-11T08:33:09.621+00:00"
+  },
+  {
+    "id": "16636094-b8ae-40c5-8cc0-54e102d9f5d1",
+    "domain_id": "a8100824-e768-46b9-bdaf-6e3a0a045ee8",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:30.619+00:00",
+    "updated_at": "2026-05-11T14:47:30.619+00:00"
+  },
+  {
+    "id": "17aa1196-a081-4589-9a70-0c21b92d2ed4",
+    "domain_id": "a8100824-e768-46b9-bdaf-6e3a0a045ee8",
+    "path_pattern": [
+      "/rest/app-chat/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Grok web chat — conversations/new and conversation responses",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:27.843+00:00",
+    "updated_at": "2026-05-11T14:47:27.843+00:00"
+  },
+  {
+    "id": "187ad8d4-23c1-46f8-809a-4e8003c0aa65",
+    "domain_id": "ca8aef35-fc6c-4206-8ebb-888b6b594569",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "OpenAI-compat chat — dedicated endpoint",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:17.22+00:00",
+    "updated_at": "2026-05-11T14:42:17.22+00:00"
+  },
+  {
+    "id": "1a01e00b-98ed-4ede-9001-c5f64977c1e9",
+    "domain_id": "09785f75-4bf3-485f-a14d-93068f4f9ea3",
+    "path_pattern": [
+      "/openai/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:22.296+00:00",
+    "updated_at": "2026-05-11T14:42:22.296+00:00"
+  },
+  {
+    "id": "227ead2b-da83-45e3-985c-c3e4a0d46b47",
+    "domain_id": "4c97da05-c183-4462-bb81-681b8d08e725",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:57.315+00:00",
+    "updated_at": "2026-05-11T14:47:57.315+00:00"
+  },
+  {
+    "id": "2578be47-4c79-478a-9562-9ea5a72ba320",
+    "domain_id": "1e59bd6e-6b37-433f-ac7e-6f5e3ca55469",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Perplexity web API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:33.736+00:00",
+    "updated_at": "2026-05-11T14:47:33.736+00:00"
+  },
+  {
+    "id": "29177808-247d-4b64-b109-b28a84546d08",
+    "domain_id": "3c744923-3d89-4d42-8f10-5abf045f1685",
+    "path_pattern": [
+      "/v1/images/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 30,
+    "description": "Image generation — audit only",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:02.806+00:00",
+    "updated_at": "2026-05-10T16:45:02.806+00:00"
+  },
+  {
+    "id": "29cd1b3b-40c7-4a22-8e47-abe9c43b0e8b",
+    "domain_id": "1e59bd6e-6b37-433f-ac7e-6f5e3ca55469",
+    "path_pattern": [
+      "/socket.io/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Perplexity realtime socket (if used)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:34.761+00:00",
+    "updated_at": "2026-05-11T14:47:34.761+00:00"
+  },
+  {
+    "id": "2ae50c4e-293e-4edb-ab3e-79fd4c475569",
+    "domain_id": "77b314cd-ad23-4aca-a05e-2b27532296c3",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:21.569+00:00",
+    "updated_at": "2026-05-11T14:38:21.569+00:00"
+  },
+  {
+    "id": "2b4fc070-3489-495b-bb8c-3598ef4b6f1c",
+    "domain_id": "29a934ec-f053-429e-a8de-0086f843aea7",
+    "path_pattern": [
+      "/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — no /v1 prefix on Perplexity",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:21.177+00:00",
+    "updated_at": "2026-05-11T14:40:21.177+00:00"
+  },
+  {
+    "id": "2dadf262-5fd4-4032-ac7f-22c57f756915",
+    "domain_id": "77b314cd-ad23-4aca-a05e-2b27532296c3",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — no chat content, pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:23.168+00:00",
+    "updated_at": "2026-05-11T14:38:23.168+00:00"
+  },
+  {
+    "id": "2e3552a0-6bed-45ca-99ba-18e862c1cf64",
+    "domain_id": "93603b7b-c863-4510-9937-bcd2728f3c2c",
+    "path_pattern": [
+      "/v1/projects/*/locations/*/publishers/google/models/*:generateContent"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Vertex generateContent — sync",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:28.028+00:00",
+    "updated_at": "2026-05-11T14:42:28.028+00:00"
+  },
+  {
+    "id": "2fb31281-d9f0-496a-9f95-59651ce91898",
+    "domain_id": "a8b18c41-b73e-45eb-a4bf-9d6d642538a8",
+    "path_pattern": [
+      "/inference/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions via /inference/v1 base",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:31.073+00:00",
+    "updated_at": "2026-05-11T14:40:31.073+00:00"
+  },
+  {
+    "id": "2fb3254a-fc34-4fed-8cc4-206d9c07a262",
+    "domain_id": "90e065ce-4f3d-4f23-add9-7c308a5301cd",
+    "path_pattern": [
+      "/v2/complete"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Tabnine code completion endpoint",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:26.438+00:00",
+    "updated_at": "2026-05-11T14:44:26.438+00:00"
+  },
+  {
+    "id": "2ff445bf-f173-40e5-a6fc-c14a5b31e409",
+    "domain_id": "bd90e13e-27be-44dd-8482-06fbbb8b776b",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:29.605+00:00",
+    "updated_at": "2026-05-11T14:40:29.605+00:00"
+  },
+  {
+    "id": "333f4433-fc30-41a8-892e-baa9957f4ac3",
+    "domain_id": "150b4005-2746-4497-96e1-4abf022701a3",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:41.012+00:00",
+    "updated_at": "2026-05-11T14:47:41.012+00:00"
+  },
+  {
+    "id": "33ff8b42-ee7a-482a-b494-02243bf00801",
+    "domain_id": "3c744923-3d89-4d42-8f10-5abf045f1685",
+    "path_pattern": [
+      "/v1/files",
+      "/v1/fine-tuning"
+    ],
+    "match_type": "PREFIX",
+    "action": "BLOCK",
+    "priority": 5,
+    "description": "File upload + fine-tuning — blocked by policy",
+    "enabled": false,
+    "created_at": "2026-05-10T16:45:03.342+00:00",
+    "updated_at": "2026-05-10T16:45:03.342+00:00"
+  },
+  {
+    "id": "35604f14-e045-4385-9cf8-5e0ad8cbb52e",
+    "domain_id": "e7e53805-b566-4e9d-af6f-cbc7d2efb3bd",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Bolt.new AI generation API — captures prompts and generated code",
+    "enabled": true,
+    "created_at": "2026-05-11T14:48:00.355+00:00",
+    "updated_at": "2026-05-11T14:48:00.355+00:00"
+  },
+  {
+    "id": "3c02204b-d591-460c-900f-29f927bf43d7",
+    "domain_id": "78db6610-f4a4-4939-bbd0-a141830a9332",
+    "path_pattern": [
+      "/v1beta/models/*/embedContent"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Gemini embeddings — inspect",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:04.377+00:00",
+    "updated_at": "2026-05-10T16:45:04.377+00:00"
+  },
+  {
+    "id": "3d8ff647-5856-4c0d-b3a0-06f5751e4b9a",
+    "domain_id": "09785f75-4bf3-485f-a14d-93068f4f9ea3",
+    "path_pattern": [
+      "/openai/deployments/*/chat/completions"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Azure deployment chat completions — primary path",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:19.036+00:00",
+    "updated_at": "2026-05-11T14:42:19.036+00:00"
+  },
+  {
+    "id": "3dc714dc-5cb3-43b9-880c-971724def954",
+    "domain_id": "a8100824-e768-46b9-bdaf-6e3a0a045ee8",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Grok API paths — capture chat data",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:28.739+00:00",
+    "updated_at": "2026-05-11T14:47:28.739+00:00"
+  },
+  {
+    "id": "3e0750dc-5cde-4f88-a471-e28f5674511f",
+    "domain_id": "c3e4327b-449b-41ff-b425-f071f8651eaa",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — no chat content, pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:56.992+00:00",
+    "updated_at": "2026-05-11T14:38:56.992+00:00"
+  },
+  {
+    "id": "3e6a2c29-9d8e-4cb5-adce-70c43f17c473",
+    "domain_id": "579eace7-571c-40d1-a2b1-c46fd8fe664c",
+    "path_pattern": [
+      "/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Copilot chat completions (no /v1 prefix)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:11.542+00:00",
+    "updated_at": "2026-05-11T14:44:11.542+00:00"
+  },
+  {
+    "id": "3fc1985a-f81e-4f8c-a192-c8426b932414",
+    "domain_id": "09785f75-4bf3-485f-a14d-93068f4f9ea3",
+    "path_pattern": [
+      "/openai/deployments/*/completions"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Azure deployment text completions (legacy)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:19.986+00:00",
+    "updated_at": "2026-05-11T14:42:19.986+00:00"
+  },
+  {
+    "id": "3fded315-e0da-4c5a-95bf-cf63823529ef",
+    "domain_id": "136c3b51-6203-43ea-a1d2-4a83615db20b",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:23.944+00:00",
+    "updated_at": "2026-05-11T14:40:23.944+00:00"
+  },
+  {
+    "id": "431cc856-7e0e-41b0-a8a6-541a89b8c358",
+    "domain_id": "5e53b5e8-e95b-44a5-9ca6-2d1bc2c482cf",
+    "path_pattern": [
+      "/backend-api/conversation"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:28:21.963+00:00",
+    "updated_at": "2026-05-11T08:28:21.963+00:00"
+  },
+  {
+    "id": "4524d4c2-3da9-4a0a-a73a-a7cd7be2b101",
+    "domain_id": "c9ea5add-c14c-4d5d-a443-bfbc1d81fe00",
+    "path_pattern": [
+      "/v1/text/chatcompletion_v2"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "MiniMax chat v2 — primary chat endpoint",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:09.439+00:00",
+    "updated_at": "2026-05-11T14:42:09.439+00:00"
+  },
+  {
+    "id": "467fb830-f736-4116-a693-3c1d71139cd8",
+    "domain_id": "5e53b5e8-e95b-44a5-9ca6-2d1bc2c482cf",
+    "path_pattern": [
+      "/backend-api/memories"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 40,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:28:21.963+00:00",
+    "updated_at": "2026-05-11T08:28:21.963+00:00"
+  },
+  {
+    "id": "47baf41e-b0d4-4edf-b8b5-da7fa3d93a87",
+    "domain_id": "3040c754-713a-4765-9b74-8b4f683e55d0",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:59.133+00:00",
+    "updated_at": "2026-05-11T14:47:59.133+00:00"
+  },
+  {
+    "id": "48be9249-e208-423a-9760-d99d596fec54",
+    "domain_id": "cdb64b0f-0784-4622-b2b9-07f8ee1ca9ba",
+    "path_pattern": [
+      "/v1/messages"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Messages API — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:03.581+00:00",
+    "updated_at": "2026-05-10T16:45:03.581+00:00"
+  },
+  {
+    "id": "495bba1f-d249-4a27-b42c-bc8e9dac1d64",
+    "domain_id": "fa7e2fc9-26d6-4d26-a3e8-8b49686d7484",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Perplexity web API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:36.837+00:00",
+    "updated_at": "2026-05-11T14:47:36.837+00:00"
+  },
+  {
+    "id": "4c55077e-abd2-405f-8707-7f36d02218f2",
+    "domain_id": "579eace7-571c-40d1-a2b1-c46fd8fe664c",
+    "path_pattern": [
+      "/github/chat/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Copilot chat thread management",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:14.391+00:00",
+    "updated_at": "2026-05-11T14:44:14.391+00:00"
+  },
+  {
+    "id": "4cf2847c-ae14-476a-9061-7db39abc40be",
+    "domain_id": "eed61a1b-78f3-4575-afed-f32a5f200859",
+    "path_pattern": [
+      "/v1/projects/*/locations/*/endpoints/*/chat/completions"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Vertex OpenAI-compat chat endpoint",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:27.181+00:00",
+    "updated_at": "2026-05-11T14:42:27.181+00:00"
+  },
+  {
+    "id": "4ea70adc-9ccb-4b00-8533-f3df83efa7fa",
+    "domain_id": "efff5771-f56a-4ff0-8aad-fbf34a5b7f03",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "Codeium OpenAI-compat chat if supported",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:24.446+00:00",
+    "updated_at": "2026-05-11T14:44:24.446+00:00"
+  },
+  {
+    "id": "4f167a9a-28a2-49ad-ad03-22db6e347c21",
+    "domain_id": "aaa9f35d-2dcd-4620-9feb-7dc5488b5577",
+    "path_pattern": [
+      "/agent/",
+      "/api/agent/",
+      "/api/ai/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Replit AI agent paths — full pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:05.665+00:00",
+    "updated_at": "2026-05-10T16:45:05.665+00:00"
+  },
+  {
+    "id": "4ff3014d-d6c5-4c71-877d-766e235ff370",
+    "domain_id": "eed61a1b-78f3-4575-afed-f32a5f200859",
+    "path_pattern": [
+      "/v1/projects/*/locations/*/publishers/google/models/*:generateContent"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Vertex generateContent — sync",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:24.398+00:00",
+    "updated_at": "2026-05-11T14:42:24.398+00:00"
+  },
+  {
+    "id": "5014425f-ad76-46ca-8622-76f29f0b3d01",
+    "domain_id": "4c97da05-c183-4462-bb81-681b8d08e725",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "ChatGLM web API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:56.479+00:00",
+    "updated_at": "2026-05-11T14:47:56.479+00:00"
+  },
+  {
+    "id": "51e62bc3-1a94-4a5d-8cfd-d537a9ce9206",
+    "domain_id": "602f12ce-5899-429c-91ce-0d8d68f7b927",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "DeepSeek chat web API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:50.989+00:00",
+    "updated_at": "2026-05-11T14:47:50.989+00:00"
+  },
+  {
+    "id": "5ac41ee5-d411-4e12-81b4-20ee1f3b5ef8",
+    "domain_id": "cd344e81-5f31-4222-be18-d0d648b3215a",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:53.818+00:00",
+    "updated_at": "2026-05-11T14:47:53.818+00:00"
+  },
+  {
+    "id": "5d16a580-ee1c-4c95-9920-3323dd88e657",
+    "domain_id": "136c3b51-6203-43ea-a1d2-4a83615db20b",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:26.575+00:00",
+    "updated_at": "2026-05-11T14:40:26.575+00:00"
+  },
+  {
+    "id": "5e6627dc-277f-4bc9-a227-847347e4fcc5",
+    "domain_id": "9fb26009-1849-4b36-b045-49c8688fda67",
+    "path_pattern": [
+      "/chat"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Copilot.microsoft.com chat UI — capture conversation traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:25.039+00:00",
+    "updated_at": "2026-05-11T14:47:25.039+00:00"
+  },
+  {
+    "id": "5e730024-7eb8-45ad-a08b-bf00640593b8",
+    "domain_id": "351ae735-5e12-4861-9f70-9e9ebd2f1535",
+    "path_pattern": [
+      "/model/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "All Bedrock model invocations — invoke/converse/stream",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:23.32+00:00",
+    "updated_at": "2026-05-11T14:42:23.32+00:00"
+  },
+  {
+    "id": "61812731-6a08-4089-a7a0-f7b03cc5f000",
+    "domain_id": "eb958b9b-846f-4259-8b43-e7ac955646d0",
+    "path_pattern": [
+      "/v1/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Continue.dev proxied text completions",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:31.859+00:00",
+    "updated_at": "2026-05-11T14:44:31.859+00:00"
+  },
+  {
+    "id": "62647bcb-c86b-41ea-879b-cd35fd46272c",
+    "domain_id": "9fb26009-1849-4b36-b045-49c8688fda67",
+    "path_pattern": [
+      "/sydney/",
+      "/turing/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Copilot Sydney/Turing internal service paths",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:26.004+00:00",
+    "updated_at": "2026-05-11T14:47:26.004+00:00"
+  },
+  {
+    "id": "6324b3d9-009a-4c96-8266-674602a68f4c",
+    "domain_id": "e22e017b-e117-4871-bde9-6f5eb7bc6ccf",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:35.025+00:00",
+    "updated_at": "2026-05-11T14:40:35.025+00:00"
+  },
+  {
+    "id": "65822167-1c6d-4db0-b4e9-b85472798058",
+    "domain_id": "776836c1-bc4e-4847-b611-9efeba51525c",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/assets/",
+      "/fonts/",
+      "/images/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:21.728+00:00",
+    "updated_at": "2026-05-11T14:44:21.728+00:00"
+  },
+  {
+    "id": "69718364-b63c-45d1-bf48-478d4237dbb4",
+    "domain_id": "58f368a5-5970-4c26-908b-d7b443a75950",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:17.925+00:00",
+    "updated_at": "2026-05-11T14:40:17.925+00:00"
+  },
+  {
+    "id": "6a5ae00b-a1eb-4a4c-a6a7-b6af81577bd4",
+    "domain_id": "f6b45811-9b73-468e-9136-925cea956b1c",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "MiniMax OpenAI-compat chat completions",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:14.054+00:00",
+    "updated_at": "2026-05-11T14:42:14.054+00:00"
+  },
+  {
+    "id": "730d089d-61fb-4d5a-a2cc-e139be5599e0",
+    "domain_id": "a8b18c41-b73e-45eb-a4bf-9d6d642538a8",
+    "path_pattern": [
+      "/inference/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:32.945+00:00",
+    "updated_at": "2026-05-11T14:40:32.945+00:00"
+  },
+  {
+    "id": "74b0dc46-9884-4f03-a3b7-428e91dc1b5b",
+    "domain_id": "f9704ff9-4dae-4bdd-9e93-c3eb912f30e3",
+    "path_pattern": [
+      "^/api/organizations/[^/]+/artifacts/"
+    ],
+    "match_type": "REGEX",
+    "action": "PROCESS",
+    "priority": 30,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:33:09.621+00:00",
+    "updated_at": "2026-05-11T08:33:09.621+00:00"
+  },
+  {
+    "id": "764244b9-4cf3-4974-a2a5-45dbfb6976b4",
+    "domain_id": "e1f162fb-aa99-4de0-9e21-ff4fcca9196f",
+    "path_pattern": [
+      "/v1/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Codeium REST API v1 endpoints",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:25.392+00:00",
+    "updated_at": "2026-05-11T14:44:25.392+00:00"
+  },
+  {
+    "id": "782562d5-165b-4c70-aadd-85cb3e81eba9",
+    "domain_id": "fa7e2fc9-26d6-4d26-a3e8-8b49686d7484",
+    "path_pattern": [
+      "/socket.io/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Perplexity realtime socket (if used)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:37.811+00:00",
+    "updated_at": "2026-05-11T14:47:37.811+00:00"
+  },
+  {
+    "id": "795a7211-6396-431a-9995-ff06157b2234",
+    "domain_id": "cf5942e9-476a-4290-a73a-2a9ca9116d28",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:46.185+00:00",
+    "updated_at": "2026-05-11T14:47:46.185+00:00"
+  },
+  {
+    "id": "7b64170d-30c2-411d-8ec0-da2ad19539b4",
+    "domain_id": "9555f433-357c-46c5-94ef-01cad31bb9c3",
+    "path_pattern": [
+      "/chat/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "HuggingChat conversation paths — full pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:05.139+00:00",
+    "updated_at": "2026-05-10T16:45:05.139+00:00"
+  },
+  {
+    "id": "7c3ceb9d-01d6-4d2e-90a3-f4b35ac5df64",
+    "domain_id": "776836c1-bc4e-4847-b611-9efeba51525c",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 10,
+    "description": "Cursor.com dashboard API — not chat, pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:20.77+00:00",
+    "updated_at": "2026-05-11T14:44:20.77+00:00"
+  },
+  {
+    "id": "7e394006-760d-4f25-8b3c-2a1d3adff3ee",
+    "domain_id": "1061f67d-8f9d-47f2-9e2d-5e77f256e968",
+    "path_pattern": [
+      "/chat"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "M365 Copilot chat UI — captures conversation traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:48:02.218+00:00",
+    "updated_at": "2026-05-11T14:48:02.218+00:00"
+  },
+  {
+    "id": "7f6bc75c-9bc0-4633-b043-e7bb98de2c6b",
+    "domain_id": "2e3e7e73-1b12-4e1c-9c42-2a91599f18a5",
+    "path_pattern": [
+      "/copilot/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "GitHub Copilot Chat web — full pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:06.272+00:00",
+    "updated_at": "2026-05-10T16:45:06.272+00:00"
+  },
+  {
+    "id": "8611f051-1c15-42e2-9bad-720cb2cf44a3",
+    "domain_id": "3040c754-713a-4765-9b74-8b4f683e55d0",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "v0.dev AI generation API — captures prompts and generated code",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:58.251+00:00",
+    "updated_at": "2026-05-11T14:47:58.251+00:00"
+  },
+  {
+    "id": "876aa574-6a01-494b-9938-d43177d29572",
+    "domain_id": "3c744923-3d89-4d42-8f10-5abf045f1685",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:02.284+00:00",
+    "updated_at": "2026-05-10T16:45:02.284+00:00"
+  },
+  {
+    "id": "8bd12188-8ba1-447c-8c3f-21de3844e083",
+    "domain_id": "987cfe62-5b07-412b-b48a-856afaf866f1",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:50.125+00:00",
+    "updated_at": "2026-05-11T14:47:50.125+00:00"
+  },
+  {
+    "id": "910dbc1c-d39a-4569-94cd-99a90e2938b9",
+    "domain_id": "e00ec4cb-2be2-41f8-8ec5-72598923599b",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:48.289+00:00",
+    "updated_at": "2026-05-11T14:47:48.289+00:00"
+  },
+  {
+    "id": "929dea90-e329-4e11-86cc-29a35316fb55",
+    "domain_id": "c9ea5add-c14c-4d5d-a443-bfbc1d81fe00",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "MiniMax OpenAI-compat chat completions",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:11.269+00:00",
+    "updated_at": "2026-05-11T14:42:11.269+00:00"
+  },
+  {
+    "id": "975d4a26-cbe9-43c7-a48f-6e9ceaad5f4d",
+    "domain_id": "bd90e13e-27be-44dd-8482-06fbbb8b776b",
+    "path_pattern": [
+      "/v1/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Text completions — capture AI output",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:28.412+00:00",
+    "updated_at": "2026-05-11T14:40:28.412+00:00"
+  },
+  {
+    "id": "9f570c82-ef5a-40e0-a040-bc33b123b127",
+    "domain_id": "77b314cd-ad23-4aca-a05e-2b27532296c3",
+    "path_pattern": [
+      "/v1/fim/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Code fill-in-middle — AI output, capture",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:22.407+00:00",
+    "updated_at": "2026-05-11T14:38:22.407+00:00"
+  },
+  {
+    "id": "a35ccaac-aec6-4d69-bf6a-1480c6edf3bd",
+    "domain_id": "5e53b5e8-e95b-44a5-9ca6-2d1bc2c482cf",
+    "path_pattern": [
+      "/backend-api/f/conversation"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:41:57.433+00:00",
+    "updated_at": "2026-05-11T08:45:58.983+00:00"
+  },
+  {
+    "id": "a554c978-7136-4e0f-aa21-bda1b7a46069",
+    "domain_id": "cf5942e9-476a-4290-a73a-2a9ca9116d28",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "OpenAI platform API paths",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:43.345+00:00",
+    "updated_at": "2026-05-11T14:47:43.345+00:00"
+  },
+  {
+    "id": "a7491e92-ecfe-4188-8191-e929bb67dac4",
+    "domain_id": "579eace7-571c-40d1-a2b1-c46fd8fe664c",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 11,
+    "description": "Copilot chat completions v1 variant",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:13.443+00:00",
+    "updated_at": "2026-05-11T14:44:13.443+00:00"
+  },
+  {
+    "id": "ab2a3b4f-bfe8-4493-8be9-2d97ad0c77d6",
+    "domain_id": "13d3b3ab-2d54-4a03-b54e-964c16df5a4c",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:20.28+00:00",
+    "updated_at": "2026-05-11T14:40:20.28+00:00"
+  },
+  {
+    "id": "afaa885e-44f6-49d6-add8-2e1e8749f6df",
+    "domain_id": "e16e014a-187a-420c-aee1-df609e91fc0f",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "OpenAI-compat chat completions (new serverless inference)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:14.945+00:00",
+    "updated_at": "2026-05-11T14:42:14.945+00:00"
+  },
+  {
+    "id": "b0a75a30-47b9-4c0f-b028-d50eea3c7969",
+    "domain_id": "1061f67d-8f9d-47f2-9e2d-5e77f256e968",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:48:04.254+00:00",
+    "updated_at": "2026-05-11T14:48:04.254+00:00"
+  },
+  {
+    "id": "b0f6d911-df32-4681-832c-2787f19f96fb",
+    "domain_id": "78db6610-f4a4-4939-bbd0-a141830a9332",
+    "path_pattern": [
+      "/v1beta/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:04.615+00:00",
+    "updated_at": "2026-05-10T16:45:04.615+00:00"
+  },
+  {
+    "id": "b55f4ced-90b2-4892-b2fc-014d0d32fe3b",
+    "domain_id": "93603b7b-c863-4510-9937-bcd2728f3c2c",
+    "path_pattern": [
+      "/v1/projects/*/locations/*/publishers/google/models/*:streamGenerateContent"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "Vertex streamGenerateContent — streaming",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:29.001+00:00",
+    "updated_at": "2026-05-11T14:42:29.001+00:00"
+  },
+  {
+    "id": "b5633a66-1ace-45ab-abb6-871a061c2a5b",
+    "domain_id": "ca8aef35-fc6c-4206-8ebb-888b6b594569",
+    "path_pattern": [
+      "/"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Root inference endpoint for dedicated HF endpoints",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:18.064+00:00",
+    "updated_at": "2026-05-11T14:42:18.064+00:00"
+  },
+  {
+    "id": "b5f8b8a6-7fdb-4762-930e-eae4c6e7b6a7",
+    "domain_id": "e22e017b-e117-4871-bde9-6f5eb7bc6ccf",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:33.8+00:00",
+    "updated_at": "2026-05-11T14:40:33.8+00:00"
+  },
+  {
+    "id": "b7edd78b-90c5-4b23-b978-a45e16a4c193",
+    "domain_id": "201fb22d-f971-419c-819c-1a7ca0ac3fb5",
+    "path_pattern": [
+      "/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Copilot chat completions — legacy proxy host",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:15.27+00:00",
+    "updated_at": "2026-05-11T14:44:15.27+00:00"
+  },
+  {
+    "id": "b979b3b1-1e5e-4810-9b0a-da33b3e40a3e",
+    "domain_id": "e00ec4cb-2be2-41f8-8ec5-72598923599b",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Anthropic console internal API — workbench chat",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:47.34+00:00",
+    "updated_at": "2026-05-11T14:47:47.34+00:00"
+  },
+  {
+    "id": "ba2bd794-fefb-44a1-a841-1a709e342e3a",
+    "domain_id": "5d905b9b-048b-4d3b-8e42-1bfe6b67f168",
+    "path_pattern": [
+      "/exa."
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Codeium gRPC-style service calls (GetCompletions, etc.)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:22.59+00:00",
+    "updated_at": "2026-05-11T14:44:22.59+00:00"
+  },
+  {
+    "id": "beae498d-692a-4dce-bd7e-db26b3b82c56",
+    "domain_id": "9fb26009-1849-4b36-b045-49c8688fda67",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:26.881+00:00",
+    "updated_at": "2026-05-11T14:47:26.881+00:00"
+  },
+  {
+    "id": "bf6b34ed-aa55-4ca4-9cce-250019692848",
+    "domain_id": "13d3b3ab-2d54-4a03-b54e-964c16df5a4c",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:19.324+00:00",
+    "updated_at": "2026-05-11T14:40:19.324+00:00"
+  },
+  {
+    "id": "c07f0469-033f-4227-a22f-3e734d74318b",
+    "domain_id": "b57da13b-ccba-40df-b0cb-ab521fbcf1b7",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:37.468+00:00",
+    "updated_at": "2026-05-11T14:40:37.468+00:00"
+  },
+  {
+    "id": "c3296039-596d-4d4a-b25c-8981717300b8",
+    "domain_id": "aea55279-f9ed-4a52-ae7f-f6ef2e6f03da",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:55.636+00:00",
+    "updated_at": "2026-05-11T14:47:55.636+00:00"
+  },
+  {
+    "id": "c376adec-cf84-49ef-9b3e-252837d8d17d",
+    "domain_id": "f9704ff9-4dae-4bdd-9e93-c3eb912f30e3",
+    "path_pattern": [
+      "^/api/organizations/[^/]+/memory"
+    ],
+    "match_type": "REGEX",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:33:09.621+00:00",
+    "updated_at": "2026-05-11T08:33:09.621+00:00"
+  },
+  {
+    "id": "c80bbaa5-5f59-4130-b4c5-6d25413e9c72",
+    "domain_id": "cf5942e9-476a-4290-a73a-2a9ca9116d28",
+    "path_pattern": [
+      "/backend-api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "OpenAI platform playground backend API",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:42+00:00",
+    "updated_at": "2026-05-11T14:47:42+00:00"
+  },
+  {
+    "id": "c80e6918-5ce1-46bb-888c-fecc766930b2",
+    "domain_id": "58f368a5-5970-4c26-908b-d7b443a75950",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:17.026+00:00",
+    "updated_at": "2026-05-11T14:40:17.026+00:00"
+  },
+  {
+    "id": "ca98b8d9-14e6-4ab8-8721-ba622de60bf2",
+    "domain_id": "136c3b51-6203-43ea-a1d2-4a83615db20b",
+    "path_pattern": [
+      "/v1/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "Text completions — capture AI output",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:24.787+00:00",
+    "updated_at": "2026-05-11T14:40:24.787+00:00"
+  },
+  {
+    "id": "cb266b5e-bb5e-489e-a379-1d4f8b740483",
+    "domain_id": "3c744923-3d89-4d42-8f10-5abf045f1685",
+    "path_pattern": [
+      "/v1/embeddings"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Embeddings — inspect for data leakage",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:02.523+00:00",
+    "updated_at": "2026-05-10T16:45:02.523+00:00"
+  },
+  {
+    "id": "cc56cd4b-a1d9-4fc9-948f-f005a6a3d8c8",
+    "domain_id": "5e53b5e8-e95b-44a5-9ca6-2d1bc2c482cf",
+    "path_pattern": [
+      "/backend-api/conversation/implicit_message_feedback"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 15,
+    "description": null,
+    "enabled": true,
+    "created_at": "2026-05-11T08:46:19.839+00:00",
+    "updated_at": "2026-05-11T08:46:19.839+00:00"
+  },
+  {
+    "id": "cefe3930-e72b-4ad9-a3d0-efd3e2a6a5d4",
+    "domain_id": "3c744923-3d89-4d42-8f10-5abf045f1685",
+    "path_pattern": [
+      "/v1/models"
+    ],
+    "match_type": "EXACT",
+    "action": "PASSTHROUGH",
+    "priority": 100,
+    "description": "Model listing — no sensitive data, pass through",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:03.101+00:00",
+    "updated_at": "2026-05-10T16:45:03.101+00:00"
+  },
+  {
+    "id": "cf09a4eb-34c1-4473-95aa-2a71db58f6a3",
+    "domain_id": "90e065ce-4f3d-4f23-add9-7c308a5301cd",
+    "path_pattern": [
+      "/v1/complete"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "Tabnine code completion v1",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:27.723+00:00",
+    "updated_at": "2026-05-11T14:44:27.723+00:00"
+  },
+  {
+    "id": "cfb550ab-d747-4f37-a63c-0722bbe87acc",
+    "domain_id": "1e59bd6e-6b37-433f-ac7e-6f5e3ca55469",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:35.952+00:00",
+    "updated_at": "2026-05-11T14:47:35.952+00:00"
+  },
+  {
+    "id": "d08b29cf-7616-4cc1-ad13-c88888d5da24",
+    "domain_id": "fa7e2fc9-26d6-4d26-a3e8-8b49686d7484",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:39.275+00:00",
+    "updated_at": "2026-05-11T14:47:39.275+00:00"
+  },
+  {
+    "id": "d14c24f7-d9be-4506-8e2e-2a46b0d20215",
+    "domain_id": "c3e4327b-449b-41ff-b425-f071f8651eaa",
+    "path_pattern": [
+      "/v1/chat"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Cohere v1 chat — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:54.307+00:00",
+    "updated_at": "2026-05-11T14:38:54.307+00:00"
+  },
+  {
+    "id": "d2c1034b-d9a2-4c14-9ded-7ed8af38aacb",
+    "domain_id": "c3e4327b-449b-41ff-b425-f071f8651eaa",
+    "path_pattern": [
+      "/v1/generate"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Cohere text generation — capture AI output",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:56.144+00:00",
+    "updated_at": "2026-05-11T14:38:56.144+00:00"
+  },
+  {
+    "id": "d2c2c3b4-cf23-482f-8054-7ed30afd2f1a",
+    "domain_id": "987cfe62-5b07-412b-b48a-856afaf866f1",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "AI Studio internal API — captures prompt/chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:49.212+00:00",
+    "updated_at": "2026-05-11T14:47:49.212+00:00"
+  },
+  {
+    "id": "d3ef4b40-1c3b-44d7-a1c7-5d9466135662",
+    "domain_id": "b57da13b-ccba-40df-b0cb-ab521fbcf1b7",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — full compliance pipeline",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:36.277+00:00",
+    "updated_at": "2026-05-11T14:40:36.277+00:00"
+  },
+  {
+    "id": "d592162e-6c11-4ce3-9c10-885e567573fc",
+    "domain_id": "c9ea5add-c14c-4d5d-a443-bfbc1d81fe00",
+    "path_pattern": [
+      "/v1/text/chatcompletion"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "MiniMax chat v1 — legacy chat endpoint",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:10.372+00:00",
+    "updated_at": "2026-05-11T14:42:10.372+00:00"
+  },
+  {
+    "id": "d9c3057c-ef59-47a2-9fad-5115f4770b10",
+    "domain_id": "1061f67d-8f9d-47f2-9e2d-5e77f256e968",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "M365 Copilot internal API paths",
+    "enabled": true,
+    "created_at": "2026-05-11T14:48:03.329+00:00",
+    "updated_at": "2026-05-11T14:48:03.329+00:00"
+  },
+  {
+    "id": "dba17ba6-a8bf-4ba1-8200-5ecaa571c10c",
+    "domain_id": "78db6610-f4a4-4939-bbd0-a141830a9332",
+    "path_pattern": [
+      "/v1beta/models/*/generateContent"
+    ],
+    "match_type": "GLOB",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Gemini generateContent — full pipeline",
+    "enabled": true,
+    "created_at": "2026-05-10T16:45:04.123+00:00",
+    "updated_at": "2026-05-10T16:45:04.123+00:00"
+  },
+  {
+    "id": "e127103c-e82c-417b-ba9c-c6ed1557b7dc",
+    "domain_id": "602f12ce-5899-429c-91ce-0d8d68f7b927",
+    "path_pattern": [
+      "/_next/",
+      "/_static/",
+      "/static/",
+      "/assets/",
+      "/fonts/",
+      "/images/",
+      "/icons/",
+      "/favicon"
+    ],
+    "match_type": "PREFIX",
+    "action": "PASSTHROUGH",
+    "priority": 200,
+    "description": "Static assets — pass through",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:51.961+00:00",
+    "updated_at": "2026-05-11T14:47:51.961+00:00"
+  },
+  {
+    "id": "eaa65bb4-6bda-422b-83b2-0370e5dc2d83",
+    "domain_id": "cd344e81-5f31-4222-be18-d0d648b3215a",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Kimi web API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:52.828+00:00",
+    "updated_at": "2026-05-11T14:47:52.828+00:00"
+  },
+  {
+    "id": "ec461294-0498-402a-bb83-7b77ce76313f",
+    "domain_id": "e16e014a-187a-420c-aee1-df609e91fc0f",
+    "path_pattern": [
+      "/models/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 20,
+    "description": "Model inference — legacy /models/{model_id} path",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:15.899+00:00",
+    "updated_at": "2026-05-11T14:42:15.899+00:00"
+  },
+  {
+    "id": "efc50a15-9b53-406e-9144-35e9c3464f05",
+    "domain_id": "f6b45811-9b73-468e-9136-925cea956b1c",
+    "path_pattern": [
+      "/v1/text/chatcompletion_v2"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "MiniMax chat v2 — primary chat endpoint",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:12.253+00:00",
+    "updated_at": "2026-05-11T14:42:12.253+00:00"
+  },
+  {
+    "id": "f1e2d3c4-b5a6-4789-9012-a1b2c3d4e5f6",
+    "domain_id": "d7cf0c94-d1d8-468f-933b-07ab34e5f870",
+    "path_pattern": [
+      "/agent.v1.AgentService/Run"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 0,
+    "description": "Cursor agent chat (Cursor app + cursor-agent CLI)",
+    "enabled": true,
+    "created_at": "2026-06-14T00:00:00.000+00:00",
+    "updated_at": "2026-06-14T00:00:00.000+00:00"
+  },
+  {
+    "id": "f1e2d3c4-b5a6-4789-9012-a1b2c3d4e5f7",
+    "domain_id": "d7cf0c94-d1d8-468f-933b-07ab34e5f870",
+    "path_pattern": [
+      "/aiserver.v1.AiService/Stream"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Cursor legacy chat stream RPCs",
+    "enabled": true,
+    "created_at": "2026-06-14T00:00:00.000+00:00",
+    "updated_at": "2026-06-14T00:00:00.000+00:00"
+  },
+  {
+    "id": "f3e038ba-b7dd-4476-a16a-c4578287b957",
+    "domain_id": "150b4005-2746-4497-96e1-4abf022701a3",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Le Chat internal API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:40.14+00:00",
+    "updated_at": "2026-05-11T14:47:40.14+00:00"
+  },
+  {
+    "id": "f4b02c38-1870-45ee-8f02-6faf6c9db7fb",
+    "domain_id": "201fb22d-f971-419c-819c-1a7ca0ac3fb5",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 11,
+    "description": "Copilot chat v1 — legacy proxy host",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:16.208+00:00",
+    "updated_at": "2026-05-11T14:44:16.208+00:00"
+  },
+  {
+    "id": "f7352ff7-4b6b-4437-8c6c-18e1e11f8225",
+    "domain_id": "fc6674bb-2071-4aa1-8a2a-bb01ca776c96",
+    "path_pattern": [
+      "/openai/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Chat completions — Groq uses /openai/v1/ prefix",
+    "enabled": true,
+    "created_at": "2026-05-11T14:40:22.119+00:00",
+    "updated_at": "2026-05-11T14:40:22.119+00:00"
+  },
+  {
+    "id": "f736c8be-f88f-4d9a-ba12-c4b6647c3e48",
+    "domain_id": "4a276b15-cda6-401f-84e9-4674f306c83e",
+    "path_pattern": [
+      "/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 0,
+    "description": "Gemini chat - AI streaming response only",
+    "enabled": true,
+    "created_at": "2026-05-11T09:43:20.753+00:00",
+    "updated_at": "2026-05-11T09:43:20.753+00:00"
+  },
+  {
+    "id": "f7837861-9317-4e61-bc4d-bba9c7c439e5",
+    "domain_id": "f6b45811-9b73-468e-9136-925cea956b1c",
+    "path_pattern": [
+      "/v1/text/chatcompletion"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 15,
+    "description": "MiniMax chat v1 — legacy",
+    "enabled": true,
+    "created_at": "2026-05-11T14:42:13.111+00:00",
+    "updated_at": "2026-05-11T14:42:13.111+00:00"
+  },
+  {
+    "id": "f7f0c8e3-49bd-48d2-b3e1-66affc6c36cc",
+    "domain_id": "90e065ce-4f3d-4f23-add9-7c308a5301cd",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 8,
+    "description": "Tabnine chat completions (OpenAI-compat)",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:29.621+00:00",
+    "updated_at": "2026-05-11T14:44:29.621+00:00"
+  },
+  {
+    "id": "fcfa5c4f-0a3e-4d9c-902e-1bcc3ba85af5",
+    "domain_id": "c3e4327b-449b-41ff-b425-f071f8651eaa",
+    "path_pattern": [
+      "/v2/chat"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 12,
+    "description": "Cohere v2 chat — streaming supported",
+    "enabled": true,
+    "created_at": "2026-05-11T14:38:55.173+00:00",
+    "updated_at": "2026-05-11T14:38:55.173+00:00"
+  },
+  {
+    "id": "fedfd3a2-d155-46f9-9350-211c9e71f900",
+    "domain_id": "eb958b9b-846f-4259-8b43-e7ac955646d0",
+    "path_pattern": [
+      "/v1/chat/completions"
+    ],
+    "match_type": "EXACT",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Continue.dev proxied chat completions",
+    "enabled": true,
+    "created_at": "2026-05-11T14:44:30.638+00:00",
+    "updated_at": "2026-05-11T14:44:30.638+00:00"
+  },
+  {
+    "id": "ff6663c0-a9ab-448d-8794-e1f806fc06a9",
+    "domain_id": "aea55279-f9ed-4a52-ae7f-f6ef2e6f03da",
+    "path_pattern": [
+      "/api/"
+    ],
+    "match_type": "PREFIX",
+    "action": "PROCESS",
+    "priority": 10,
+    "description": "Kimi web API — captures chat traffic",
+    "enabled": true,
+    "created_at": "2026-05-11T14:47:54.658+00:00",
+    "updated_at": "2026-05-11T14:47:54.658+00:00"
+  }
+]

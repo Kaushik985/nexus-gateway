@@ -2,7 +2,7 @@
 
 Welcome! Three things to read **before** you start writing code:
 
-1. [`CLAUDE.md`](./CLAUDE.md) — binding rules. Plan, Todo, English-only, no `git stash`, IAM impact review, macOS NE fail-open, etc.
+1. [`CLAUDE.md`](./CLAUDE.md) — binding rules. Plan, Todo, English-only, IAM impact review, macOS NE fail-open, etc.
 2. [`docs/README.md`](./docs/README.md) — onboarding + the developer doc index.
 3. [`docs/developers/architecture/README.md`](./docs/developers/architecture/README.md) — **the** "what to read when editing X" map.
 

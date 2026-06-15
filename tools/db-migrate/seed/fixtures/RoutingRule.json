@@ -1,0 +1,185 @@
+[
+  {
+    "id": "08272024-eea1-464e-bbb0-a828c64a1c1e",
+    "name": "smart-auto-routing",
+    "description": "AI router analyzes user prompt and selects the best model when model is \"auto\"",
+    "strategyType": "smart",
+    "config": {
+      "type": "smart",
+      "maxTokens": 1024,
+      "timeoutMs": 10000,
+      "temperature": 0,
+      "systemPrompt": "You are an AI model router for an enterprise gateway. Select the best model for the user's request.\n\n## Available Models\n{modelCatalog}\n\n## Selection Rules\n1. Analyze the task: coding, analysis, creative writing, Q&A, translation, math, reasoning\n2. Match capabilities: images \u2192 vision, tools \u2192 function_calling, long text \u2192 large context\n3. Cost: simple tasks \u2192 cheapest capable model; complex tasks \u2192 most capable\n4. If uncertain, prefer the most capable model\n\nCRITICAL: keep the \"reason\" field under 30 words. Do not analyse the user's request itself. Classify the task type only.\n\n## Output Format\nReturn ONLY valid JSON: {\"modelId\": \"<exact ID from list>\", \"reason\": \"<brief explanation>\"}",
+      "routerModelId": "06056793-2ab1-4975-a0db-66896ca56134",
+      "defaultModelId": "3f45ca57-c842-4e40-a901-4d607f3fe064",
+      "routerProviderId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+      "defaultProviderId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab"
+    },
+    "matchConditions": {
+      "requestedModelLiterals": [
+        "auto"
+      ]
+    },
+    "priority": 25,
+    "pipelineStage": 1,
+    "fallbackChain": [
+      {
+        "modelId": "3f45ca57-c842-4e40-a901-4d607f3fe064",
+        "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab"
+      },
+      {
+        "modelId": "ca94f1a2-8a03-499b-b7b8-433621e8504a",
+        "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c"
+      }
+    ],
+    "retryPolicy": null,
+    "enabled": true,
+    "createdAt": "2026-05-08T14:45:53.082+00:00",
+    "updatedAt": "2026-05-14T17:12:19.657+00:00"
+  },
+  {
+    "id": "b04d8d18-59fb-42ed-a09e-5f597d650fbf",
+    "name": "cost-aware-routing",
+    "description": "Route Marketing project to cheaper model, others to GPT-4o",
+    "strategyType": "conditional",
+    "config": {
+      "type": "conditional",
+      "default": {
+        "type": "single",
+        "modelId": "06056793-2ab1-4975-a0db-66896ca56134",
+        "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab"
+      },
+      "conditions": [
+        {
+          "then": {
+            "type": "single",
+            "modelId": "3f45ca57-c842-4e40-a901-4d607f3fe064",
+            "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab"
+          },
+          "when": {
+            "virtualKey.projectId": {
+              "$eq": "marketing-project"
+            }
+          }
+        }
+      ]
+    },
+    "matchConditions": {
+      "models": [
+        "06056793-2ab1-4975-a0db-66896ca56134",
+        "3f45ca57-c842-4e40-a901-4d607f3fe064"
+      ]
+    },
+    "priority": 20,
+    "pipelineStage": 1,
+    "fallbackChain": [
+      {
+        "modelId": "ca94f1a2-8a03-499b-b7b8-433621e8504a",
+        "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c"
+      }
+    ],
+    "retryPolicy": null,
+    "enabled": false,
+    "createdAt": "2026-05-08T14:45:52.815+00:00",
+    "updatedAt": "2026-05-10T16:45:26.248+00:00"
+  },
+  {
+    "id": "ca8fb83a-9051-4ece-bee0-ed76a85d85f5",
+    "name": "claude-sonnet-ha",
+    "description": "Claude Sonnet 4.6 as primary; falls back to Haiku then Kimi on failure",
+    "strategyType": "single",
+    "config": {
+      "type": "single",
+      "modelId": "862cd7ce-0927-4296-88a2-ebb0ff482e5c",
+      "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450"
+    },
+    "matchConditions": {
+      "models": [
+        "862cd7ce-0927-4296-88a2-ebb0ff482e5c"
+      ]
+    },
+    "priority": 10,
+    "pipelineStage": 1,
+    "fallbackChain": [
+      {
+        "modelId": "e65623cf-60e8-489f-a91f-6e4869216d15",
+        "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450"
+      },
+      {
+        "modelId": "ca94f1a2-8a03-499b-b7b8-433621e8504a",
+        "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c"
+      }
+    ],
+    "retryPolicy": null,
+    "enabled": false,
+    "createdAt": "2026-05-08T14:45:52.289+00:00",
+    "updatedAt": "2026-05-10T16:45:25.098+00:00"
+  },
+  {
+    "id": "091d160c-436d-430c-ac94-b78249210c78",
+    "name": "load-balance-mini",
+    "description": "Load-balance GPT-4o-mini: 70% OpenAI, 30% Google Gemini 2.0 Flash",
+    "strategyType": "loadbalance",
+    "config": {
+      "type": "loadbalance",
+      "weightedTargets": [
+        {
+          "node": {
+            "type": "single",
+            "modelId": "3f45ca57-c842-4e40-a901-4d607f3fe064",
+            "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab"
+          },
+          "weight": 70
+        },
+        {
+          "node": {
+            "type": "single",
+            "modelId": "2364e1e5-861c-45c2-be9e-62fe3c5fe8d8",
+            "providerId": "c6e3b252-303a-45fd-b5dd-f9467eeba669"
+          },
+          "weight": 30
+        }
+      ]
+    },
+    "matchConditions": {
+      "models": [
+        "3f45ca57-c842-4e40-a901-4d607f3fe064"
+      ]
+    },
+    "priority": 5,
+    "pipelineStage": 1,
+    "fallbackChain": [
+      {
+        "modelId": "06056793-2ab1-4975-a0db-66896ca56134",
+        "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab"
+      },
+      {
+        "modelId": "ca94f1a2-8a03-499b-b7b8-433621e8504a",
+        "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c"
+      }
+    ],
+    "retryPolicy": null,
+    "enabled": false,
+    "createdAt": "2026-05-08T14:45:52.551+00:00",
+    "updatedAt": "2026-05-10T16:45:20.49+00:00"
+  },
+  {
+    "id": "18bb3a66-8ed1-4b9c-bbd2-7ad4003c9810",
+    "name": "default-kmini-128k",
+    "description": "Default route when no higher-priority rule matches (Moonshot Kimi 128K)",
+    "strategyType": "single",
+    "config": {
+      "type": "single",
+      "modelId": "ca94f1a2-8a03-499b-b7b8-433621e8504a",
+      "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c"
+    },
+    "matchConditions": {},
+    "priority": 0,
+    "pipelineStage": 1,
+    "fallbackChain": null,
+    "retryPolicy": null,
+    "enabled": false,
+    "createdAt": "2026-05-08T14:45:52.025+00:00",
+    "updatedAt": "2026-05-10T16:45:11.136+00:00"
+  }
+]

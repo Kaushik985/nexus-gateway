@@ -53,11 +53,12 @@ The repo-root `.env.example` is the contract: it documents every environment var
 
 **Application contract:** code reads secrets via `os.Getenv` only. The `.env` file is a boot-time convenience for local dev; it is never read on the request path and there is no `.env` in prod (env vars come from systemd EnvironmentFile or K8s Secret).
 
-**`[MUST MATCH]` tag:** values tagged `[MUST MATCH]` in `.env.example` must be identical across the services listed in the tag. Cross-service drift on these is the most common source of inter-service 403s — a `[MUST MATCH all 4 services]` value like `INTERNAL_SERVICE_TOKEN` is what Hub's WebSocket / HTTP auth checks against; the agent's bearer header; the CP `hubclient`'s Bearer auth. Mismatch on any pair instantly breaks that pair.
+**`[MUST MATCH]` tag:** values tagged `[MUST MATCH]` in `.env.example` must be identical across the services listed in the tag. Cross-service drift on these is the most common source of inter-service 403s — a `[MUST MATCH all 4 services]` value like `INTERNAL_SERVICE_TOKEN` is what Hub's WebSocket registration + `/api/internal/things` auth checks against and the agent's bearer header; the CP→Hub config-write (`/api/hub`) + admin-alerts surface uses the separate `[MUST MATCH CP ↔ Hub]` `HUB_CONFIG_TOKEN` (SEC-W2-02 — split so a data-plane service's service-token leak cannot inject fleet config). Mismatch on any pair instantly breaks that pair.
 
 **Categories of values in `.env.example`** (each value documented in the file itself; this doc lists categories, not values):
-- Inter-service auth (`INTERNAL_SERVICE_TOKEN`, `ADMIN_KEY_HMAC_SECRET`) — required, multi-service shared.
+- Inter-service auth (`INTERNAL_SERVICE_TOKEN` shared by all 4; `HUB_CONFIG_TOKEN` CP ↔ Hub config-write authority; `ADMIN_KEY_HMAC_SECRET`) — required, multi-service shared.
 - Credential encryption (`CREDENTIAL_ENCRYPTION_KEY`, optional multi-key rotation map) — CP ↔ AI Gateway shared.
+- Secret custody (SEC-W2-03): the `secretCustody` **yaml** block on CP + AI Gateway (`provider: noop|command`, `command` argv, `timeoutSec`) is **non-secret config** (argv only, no secret — same shape as compliance-proxy's `ca.kms`), so it lives in yaml, not env. It governs how the crown-jewel env secrets above are resolved at boot: `noop` reads them raw; `command` treats each as a base64 wrapped blob unwrapped once via the `packages/shared/core/kms` envelope-custody provider. The [MUST MATCH] contract stays on the unwrapped plaintext.
 - DB / Redis / NATS connection strings + credentials.
 - Per-service tuning that requires env (e.g. log level overrides, debug toggles, optional integrations).
 - Test harness (`tests/.env.<target>` for local/dev/prod targets — see `local-dev-debugging.md`).
@@ -73,13 +74,13 @@ This layer is the fleet-managed config: admin writes a value in the Control Plan
 - The `ValidByThingType` map in `packages/shared/schemas/configkey/validation.go` (per-ThingType allowed-key set).
 - The `TypedRegistry` map in `packages/shared/schemas/configkey/typed.go` for Type A keys (currently `json.RawMessage` placeholders; typed structs land per-key as receivers adopt them).
 - The §7 catalog row in this doc.
-- A seed row in `tools/db-migrate/seed/data/seed-baseline.sql` for the `thing_config_template` default — without this row, `AuditTemplateRows` (`packages/shared/schemas/configkey/validation.go`) logs a WARN at Hub startup but does not block boot.
+- A seed row in `tools/db-migrate/seed/fixtures/thing_config_template.json` for the `thing_config_template` default — without this row, `AuditTemplateRows` (`packages/shared/schemas/configkey/validation.go`) logs a WARN at Hub startup but does not block boot.
 
 **Override write-side blacklist:** `packages/shared/schemas/configtypes/policy/override_policy.go` `nonOverridableConfigKeys` lists the configKeys CP must reject when the admin attempts an override write. Currently `credentials` and `virtual_keys`. Adding entries is a deliberate policy change and requires SDD + spec updates in the same PR; the blacklist is unexported on purpose so external packages can only consult it via `IsOverridable` / `IsBlacklisted` / `BlacklistedKeys`.
 
 ## §6 — L4: system_metadata
 
-`system_metadata` is a singleton key/value table — PK is `key String @id`, value is `Json`, audit columns track who wrote and when. The Hub schema lives at `tools/db-migrate/schema.prisma` (model `SystemMetadata`).
+`system_metadata` is a singleton key/value table — PK is `key String @id`, value is `Json`, audit columns track who wrote and when. The Hub schema lives at `tools/db-migrate/schema/admin.prisma` (model `SystemMetadata`).
 
 **What belongs here:** single-instance global runtime config that admins change in the UI but that has no per-ThingType or per-Thing variation. The receiver pattern is consistent: write happens via an admin handler; readers periodically `SELECT value FROM system_metadata WHERE key = $1` and apply the result. There is no push channel — receivers poll DB or reload on demand.
 
@@ -95,6 +96,7 @@ This layer is the fleet-managed config: admin writes a value in the Control Plan
 | `agent.settings` | Agent runtime settings | Hub catbagent loader path |
 | `semantic_cache.config` | Semantic cache singleton config (fleet-wide L1 embedding) | AI Gateway dispatch |
 | `gateway.credential_reliability.config` | Credential reliability thresholds | AI Gateway dispatch + Hub credential-health rollup job |
+| `propagation_ledger:<thingType>:<configKey>` | Control-Plane-internal durable backstop for Category-B pushes: per-key `{intended, acked}` versions. Bumped on each security-sensitive `InvalidateConfigE`, acked on confirmed push; the CP reconcile loop re-pushes any key where `acked < intended`. Namespaced family (one row per `(type, key)`), not a singleton; never read by data-plane Things. | `packages/control-plane/internal/platform/hub/ledger.go` (CP reconcile arm) |
 
 **Coexistence with L3:** some keys live in both `thing_config_template` and `system_metadata` by design — `payload_capture` is the classic example. The `thing_config_template.payload_capture` row is the change-signal channel (pushed via shadow); the `system_metadata['payload_capture.config']` row is the authoritative value the receivers re-read. The split exists because the receiver-side state lives in CP-owned business tables and the `thing_config_template` push would otherwise carry an empty / stale state. A01 §5 carries the full Type A / Type B coexistence note.
 
@@ -110,8 +112,8 @@ The 14 layers (enforced verbatim by `scripts/check-rename.sh`):
 | 2 | Go tests | `*_test.go` |
 | 3 | yaml configs | `*.yaml`, `*.yml` |
 | 4 | env example files | `.env.example`, `tests/.env.*.example` |
-| 5 | seed SQL | `tools/db-migrate/seed/` |
-| 6 | DB migrations | `tools/db-migrate/migrations/` |
+| 5 | seed fixtures | `tools/db-migrate/seed/` |
+| 6 | DB schema | `tools/db-migrate/schema/`, `tools/db-migrate/schema-extras.sql` |
 | 7 | admin UI source | `packages/control-plane-ui/src/`, `packages/agent/`, `*.tsx`, `*.ts` |
 | 8 | UI i18n locales | `packages/control-plane-ui/public/`, `packages/control-plane-ui/src/i18n/`, `packages/ui-shared/src/i18n/`, `*.json` |
 | 9 | prod EnvironmentFile | SSH to prod EC2, `cat /etc/systemd/system/nexus-*.service.d/env.conf` |
@@ -154,11 +156,11 @@ Type A = `state` is the config payload (callback applies directly). Type B = `st
 | configKey | Type | Allowed ThingTypes | Wire `state` shape |
 |---|---|---|---|
 | `log_level` | A | nexus-hub, control-plane, ai-gateway, compliance-proxy | `{level: string}` |
-| `killswitch` | A | compliance-proxy, agent | `{enabled: bool}` (interception.Killswitch) |
+| `killswitch` | A | compliance-proxy, agent | `{engaged: bool}` (interception.Killswitch) |
 | `ai_guard` | A | ai-gateway | AI Guard backend config blob |
 | `cache` | A | ai-gateway | AI Gateway response-cache config |
 | `gateway_passthrough` | A | ai-gateway | Emergency passthrough toggle (3-tier global/adapter/provider) |
-| `agent_settings` | A | agent | Agent runtime settings (heartbeat, quit-allowed, etc.) |
+| `agent_settings` | A | agent | Agent runtime settings (quit-allowed, shutdown warning, auto-update, traffic upload level, theme, QUIC fallback bundles, bypass bundles, attestation). Heartbeat/drain intervals are NOT shadow-pushed — CP strips them on PUT; they are local-yaml-only |
 | `diag_mode` | A | agent | `{until: string}` (RFC3339) — per-thing override; admin writes it via the Hub override API with `expires_at`=until, the agent raises its local log level to debug until the window ends |
 | `onboarding` | A | compliance-proxy | Compliance-proxy onboarding state |
 | `payload_capture` | A (agent) / B (ai-gateway, compliance-proxy) | ai-gateway, compliance-proxy, agent | agent: `{enabled: bool}`; server: null (receivers re-read from `system_metadata['payload_capture.config']`) |
@@ -187,7 +189,7 @@ The single source of truth for the configKey set is `packages/shared/schemas/con
 
 ### L4 `system_metadata` keys
 
-See §6 for the table — `siem.config`, `payload_capture.config`, `streaming_compliance.config`, `observability.config`, `gateway.settings`, `agent.settings`, `semantic_cache.config`, `gateway.credential_reliability.config`.
+See §6 for the table — `siem.config`, `payload_capture.config`, `streaming_compliance.config`, `observability.config`, `gateway.settings`, `agent.settings`, `semantic_cache.config`, `gateway.credential_reliability.config`, and the CP-internal `propagation_ledger:<thingType>:<configKey>` family.
 
 ## §8 — Workflow: adding a new config field
 
@@ -210,7 +212,7 @@ See §6 for the table — `siem.config`, `payload_capture.config`, `streaming_co
    - Add to `ValidByThingType` map in `validation.go` for each ThingType that accepts it.
    - For Type A keys: add to `TypedRegistry` in `typed.go` (start with `json.RawMessage` placeholder; promote to a typed struct under `packages/shared/schemas/configtypes/` when a receiver wants typed decoding).
    - For Type B agent keys that need Hub-side aggregation: add a loader file under `packages/nexus-hub/internal/compliance/catbagent/` and wire it in `packages/nexus-hub/cmd/nexus-hub/wiring/storage.go`.
-   - Add a seed row in `tools/db-migrate/seed/data/seed-baseline.sql` (or the next migration).
+   - Add a seed row to the matching `tools/db-migrate/seed/fixtures/<table>.json` (reference) or `seed/fixtures/demo/<table>.json` (demo).
    - Add a row in this doc's §7 catalog.
    - Each service that needs to receive the key: add a registration in `packages/<svc>/cmd/<svc>/configdispatch/` (or for agent, `packages/agent/cmd/agent/configdispatch.go`) — `cfgloader.Register[V]` for typed Type A, `RegisterRaw` for raw-byte Type A, `RegisterRawPull` for agent Type B that needs HTTP pull.
 
@@ -244,7 +246,7 @@ The factory that consumes this yaml lives at `packages/shared/storage/redisfacto
 - configKey constants + ValidByThingType + TypedRegistry — `packages/shared/schemas/configkey/`
 - Typed config payload schemas — `packages/shared/schemas/configtypes/`
 - Override blacklist — `packages/shared/schemas/configtypes/policy/override_policy.go`
-- `system_metadata` table — `tools/db-migrate/schema.prisma`
+- `system_metadata` table — `tools/db-migrate/schema/admin.prisma`
 - Rename sweep script — `scripts/check-rename.sh` + `scripts/check-rename.manifest.tsv`
 - yaml-secrets guard — `scripts/check-no-yaml-secrets.mjs`
 - Hub side `system_metadata` loaders — `packages/nexus-hub/internal/compliance/catbagent/`, `packages/nexus-hub/internal/observability/siem/bridge.go`

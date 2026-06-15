@@ -6,8 +6,7 @@ globs:
   - packages/ai-gateway/internal/execution/canonicalbridge/**
   - packages/ai-gateway/internal/providers/canonicalext/**
   - packages/shared/traffic/**
-  - tools/db-migrate/schema.prisma
-  - tools/db-migrate/migrations/*traffic_event*/**
+  - tools/db-migrate/schema/traffic.prisma
 ---
 
 # AI Gateway / traffic_event smoke (binding)

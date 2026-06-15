@@ -3,7 +3,7 @@
 
 The LLM's only job is to WebFetch a provider's official pricing page and emit a
 normalized desired-state JSON (schema below). THIS script does every mechanical
-step deterministically — diff, edit the template JSON, edit seed-baseline.sql,
+step deterministically — diff, edit the template JSON, edit the Model fixture,
 and emit transactional prod UPDATE SQL — so the reconcile never drifts.
 
 Desired-state JSON (one file per provider, produced by the LLM from the official page):
@@ -27,9 +27,10 @@ Desired-state JSON (one file per provider, produced by the LLM from the official
 Only keys present are compared/applied; omit a key to leave that field untouched.
 
 Subcommands:
-  diff       <desired.json>              show drift: desired vs template JSON vs seed-baseline
+  diff       <desired.json>              show drift: desired vs template JSON vs fixture
   apply      <desired.json>              edit template JSON (+ index.json modelCount) and
-                                         seed-baseline.sql in place (input/output/status)
+                                         tools/db-migrate/seed/fixtures/Model.json in place
+                                         (input/output/status)
   prod-sql   <desired.json> [--out f]    emit BEGIN/UPDATE.../COMMIT for the prod Model table
 
 Paths default to repo-relative; override with --repo. Money compared at 1e-9 tolerance.
@@ -37,7 +38,6 @@ Paths default to repo-relative; override with --repo. Money compared at 1e-9 tol
 import argparse
 import json
 import os
-import re
 import sys
 from decimal import Decimal
 
@@ -47,8 +47,13 @@ TEMPLATE_FIELDS = {  # desired-key -> template-JSON key
     "cache_write": "cachedInputWritePricePerMillion",
     "cache_read": "cachedInputReadPricePerMillion",
 }
-# seed-baseline + prod only carry input/output among the money fields.
-SEED_MONEY = {"input": "inputPricePerMillion", "output": "outputPricePerMillion"}
+# fixture + prod carry all 4 money fields.
+FIXTURE_MONEY = {
+    "input": "inputPricePerMillion",
+    "output": "outputPricePerMillion",
+    "cache_write": "cachedInputWritePricePerMillion",
+    "cache_read": "cachedInputReadPricePerMillion",
+}
 PROD_FIELDS = {
     "input": "inputPricePerMillion",
     "output": "outputPricePerMillion",
@@ -61,7 +66,7 @@ def repo_paths(repo):
     return {
         "template_dir": os.path.join(repo, "packages/control-plane-ui/public/provider-templates"),
         "dist_dir": os.path.join(repo, "packages/control-plane-ui/dist/provider-templates"),
-        "seed": os.path.join(repo, "tools/db-migrate/seed/data/seed-baseline.sql"),
+        "fixture": os.path.join(repo, "tools/db-migrate/seed/fixtures/Model.json"),
     }
 
 
@@ -88,69 +93,26 @@ def fmt(v):
     return "·" if v is None else f"{Decimal(str(v)):g}"
 
 
-# ─── SQL VALUES-tuple tokenizer (for seed-baseline.sql Model INSERT rows) ──────
-def split_sql_tuple(s):
-    """Split one SQL VALUES tuple body (no outer parens) into raw token strings,
-    respecting single-quoted strings ('' escape) and '{...}' array literals."""
-    out, buf, i, n, depth, inq = [], [], 0, len(s), 0, False
-    while i < n:
-        c = s[i]
-        if inq:
-            buf.append(c)
-            if c == "'":
-                if i + 1 < n and s[i + 1] == "'":
-                    buf.append("'"); i += 2; continue
-                inq = False
-            i += 1; continue
-        if c == "'":
-            inq = True; buf.append(c); i += 1; continue
-        if c == "," and depth == 0:
-            out.append("".join(buf).strip()); buf = []; i += 1; continue
-        if c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        buf.append(c); i += 1
-    if buf:
-        out.append("".join(buf).strip())
-    return out
+def load_fixture(fixture_path):
+    """Load Model.json fixture; return (rows_list, by_code_dict).
+    by_code maps code -> row object (same reference as rows_list entry)."""
+    if not os.path.exists(fixture_path):
+        return [], {}
+    with open(fixture_path) as f:
+        rows = json.load(f)
+    by_code = {r["code"]: r for r in rows}
+    return rows, by_code
 
 
-def parse_insert(line):
-    """Return (cols[], raw_tokens[], val_start, val_end) for a Model INSERT line,
-    or None. val_start/end bound the tuple body inside VALUES(...)."""
-    m = re.search(r'INSERT INTO public\."Model"\s*\(([^)]*)\)\s*VALUES\s*\(', line)
-    if not m:
-        return None
-    cols = [c.strip().strip('"') for c in m.group(1).split(",")]
-    vs = m.end()
-    # find matching close paren of the VALUES tuple (string/array aware)
-    i, depth, inq = vs, 1, False
-    while i < len(line):
-        c = line[i]
-        if inq:
-            if c == "'":
-                if i + 1 < len(line) and line[i + 1] == "'":
-                    i += 2; continue
-                inq = False
-        elif c == "'":
-            inq = True
-        elif c == "(":
-            depth += 1
-        elif c == ")":
-            depth -= 1
-            if depth == 0:
-                break
-        i += 1
-    body = line[vs:i]
-    toks = split_sql_tuple(body)
-    if len(toks) != len(cols):
-        return None
-    return cols, toks, vs, i
+def save_fixture(fixture_path, rows):
+    """Write Model.json with 2-space indent + trailing newline (matches fixture format)."""
+    with open(fixture_path, "w", encoding="utf-8") as f:
+        json.dump(rows, f, indent=2, ensure_ascii=False)
+        f.write("\n")
 
 
 def num_literal(v):
-    # match seed-baseline's 30-dp decimal style for money columns
+    # Emit a decimal literal suitable for prod UPDATE SQL (30-dp style, trailing zeros stripped).
     return f"{Decimal(str(v)):.30f}".rstrip("0").rstrip(".") if v is not None else "NULL"
 
 
@@ -161,13 +123,15 @@ def cmd_diff(args):
     tpath = os.path.join(p["template_dir"], f"{provider}.json")
     tpl = json.load(open(tpath)) if os.path.exists(tpath) else {"models": []}
     tpl_by = {m["code"]: m for m in tpl.get("models", [])}
-    seed_by = seed_models(p["seed"], provider, args.repo)
+    _, fixture_by = load_fixture(p["fixture"])
+    # Only show fixture rows for codes present in desired.
+    fixture_matched = {code: fixture_by[code] for code in desired if code in fixture_by}
 
     # Approval-ready header: every change must be confirmable against this source.
     print(f"=== APPROVAL DIFF: {provider} ===")
     print(f"  source : {meta.get('source_url', '?')}")
     print(f"  fetched: {meta.get('fetched', '?')}")
-    print(f"  scope  : desired={len(desired)} | template={len(tpl_by)} | seed-rows-matched={len(set(seed_by) & set(desired))}")
+    print(f"  scope  : desired={len(desired)} | template={len(tpl_by)} | fixture-rows-matched={len(fixture_matched)}")
     print(f"  ACTION : present each ↓ change WITH the source link above and get explicit user approval BEFORE apply/prod-sql.")
     drift = 0
     for code, want in desired.items():
@@ -180,10 +144,10 @@ def cmd_diff(args):
             marks.append(f"status: {t.get('status','active')}→{want['status']}")
         if t is None:
             marks.append("NOT in template (add?)")
-        s = seed_by.get(code)
-        for k, sk in SEED_MONEY.items():
-            if k in want and s is not None and not money_eq(want[k], s.get(sk)):
-                marks.append(f"seed.{k}: {fmt(s.get(sk))}→{fmt(want[k])}")
+        s = fixture_by.get(code)
+        for k, fk in FIXTURE_MONEY.items():
+            if k in want and s is not None and not money_eq(want[k], s.get(fk)):
+                marks.append(f"fixture.{k}: {fmt(s.get(fk))}→{fmt(want[k])}")
         if marks:
             drift += 1
             print(f"  {code}: " + " | ".join(marks))
@@ -194,36 +158,6 @@ def cmd_diff(args):
         print(f"  -- in template but NOT on official page (deprecate?): {sorted(extra)}")
     print(f"=== {drift} model(s) drifted ===")
     return 0
-
-
-def seed_models(seed_path, provider, repo):
-    """Map code -> {inputPricePerMillion, outputPricePerMillion, status, _line} for
-    this provider's Model INSERT rows. Provider matched via providerId is opaque in
-    the dump, so we key on code membership in the desired set at call sites; here we
-    return ALL Model rows by code and let callers filter."""
-    out = {}
-    if not os.path.exists(seed_path):
-        return out
-    for ln, line in enumerate(open(seed_path)):
-        if 'INSERT INTO public."Model"' not in line:
-            continue
-        parsed = parse_insert(line)
-        if not parsed:
-            continue
-        cols, toks, _, _ = parsed
-        col_idx = {c: i for i, c in enumerate(cols)}
-        if "code" not in col_idx:
-            continue
-        code = toks[col_idx["code"]].strip().strip("'")
-        rec = {"_line": ln}
-        for k, sk in SEED_MONEY.items():
-            if sk in col_idx:
-                raw = toks[col_idx[sk]]
-                rec[sk] = None if raw.upper() == "NULL" else float(raw)
-        if "status" in col_idx:
-            rec["status"] = toks[col_idx["status"]].strip().strip("'")
-        out[code] = rec
-    return out
 
 
 def cmd_apply(args):
@@ -251,8 +185,9 @@ def cmd_apply(args):
             f.write("\n")
         print(f"  template {os.path.relpath(tpath, args.repo)}: {changed} field(s) updated")
     _bump_index(p, provider, desired, args.repo)
-    # 2) seed-baseline.sql input/output/status (in place, line-precise)
-    _apply_seed(p["seed"], desired, args.repo)
+    # 2) Model.json fixture — update inputPricePerMillion / outputPricePerMillion /
+    #    cachedInputReadPricePerMillion / cachedInputWritePricePerMillion / status in place.
+    _apply_fixture(p["fixture"], desired, args.repo)
     return 0
 
 
@@ -272,43 +207,29 @@ def _bump_index(p, provider, desired, repo):
             f.write("\n")
 
 
-def _apply_seed(seed_path, desired, repo):
-    if not os.path.exists(seed_path):
+def _apply_fixture(fixture_path, desired, repo):
+    """Update Model.json fixture rows for the models in desired.
+    Matches by code. Writes back with 2-space indent + trailing newline."""
+    rows, by_code = load_fixture(fixture_path)
+    if not rows:
+        print(f"  fixture {os.path.relpath(fixture_path, repo)}: file not found or empty — skipped")
         return
-    lines = open(seed_path).read().split("\n")
     changed = 0
-    for i, line in enumerate(lines):
-        if 'INSERT INTO public."Model"' not in line:
+    for code, want in desired.items():
+        row = by_code.get(code)
+        if row is None:
             continue
-        parsed = parse_insert(line)
-        if not parsed:
-            continue
-        cols, toks, vs, ve = parsed
-        col_idx = {c: j for j, c in enumerate(cols)}
-        if "code" not in col_idx:
-            continue
-        code = toks[col_idx["code"]].strip().strip("'")
-        want = desired.get(code)
-        if not want:
-            continue
-        new_toks = list(toks)
-        touched = False
-        for k, sk in SEED_MONEY.items():
-            if k in want and sk in col_idx:
-                cur = toks[col_idx[sk]]
-                curv = None if cur.upper() == "NULL" else float(cur)
-                if not money_eq(want[k], curv):
-                    new_toks[col_idx[sk]] = num_literal(want[k]); touched = True
-        if "status" in want and "status" in col_idx:
-            if toks[col_idx["status"]].strip().strip("'") != want["status"]:
-                new_toks[col_idx["status"]] = f"'{want['status']}'"; touched = True
-        if touched:
-            lines[i] = line[:vs] + ", ".join(new_toks) + line[ve:]
+        for k, fk in FIXTURE_MONEY.items():
+            if k in want:
+                if not money_eq(want[k], row.get(fk)):
+                    row[fk] = want[k]
+                    changed += 1
+        if "status" in want and row.get("status") != want["status"]:
+            row["status"] = want["status"]
             changed += 1
     if changed:
-        with open(seed_path, "w") as f:
-            f.write("\n".join(lines))
-    print(f"  seed-baseline.sql: {changed} Model row(s) updated")
+        save_fixture(fixture_path, rows)
+    print(f"  fixture {os.path.relpath(fixture_path, repo)}: {changed} field(s) updated")
 
 
 def cmd_prod_sql(args):

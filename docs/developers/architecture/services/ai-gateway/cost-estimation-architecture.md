@@ -12,14 +12,47 @@ The string is derived once per request at handler-dispatch time via `string(typo
 
 **Empty `endpoint_type` — non-AI forwards (binding for readers).** Only the AI Gateway route-classifies, so only AI-Gateway rows carry a kind. The compliance-proxy and agent are transparent forwarders that do not classify the request; they leave `EndpointType` unset, which the Hub consumer persists as the empty string. `traffic_event.endpoint_type` is `TEXT NOT NULL DEFAULT ''`, so empty — never `NULL` — is the canonical "unclassified" value (the consumer field is a value-type `string` and the INSERT binds it verbatim via `stripNul`, so empty cannot raise a `NOT NULL` violation). Two consequences:
 
-- The estimator's `Lookup` treats an unknown/empty kind as `chat` (`return chatCostFormula`), so it never nil-derefs on an unclassified row — though compliance-proxy/agent rows do not run the estimator at all.
+- The estimator's `Lookup` treats an unknown/empty kind as `chat` and emits a one-time WARN log naming the unknown endpoint (`sync.Map` dedup prevents log spam). This makes the silent fallback visible rather than continuing to silently misprice `stt`/`tts`/`image_generation` at chat rates.
 - Any analytics, rollup, or UI that groups / filters / displays `traffic_event.endpoint_type` MUST treat `''` as "unclassified / non-AI", not assume every row has a kind. In particular `WHERE endpoint_type = 'chat'` silently excludes **all** compliance-proxy and agent traffic; a group-by yields an `''` bucket that should render as "Other / unclassified", not blank-or-error.
 
+**`BillableUnits` fields (live production set).** `estimator.BillableUnits` carries `PromptTokens` and `CompletionTokens` only — the two fields all five production call sites actually set, and the only ones the two registered formulas price. Dead fields (`Images`, `AudioSeconds`, `VideoSeconds`, `Requests`, `CachedTokens`) have been removed. `ReasoningTokens` is folded into `CompletionTokens` at the provider-adapter layer (priced at output rate) and is not a separate `BillableUnits` field.
+
 **Adding a new cost formula for a new endpoint kind.** Three coordinated changes: (1) add the `EndpointKind*` constant in `packages/shared/transport/typology/endpointkind.go`; (2) register the cost formula keyed by the canonical kind string in `packages/ai-gateway/internal/execution/estimator/cost_formula_registry.go`; (3) add the rule to `packages/shared/transport/typology/defaults.go` so `ClassifyPath` recognises the request path.
+
+## Single canonical price source
+
+There is exactly **one** price authority for every cost in the gateway: the
+**Model table** (`Model.inputPricePerMillion` / `outputPricePerMillion` /
+`cachedInputReadPricePerMillion` / `cachedInputWritePricePerMillion`). The
+former `provider_pricing` table is retired; `cache/layer/pricing.go::LookupCachePricing`
+assembles the cache-cost rates from the in-memory Model snapshot, and the quota
+engine resolves the same rows via `store.GetModel` / `store.FetchModelPricing`.
+
+The per-request cost is computed **once**, cache-aware (prompt-cache read/write
+tokens decomposed at their own rates in `computeCacheCosts`), into
+`rec.EstimatedCostUsd`. That single value is the one number that flows everywhere:
+
+- persisted to `traffic_event.estimated_cost_usd`;
+- summed by the Hub rollup into `billed_cost_usd` — a **passthrough** of
+  `estimated_cost_usd` for success + non-cache rows, never re-priced (see
+  [metrics-rollup-architecture.md](../../cross-cutting/observability/metrics-rollup-architecture.md));
+- charged into the live quota counter by `QuotaEngine.Reconcile`
+  (`ActualUsage.CostUSD = rec.EstimatedCostUsd`, **not** a second tokens × price
+  recomputation) — see [quota-architecture.md §2a](../../cross-cutting/safety/quota-architecture.md#2a-single-canonical-price-source);
+- re-seeded into the live counter on gateway boot by the quota Backfill, which
+  reads `metric_rollup_1h.billed_cost_usd`.
+
+Because enforcement, the persisted ledger, the rollup, and the boot seed all
+read the same source and the same computed value, they cannot diverge for a
+given model — including across a gateway reboot (audit F-0163).
 
 ## Cost stamp / per-record fields
 
 The per-traffic-event cost is stamped onto `traffic_event` rows at audit-emit time and again on cache-hit short-circuits (cache HIT serves bypass the upstream call but still record a billable event at the cached cost). The five stamp sites in the AI Gateway hot path are documented inline in `packages/ai-gateway/internal/ingress/proxy/proxy.go` and `proxy_cache.go`.
+
+### `reasoning_cost_usd` breakdown
+
+`reasoning_cost_usd` is a breakdown subset of `EstimatedCostUsd` — the slice attributable to reasoning tokens, billed at the output rate (`reasoning_tokens × output price ÷ 1e6`). It is NOT an additional charge. Every cost-stamp path funnels through the shared `stampReasoningCost` helper (`proxy_cachecost.go`) so the field stays consistent with `reasoning_tokens` regardless of how the response was served: direct non-stream (`handleNonStream`), broker non-stream (`handleNonStreamWithSubscription`), streaming (`handleStreamWithSubscription`), and both cache-HIT sites (`handleNonStreamHit` / `handleStreamHit`). On a `hit_inflight` joiner the whole cost breakdown — including `reasoning_cost_usd` — is zeroed alongside `EstimatedCostUsd`, since the joiner paid no upstream cost (the leader owns the spend).
 
 ### Embedding usage fallback
 
@@ -27,7 +60,7 @@ Embedding cost is `prompt_tokens × input price` (embeddings have no completion 
 
 - At request time `preStampEmbeddingRequestMeta` (`packages/ai-gateway/internal/ingress/proxy/embedding_metadata.go`) counts the embedding `input` text(s) with `inputstaging.EstimateTokens` and stamps `metadata.embedding.estimated_prompt_tokens`.
 - At cost-stamp time `embeddingTokenFallback` back-fills `rec.PromptTokens` from that estimate **only when** the endpoint is `embeddings` and the upstream reported zero usage. Real provider usage always wins.
-- The fallback runs on every non-stream cost site — the live path (`handleNonStream`), the broker-subscription path, and both cache-HIT sites in `proxy_cache.go` — so the cost is path-independent.
+- The fallback runs on every non-stream embeddings cost site — the live path (`handleNonStream`) and the broker-subscription path. There is no cache-HIT site for embeddings: the response cache is endpoint-scoped and the pre-lookup classifier short-circuits the embeddings endpoint with `gateway_cache_skip_reason = embeddings_endpoint` (F-0222), so embeddings always reach an upstream cost site.
 
 The estimate is a heuristic count; for cheap providers with short inputs the resulting cost can be below the `estimated_cost_usd` column's six-decimal scale and round to zero, which is expected (a few embedding tokens cost sub-micro-dollar).
 
@@ -40,7 +73,15 @@ ai-gateway's SSE handler dispatches between two streaming modes based on the adm
 | `chunked_async` (live) | Usage / cost lands on `rec` per-checkpoint as deltas arrive; final usage from upstream's terminal frame seals the row. |
 | `buffer_full_block` | Whole body buffers before the single hook checkpoint; final usage from the buffered terminal frame stamps `rec` once on the path back through replay. |
 
-Both paths go through the same usage extractor and pricing lookup (`pricing.go`); the dispatch only changes *when* the rec fields land, not *what* they contain. See [`sse-streaming-compliance-architecture.md`](../../cross-cutting/safety/sse-streaming-compliance-architecture.md) for the streaming dispatch contract.
+Both paths go through the same usage extractor and pricing lookup (`pricing.go`); the dispatch only changes *when* the rec fields land, not *what* they contain.
+
+### Usage extraction on the shared normalize codecs
+
+The usage extractor delegates to the shared normalize codecs (`packages/shared/transport/normalize/codecs`), so their stream-folding behavior is part of the cost path:
+
+- **Anthropic SSE** is folded by the codec's stream state machine: input-side usage (including `cache_read_input_tokens` / `cache_creation_input_tokens`) comes from `message_start`, output-side from `message_delta`, merged into the canonical convention (`PromptTokens` = uncached + cache read + cache creation; `CompletionTokens` = output). Tool-use-only and thinking-only streams carry full usage like text streams.
+- **Reasoning tokens**: a wire-explicit count (`output_tokens_details.thinking_tokens` on Anthropic; `completion_tokens_details.reasoning_tokens` on OpenAI-compatible wires) always wins; the character-based derivation is only a fallback when the wire omits the count. The OpenAI-compatible `reasoning` field is an accepted wire alias of `reasoning_content` and feeds the same reasoning text accounting.
+ See [`sse-streaming-compliance-architecture.md`](../../cross-cutting/safety/sse-streaming-compliance-architecture.md) for the streaming dispatch contract.
 
 ## References
 

@@ -20,9 +20,11 @@ This document covers the records part of the COMPLIANCE sidebar section: **Opera
 
 **List page.** A single "Request Queue" card lists requests with columns: subject, type, status, filed (created-at), completed (completed-at), notes, and actions. The toolbar has a status filter, a refresh control, and a "File request" button.
 
-**Create and fulfillment.** The create dialog collects the data subject (chosen from the user list, stored as a subject id), an optional contact, the request type, and notes. Row actions are status-driven: a pending request can be started or rejected; an in-progress request can be fulfilled through a confirmation dialog — an access request exports the subject's virtual-key and proxy rows as downloadable JSON, and an erasure request anonymizes those rows; completed and rejected requests are terminal.
+**Create and fulfillment.** The create dialog collects the data subject (chosen from the user list, stored as a subject id), an optional contact, the request type, and notes. Row actions are status-driven: a pending request can be started or rejected; an in-progress request can be fulfilled through a confirmation dialog — an access request exports the subject's data as downloadable JSON, and an erasure request performs a full Right-to-be-Forgotten deletion; completed and rejected requests are terminal.
 
-**Key concepts.** The request type is `ACCESS` or `ERASURE`. The status is `PENDING`, `IN_PROGRESS`, `COMPLETED`, or `REJECTED`. A fulfillment reports the anonymized row counts (for erasure) or the exported row sets (for access), split by virtual-key and proxy traffic.
+**What erasure deletes.** Erasure is a complete account deletion by default. In one atomic step it anonymizes the subject's virtual-key and proxy traffic, scrubs the captured request/response bodies, and then deletes the account itself — the user profile, their single-sign-on identity links, their refresh sessions, the SCIM provisioning tokens they created, and the virtual keys and admin API keys they own. The only thing kept is the tamper-evident admin audit trail, which is retained for accountability and cannot be altered without breaking its integrity seal. A re-run against the same subject afterwards is rejected, because the user no longer exists.
+
+**Key concepts.** The request type is `ACCESS` or `ERASURE`. The status is `PENDING`, `IN_PROGRESS`, `COMPLETED`, or `REJECTED`. A fulfillment reports the affected counts (for erasure: anonymized traffic rows, scrubbed bodies, deleted owned keys / identity links / tokens, and whether the account was removed) or the exported data sets (for access).
 
 **Where the data comes from.** `dsarApi` — `list`, `get`, `create`, `update`, `fulfill` (the subject picker uses `iamApi.listUsers`).
 
@@ -52,4 +54,4 @@ This document covers the records part of the COMPLIANCE sidebar section: **Opera
 - `packages/control-plane-ui/src/pages/governance/DSARPage.tsx` — Data Subject Requests
 - `packages/control-plane-ui/src/pages/governance/ComplianceReportPage.tsx` — Compliance Report
 - `packages/control-plane-ui/src/api/` — `systemApi`, `dsarApi`, `complianceReportApi`, `iamApi`
-- `tools/db-migrate/schema.prisma` — `AdminAuditLog`, `DSARRequest` models
+- `tools/db-migrate/schema/` — `AdminAuditLog` (`admin.prisma`); `DSARRequest` (`compliance.prisma`)

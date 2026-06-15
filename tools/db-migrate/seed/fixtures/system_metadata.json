@@ -1,0 +1,156 @@
+[
+  {
+    "key": "agent.settings",
+    "value": {
+      "logLevel": "debug",
+      "quitAllowed": true,
+      "auditBatchSize": 100,
+      "shutdownWarning": {
+        "en": "Closing Nexus Agent will stop AI traffic monitoring on this device. Your IT team will be notified. Are you sure?",
+        "es": "Cerrar Nexus Agent detendrá la supervisión de tráfico de IA en este dispositivo. Se notificará a su equipo de TI. ¿Está seguro?",
+        "zh": "关闭 Nexus Agent 将停止本设备上的 AI 流量监控。您的 IT 团队会收到通知。确定要关闭吗？"
+      },
+      "autoUpdateChannel": "stable",
+      "autoUpdateEnabled": true,
+      "trafficUploadLevel": "processed",
+      "heartbeatIntervalSec": 60,
+      "auditDrainIntervalSec": 30,
+      "configSyncIntervalSec": 300,
+      "shutdownWarningEnabled": true,
+      "shutdownWarningMessage": "",
+      "forceQUICFallbackBundles": [
+        "com.google.Chrome",
+        "com.google.Chrome.canary",
+        "com.microsoft.edgemac",
+        "com.brave.Browser",
+        "company.thebrowser.Browser",
+        "org.mozilla.firefox",
+        "com.vivaldi.Vivaldi",
+        "com.apple.Safari"
+      ]
+    },
+    "updated_at": "2026-06-13T06:35:32.83+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "key": "alerting.config",
+    "value": {
+      "checks": {
+        "cost_spike": {
+          "enabled": true,
+          "thresholdUsd": 100,
+          "windowMinutes": 60
+        },
+        "high_error_rate": {
+          "enabled": true,
+          "minSamples": 10,
+          "windowMinutes": 5,
+          "thresholdPercent": 10
+        },
+        "high_rejection_rate": {
+          "enabled": true,
+          "minSamples": 10,
+          "windowMinutes": 5,
+          "thresholdPercent": 20
+        }
+      },
+      "enabled": false,
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "webhookUrl": "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+      "cooldownSec": 300,
+      "intervalSec": 60
+    },
+    "updated_at": "2026-05-10T16:44:41.691+00:00",
+    "updated_by": "nexus-user-admin"
+  },
+  {
+    "key": "audit.payload",
+    "value": {
+      "storeRequestBody": false,
+      "storeResponseBody": false
+    },
+    "updated_at": "2026-05-10T16:44:40.496+00:00",
+    "updated_by": "nexus-user-admin"
+  },
+  {
+    "key": "device.auth.mode",
+    "value": "local-login",
+    "updated_at": "2026-05-13T07:14:36.807+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "key": "device.auth.settings",
+    "value": {
+      "scopes": "openid",
+      "enabled": false,
+      "clientId": "",
+      "authorizeUrl": ""
+    },
+    "updated_at": "2026-05-10T16:44:41.18+00:00",
+    "updated_by": "nexus-user-admin"
+  },
+  {
+    "key": "observability.config",
+    "value": {
+      "logLevel": "info",
+      "metricsEnabled": true,
+      "tracingEnabled": false,
+      "tracingEndpoint": "",
+      "prometheusEndpoint": "/metrics"
+    },
+    "updated_at": "2026-05-10T16:44:40.783+00:00",
+    "updated_by": "nexus-user-admin"
+  },
+  {
+    "key": "payload_capture.config",
+    "value": {
+      "maxRequestBytes": 10485760,
+      "maxResponseBytes": 10485760,
+      "storeRequestBody": true,
+      "storeResponseBody": true,
+      "maxInlineBodyBytes": 262144
+    },
+    "updated_at": "2026-05-08T15:35:56.913+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "key": "proxy.killswitch",
+    "value": {
+      "enabled": false
+    },
+    "updated_at": "2026-05-10T16:44:41.927+00:00",
+    "updated_by": "nexus-user-admin"
+  },
+  {
+    "key": "siem.config",
+    "value": {
+      "type": "splunk",
+      "token": "",
+      "enabled": false,
+      "endpoint": "https://splunk.corp.local:8088/services/collector",
+      "batchSize": 50,
+      "flushIntervalSec": 60,
+      "includeRequestBody": false,
+      "includeResponseBody": false
+    },
+    "updated_at": "2026-05-10T16:44:40.015+00:00",
+    "updated_by": "nexus-user-compliance"
+  },
+  {
+    "key": "streaming_compliance.config",
+    "value": {
+      "chunk_bytes": 8192,
+      "default_mode": "chunked_async",
+      "fail_behavior": "fail_open",
+      "hook_timeout_ms": 2000,
+      "max_buffer_bytes": 67108864,
+      "capture_request_body": true,
+      "capture_response_body": true,
+      "raw_body_spill_enabled": true
+    },
+    "updated_at": "2026-05-14T14:34:13.548+00:00",
+    "updated_by": "nexus-user-super-admin"
+  }
+]

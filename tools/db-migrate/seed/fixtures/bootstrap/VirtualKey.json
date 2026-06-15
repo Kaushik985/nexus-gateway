@@ -1,0 +1,27 @@
+[
+  {
+    "id": "b0075000-0000-4000-8000-0000000000a2",
+    "name": "system-assistant",
+    "keyHash": null,
+    "keyPrefix": null,
+    "key_version": "v1",
+    "projectId": "b0075000-0000-4000-8000-0000000000a1",
+    "sourceApp": null,
+    "enabled": true,
+    "expiresAt": null,
+    "rateLimitRpm": null,
+    "compareEndpointRateLimitRpm": null,
+    "allowedModels": [],
+    "ownerId": "nexus-user-super-admin",
+    "createdBy": "seed-script",
+    "createdAt": "2026-01-01T00:00:00.000+00:00",
+    "updatedAt": "2026-01-01T00:00:00.000+00:00",
+    "vkType": "application",
+    "vkStatus": "active",
+    "approvedBy": "nexus-user-super-admin",
+    "approvedAt": "2026-01-01T00:00:00.000+00:00",
+    "rejectedBy": null,
+    "rejectedAt": null,
+    "rejectReason": null
+  }
+]

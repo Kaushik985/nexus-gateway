@@ -165,7 +165,7 @@ ProductId will be rejected.
 ## 10. Related documents
 
 - `docs/developers/architecture/agent-windows-wfp-driver.md` (§9 signing)
-- `docs/developers/specs/e59-s5-signing-pipeline.md` (SDD)
+- E59-S5 signing pipeline SDD (internal specification; not published)
 - `packages/agent/platform/windows/scripts/sign-driver.ps1`
 - `packages/agent/platform/windows/scripts/submit-driver.ps1`
 - `packages/agent/platform/windows/scripts/build.ps1`

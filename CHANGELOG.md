@@ -7,7 +7,25 @@ repo uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once a
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-06-14
+
+First general-availability release. All three intercept planes (AI Gateway,
+Compliance Proxy, Desktop Agent) and the full architecture — Hub Thing/shadow
+model, control plane + UI, compliance/audit pipeline, provider-adapter
+framework — are production-complete. macOS + Linux desktop agents are **GA**
+(Windows experimental). Post-1.0 work is predominantly additive: new provider
+adapters and broader spec coverage.
+
 ### Added
+- **Desktop Agent AI-chat capture (macOS + Linux GA).** End-to-end interception
+  + structured normalization of AI-chat traffic — codex (OpenAI Responses on
+  chatgpt.com), Cursor (app + cursor-agent CLI via `/agent.v1.AgentService/Run`),
+  and browser web-chat — captured into the audit / `traffic_event` pipeline
+  without breaking the tools. macOS uses the `NETransparentProxyProvider`
+  system extension (sole intercept path).
+- Cursor connect-RPC decoder: per-frame gzip-decompressed agent-service frames
+  decode embedded OpenAI-compat / Lexical JSON into structured conversation +
+  model + readable tool calls.
 - AI vibe-coding documentation surface: `docs/developers/workflow/ai-workflow.md` describing
   the SDD pipeline, binding-rule structure, self-audit gates, and parallel-
   session safety protocol; `docs/developers/workflow/ai-skill-catalog.md` describing the
@@ -97,6 +115,28 @@ repo uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once a
     callout before saving.
 
 ### Fixed
+- **traffic_event requested-vs-routed model/provider semantics.** The
+  REQUESTED columns now mean what the client asked for: `model_id` /
+  `provider_id` / `provider_name` are populated only when the client requested
+  a specific model that resolved unambiguously to one catalog model, and are
+  NULL for `model="auto"` / multi-provider codes / OpenAI-style requests that
+  don't pin a provider (previously `provider_id` wrongly carried the routed
+  primary and `model_id` was never written). The ROUTED columns
+  (`routed_provider_id` / `routed_model_id` / …) carry the actually-served
+  target, and all usage / cost / analytics / rollups / list filters attribute
+  by the routed side. **Semantic note for direct `traffic_event` consumers:**
+  if you read `provider_id` / `model_id` as "what served", switch to the
+  `routed_*` columns.
+- **Connect-RPC envelope flags** (`shared/transport/streaming`): bit `0x01` is
+  per-message gzip-compression and `0x02` is end-of-stream — the reader had
+  conflated them, stopping after the first compressed frame and feeding
+  still-compressed bytes to the protobuf parser. Now decodes per-frame gzip
+  correctly (fixes Cursor `/agent.v1.AgentService/Run` capture).
+- **Interception precision**: cursor host interception is now chat-only —
+  `*.cursor.sh` passes through by default and captures only the chat-bearing
+  paths (`/agent.v1.AgentService/Run`, `/aiserver.v1.AiService/Stream`),
+  eliminating tens of thousands of analytics/dashboard/metrics/telemetry
+  events previously captured by a `PROCESS`-by-default rule.
 - `docker-compose.yml` Postgres credentials now honor `${POSTGRES_*}` env
   overrides with sensible local-dev defaults, removing inlined values.
 
@@ -104,8 +144,8 @@ repo uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once a
 
 ## How releases work
 
-Pre-GA: this CHANGELOG tracks shipped work in the `Unreleased` section.
-At GA cut, the section is renamed to `[1.0.0] — YYYY-MM-DD` and a fresh
+This CHANGELOG tracks shipped work in the `Unreleased` section; at each
+release cut the section is renamed to `[X.Y.Z] — YYYY-MM-DD` and a fresh
 `Unreleased` opens above it. Each release entry mirrors the structure
 above (`Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security`).
 

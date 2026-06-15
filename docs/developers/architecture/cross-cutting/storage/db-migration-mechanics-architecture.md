@@ -1,127 +1,202 @@
-# DB migration mechanics architecture
+# DB schema & seed mechanics architecture
 
-PostgreSQL is the system of record. Its schema is defined and versioned with
-Prisma; its rows are accessed at runtime by hand-written SQL over `pgx`. The two
-roles are deliberately split: **Prisma owns schema authoring and migration**,
-while **the Go services own the request path** with no ORM in it. This doc covers
-how a schema change becomes a migration, how migrations are ordered and applied,
-how a fresh database is seeded, and where out-of-band data fixes live.
+PostgreSQL is the system of record. Its schema is defined with Prisma and applied
+declaratively with `prisma db push`; its rows are accessed at runtime by
+hand-written SQL over `pgx`. The two roles are deliberately split: **Prisma owns
+schema authoring and application**, while **the Go services own the request path**
+with no ORM in it. This doc covers how the schema is authored, how it is applied
+to a database, how PostgreSQL-native objects that Prisma cannot express are
+recovered, how a fresh database is seeded in two tiers, and the forward path to
+versioned migrations.
 
-Everything migration-related lives under `tools/db-migrate/`.
+Everything lives under `tools/db-migrate/`.
 
-## 1. Schema authoring
+## 1. Schema authoring — the `schema/` folder
 
-`tools/db-migrate/schema.prisma` is the single schema source. It declares a
-PostgreSQL datasource and carries every model. Model and field doc-comments are
-load-bearing documentation in their own right — they record intent that the SQL
-alone can't, for example that `Provider.adapterType` is validated as an enum in
-the Control Plane handler and the OpenAPI spec rather than by a SQL `CHECK`, so
-the value set can evolve without a migration.
+The schema source is the `tools/db-migrate/schema/` folder, a Prisma multi-file
+schema grouped by domain: `schema.prisma` (datasource + generator only) plus
+per-domain files — `identity`, `iam`, `admin`, `providers`, `gateway`, `cache`,
+`compliance`, `nodes`, `traffic`, `observability`, `assistant`. Every model and
+enum lives in exactly one file; the split is purely organizational — `db push`
+from the folder produces the identical physical schema a single file would.
 
-Prisma configuration lives in `tools/db-migrate/prisma.config.ts`: it points at
-the schema, the `migrations/` directory, and the seed command, and reads the
-database URL from the `DATABASE_URL` environment variable. The seed entry is
-expressed as `npm run seed` so a real shell evaluates the chained command; Prisma
-otherwise token-splits the string and would drop everything after the `&&`.
+Model and field doc-comments are load-bearing documentation in their own right —
+they record intent the SQL alone can't, for example that `Provider.adapterType`
+is validated as an enum in the Control Plane handler and the OpenAPI spec rather
+than by a SQL `CHECK`, so the value set can evolve without a schema change.
 
-## 2. Migrations
+Prisma configuration lives in `tools/db-migrate/prisma.config.ts`: it points
+`schema` at the folder, carries the `seed` command, and reads the database URL
+from `DATABASE_URL`. The seed entry is expressed as `npm run seed` so a real
+shell evaluates the chained command; Prisma 7 otherwise token-splits the string
+and would drop everything after the `&&`.
 
-Each migration is a directory under `tools/db-migrate/migrations/` named
-`<YYYYMMDDHHMMSS>_<description>/` containing a single `migration.sql`. Prisma
-applies migrations in lexical order of that timestamp prefix and records each
-applied one in the `_prisma_migrations` table, so an environment only ever runs
-the migrations it has not seen.
+## 2. Applying the schema — `prisma db push`
 
-The npm scripts in `tools/db-migrate/package.json` wrap the Prisma commands:
-`migrate:dev` authors and applies a new migration against a development database,
-`migrate:deploy` applies pending migrations non-interactively (the production
-path), `migrate:status` reports drift, and `migrate:reset` drops and rebuilds from
-scratch.
+The schema is applied with `prisma db push` (the `db:push` npm script). `db push`
+is declarative: it reconciles the database to the model graph in `schema/`. There
+are **no migration files, no baseline, and no `_prisma_migrations` table** in 1.0.
+The model graph in `schema/` is the single source of truth for the table shape,
+and `db push` makes any database match it.
 
-### The baseline
+This is deliberate for the pre-GA / open-source phase: a fresh clone gets a clean
+schema in one command with no history to replay, and there is no internal
+migration changelog to ship publicly. `dev-start.sh` runs `prisma db push` on
+every bring-up (additively by default; `--force-reset` wipes).
 
-The first migration, `00000000000000_baseline_…/migration.sql`, uses an all-zero
-prefix so it sorts ahead of every dated migration. It is a full schema snapshot —
-a `pg_dump` of the schema — that collapses the schema's history into one starting
-point. Every later dated migration layers its change on top of that baseline.
+## 3. PostgreSQL-native objects — `schema-extras.sql`
 
-### Timestamp uniqueness (binding)
+`db push` can only create what `schema/`'s model graph expresses. A handful of
+PostgreSQL-native objects have no Prisma representation and live in
+`tools/db-migrate/schema-extras.sql`, applied **after** `db push` and **before**
+seeding. The file is re-runnable (`DROP … IF EXISTS` / `CREATE … IF NOT EXISTS`,
+`CREATE OR REPLACE` for the function and view). It contains:
 
-Two migration directories that share the same `YYYYMMDDHHMMSS` prefix cause Prisma
-to silently apply only one of them and skip the other, with no error. To prevent
-that, `scripts/check-migration-timestamps.sh` extracts the 14-character prefix of
-every migration directory and fails if any prefix repeats. It runs in pre-commit
-and CI. When two migrations would collide, the fix is to bump one prefix by a
-second or a minute and rebase any references to it.
+- **`metric_ops_raw` RANGE partitioning** by `sampled_at`, plus its pre-created
+  daily partitions. `schema/` declares `MetricOpsRaw` as a plain table; the Hub
+  `ops-raw-partition` job requires the table to be partitioned or it fails every
+  cycle. (This block drops and recreates the table — ops telemetry is disposable,
+  so re-applying on an existing dev database is acceptable.)
+- **`cache_key_source(provider_id, key)` function** and the
+  **`cache_provider_effective` view**, which resolve and merge the three
+  cache-config tiers (global / adapter / provider-override).
+- **Partial, expression, and GIN indexes** that Prisma's `@@index` cannot express
+  — `WHERE` predicates, expression keys, `COALESCE` expression-unique keys, GIN.
+  Several are correctness-bearing, not just performance:
+  - `thing_type_physical_id_uniq` — `UNIQUE (type, physical_id) WHERE type='agent'`
+    — what keeps an agent's `thing.id` stable across reinstalls (Hub matches the
+    hardware fingerprint on re-enroll instead of issuing a new id). See
+    [service-call-framework.md](../foundation/service-call-framework.md).
+  - `DeviceAssignment_deviceId_active_uidx` — one active assignment per device.
+  - `exemption_request_pending_dedup_uniq` — one pending request per (host, requester).
+  - `uq_ops_rollup_{5m,1h,1d,1mo}` — `COALESCE(thing_id,'')` expression-unique keys
+    that dedup rollup rows.
 
-## 3. Seeding a fresh database
+  The set is recovered by diffing the schema `db push` produces against the schema
+  a full apply of the historical migration lineage produced; only objects valid
+  under the current `schema/` columns are kept.
 
-`tools/db-migrate/seed/seed.ts` brings a freshly-migrated database up to a usable
-state. It connects directly with `pg` and runs three steps:
+## 4. Seeding a fresh database — three tiers
 
-1. **Apply the baseline data snapshot.** `seed/data/seed-baseline.sql` is a
-   `pg_dump --data-only --column-inserts --disable-triggers` snapshot of an
-   operational source database, applied as one multi-statement query. Ciphertext
-   columns are redacted in the snapshot, and high-cardinality event tables —
-   traffic events, metric rollups, ops metrics, job runs, admin audit log, tokens,
-   diagnostic events — are excluded, so the snapshot stays a configuration
-   fixture rather than a copy of operational history.
-2. **Re-encrypt credentials.** Every `Credential` row's encrypted key material is
-   overwritten with a fresh AES-256-GCM encryption of a fake plaintext using the
-   local `CREDENTIAL_ENCRYPTION_KEY`. Real provider keys are never committed to
-   the snapshot, and the re-encryption makes the ciphertext decryptable with the
-   local key.
-3. **Reset ephemeral state.** Every `Thing` row is marked offline; the real
-   services flip themselves back to online on their first heartbeat after boot.
+`tools/db-migrate/seed/seed.ts` brings a freshly-pushed database to a usable state
+through the Prisma Client (with the `@prisma/adapter-pg` driver adapter). It runs
+**Tier A (reference) always**, then **bootstrap (minimal tenant) always**, then
+**Tier B (demo playground) unless `SEED_DEMO=false`**. Splitting the always-on
+minimal tenant out of the demo playground is what lets a production install
+(`SEED_DEMO=false`) ship a loginable admin and a working assistant **without any
+demo rows** — so no repo-committed credential is usable on an internet-facing
+deployment.
 
-The seed runs through `npm run seed`, which `prisma migrate reset` and the seed
-command invoke. The regeneration procedure for the snapshot is documented in
-`seed/data/README.md`.
+### Tier A — reference catalog (always)
 
-## 4. Out-of-band scripts
+The product reference data every install needs: providers, the model catalog
+(with pricing and capability columns), the interception domain/path catalog,
+compliance rules and rule-packs, config templates, the managed IAM policies and
+the standard IAM groups + their policy attachments, `system_metadata` defaults,
+the cache-config singletons, and the `semantic_cache_config` row.
+
+It is delivered as versioned JSON fixtures under `seed/fixtures/<table>.json`,
+loaded by idempotent `upsert` keyed on each table's unique key
+(`seed/reference/`). The fixtures are produced by
+`scripts/extract-reference-fixtures.ts`, which selects each reference table from a
+source database with `row_to_json` (lossless — it captures every column, unlike a
+`pg_dump` short-form `INSERT`) and applies a curation pass that excludes
+operational rows (e.g. a runtime version counter, any real secret) and normalizes
+captured-drift values back to product defaults. The 5 rule-pack YAMLs stay under
+`seed/rule-packs/`.
+
+### Bootstrap — minimal tenant (always)
+
+The smallest tenant every install needs to be usable: one organization, one
+project, the super-admin (`admin@nexus.ai`), the super-admin's IAM binding
+(membership + direct policy attachment — the group and policy themselves are
+Tier-A rows), and a dedicated **system-assistant** virtual key that powers
+Chat-with-Nexus. Delivered as fixtures under `seed/fixtures/bootstrap/`
+(`seed/bootstrap/`) with secret columns nulled. At seed time `seedBootstrap`
+re-stamps the two secrets under the local keys: the super-admin password via
+scrypt `hashPassword` (matching the Control Plane verifier) and the assistant VK
+hash via HMAC `hashVirtualKey` (under `ADMIN_KEY_HMAC_SECRET`), using a
+deterministic local plaintext (`assistantVkKey`). It requires
+`ADMIN_KEY_HMAC_SECRET` and fails fast if absent. These deterministic dev
+defaults are PUBLIC in the OSS repo; the appliance overwrites both with
+per-instance random secrets at first boot (see §AMI below).
+
+### Tier B — demo playground (opt-out)
+
+A rich, navigable demo so an evaluation install is immediately explorable: a
+multi-org tenant, additional demo users, a demo provider + credential, demo
+models, quota policies, and virtual keys. It is delivered as fixtures under
+`seed/fixtures/demo/` (`seed/demo/`), with all source-system secret columns nulled
+in the committed files. Demo rows owned by the super-admin (virtual keys, admin
+keys) resolve because the bootstrap tier — which seeds the super-admin — always
+runs first. At seed time `seedDemo` **re-stamps** the secrets under the local
+keys: passwords via scrypt `hashPassword`, virtual / admin key hashes via HMAC
+(under `ADMIN_KEY_HMAC_SECRET`), and credential ciphertext via AES-256-GCM
+`fakeEncrypt` (under `CREDENTIAL_ENCRYPTION_KEY`). The documented demo credentials
+are printed in a banner at the end of the seed. Tier B therefore requires both env
+keys; it fails fast if either is absent.
+
+### Bootstrap flow
+
+- Local / CI: `prisma db push` → apply `schema-extras.sql` → `prisma db seed`
+  (Tier A + bootstrap + Tier B). `dev-start.sh` does exactly this.
+- Production / clean install (incl. the AMI): `prisma db push` → apply
+  `schema-extras.sql` → `npm run seed:prod` (`SEED_DEMO=false` — Tier A +
+  bootstrap only, no demo rows).
+
+All seed writes are idempotent upserts: re-running converges, never duplicates.
+
+## 5. Forward path to versioned migrations
+
+`db push` has no migration history, so it cannot perform a controlled, reviewable
+production schema upgrade. When the first post-1.0 schema change needs that, the
+project reintroduces `prisma migrate`, generating the first migration **from the
+1.0 `schema/`** as the new starting point. 1.0 itself ships pure schema + `db
+push` + `schema-extras.sql`.
+
+## 6. Out-of-band scripts
 
 `tools/db-migrate/manual-scripts/` holds one-off SQL — data backfills, cost
-recomputes, and baseline-sync scripts — that an operator runs by hand against a
-specific environment. These are distinct from versioned migrations: a migration is
-schema change that `migrate:deploy` applies automatically and `_prisma_migrations`
-tracks, whereas a manual script is a data operation run deliberately, once, with
-operator judgment. Keeping data backfills out of the migration sequence keeps the
-migration history a pure schema timeline.
+recomputes — that an operator runs by hand against a specific environment. These
+are data operations run deliberately with operator judgment, distinct from the
+declarative schema (`schema/` + `schema-extras.sql`) and from the seed.
 
-## 5. Runtime access and the Go config mirrors
+## 7. Runtime access and the Go config mirrors
 
 At runtime the Go services read and write through `pgx` with hand-written SQL —
 there is no ORM in the request path (for example
 `packages/ai-gateway/internal/platform/store/pgx.go` and the cache layer's
-loaders). Prisma is a build- and deploy-time tool, not a runtime dependency of the
-services.
+loaders). Prisma is a build- and deploy-time tool, not a runtime dependency.
 
 The schema carries several JSON columns whose shapes are configuration domains
 (the `thing_config_template` config-key payloads). Go consumers need typed access
 to those shapes, so `packages/shared/schemas/configtypes/` hand-maintains the
 mirror — five sub-packages (`enums`, `identity`, `interception`, `observability`,
-`policy`) of Go structs matching the JSON shapes. There is no code generator from
-the schema to these structs; they are kept in step by hand, and the configuration
+`policy`) of Go structs matching the JSON shapes. There is no generator from the
+schema to these structs; they are kept in step by hand, and the configuration
 architecture's per-key catalog is the registry that keeps the two sides aligned.
 
-## 6. Renames
+## 8. Renames
 
 A rename that touches a schema-adjacent identifier (a column, a config key, an env
 variable) has to be swept across far more than the schema. `scripts/check-rename.sh`
 is the sweep gate that verifies a rename reached every layer — Go source and
-tests, YAML and env examples, the SQL seed, migrations, UI source and i18n,
-production systemd and database rows, docs, skills, and the agent rule files. The
-binding rule and the full layer list live in
+tests, YAML and env examples, the schema (`schema/` + `schema-extras.sql`), the
+seed fixtures, UI source and i18n, production systemd and database rows, docs,
+skills, and the agent rule files. The binding rule and the full layer list live in
 [configuration-architecture.md](../foundation/configuration-architecture.md).
 
 ## References
 
-- `tools/db-migrate/schema.prisma` — schema source
-- `tools/db-migrate/prisma.config.ts` — Prisma configuration
-- `tools/db-migrate/package.json` — migrate / seed npm scripts
-- `tools/db-migrate/migrations/` — versioned migrations + the all-zero baseline
-- `tools/db-migrate/seed/seed.ts` — fresh-database seed
+- `tools/db-migrate/schema/` — multi-file schema source (single source of truth)
+- `tools/db-migrate/prisma.config.ts` — Prisma configuration (`schema` folder + seed)
+- `tools/db-migrate/package.json` — `db:push` / `generate` / `seed` / `seed:prod` scripts
+- `tools/db-migrate/schema-extras.sql` — post-push PostgreSQL-native objects
+- `tools/db-migrate/seed/seed.ts` — three-tier seed entry (`shouldSeedDemo` switch)
+- `tools/db-migrate/seed/reference/` + `seed/fixtures/` — Tier-A reference catalog
+- `tools/db-migrate/seed/bootstrap/` + `seed/fixtures/bootstrap/` — minimal tenant (always)
+- `tools/db-migrate/seed/demo/` + `seed/fixtures/demo/` — Tier-B demo playground
+- `tools/db-migrate/scripts/extract-reference-fixtures.ts` — fixture generator
 - `tools/db-migrate/manual-scripts/` — out-of-band data scripts
-- `scripts/check-migration-timestamps.sh` — timestamp-uniqueness guard
 - `scripts/check-rename.sh` — rename sweep gate
 - `packages/shared/schemas/configtypes/` — hand-maintained Go config-shape mirrors

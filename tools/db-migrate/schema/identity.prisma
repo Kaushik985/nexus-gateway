@@ -1,0 +1,254 @@
+/// Unified identity model. Supports local password auth,
+/// OIDC SSO, and OS-identity-based enrollment from the desktop agent.
+model NexusUser {
+  id                    String    @id @default(uuid())
+  organizationId        String    @default("default")
+  displayName           String
+  email                 String?
+  status                String    @default("active") // active | suspended | deactivated
+  canAccessControlPlane Boolean   @default(false)
+  /// Provisioning source: 'local' (manual), 'oidc' / 'saml' (JIT via SSO), 'scim' (IdP push).
+  source                String    @default("local")
+  osUsername            String?
+  osDomain              String?
+  passwordHash          String?
+  passwordUpdatedAt     DateTime? @db.Timestamptz(3)
+  /// IANA timezone name for display preference (e.g. "Asia/Shanghai").
+  /// Null = use the browser's detected TZ at display time. E32-S1.
+  preferredTimezone     String?
+  breakGlass            Boolean   @default(false)
+  disabledReason        String?
+  disabledAt            DateTime? @db.Timestamptz(3)
+  lastLoginAt           DateTime? @db.Timestamptz(3)
+  createdBy             String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  organization            Organization               @relation(fields: [organizationId], references: [id])
+  ownedAdminApiKeys       AdminApiKey[]              @relation("AdminApiKeyOwner")
+  ownedVirtualKeys        VirtualKey[]               @relation("VirtualKeyOwner")
+  deviceAssignments       DeviceAssignment[]
+  federatedIdentities     UserFederatedIdentity[]
+  refreshTokens           RefreshToken[]
+  diagModeWindowsSet      ThingDiagModeWindow[]      @relation("ThingDiagModeWindowSetBy")
+  retentionConfigsUpdated MetricOpsRetentionConfig[] @relation("MetricOpsRetentionConfigUpdatedBy")
+  scimTokensCreated       ScimToken[]                @relation("ScimTokenCreatedBy")
+
+  @@unique([organizationId, email])
+  @@unique([organizationId, osUsername, osDomain])
+  @@index([organizationId, status])
+}
+
+model Organization {
+  id              String         @id @default(uuid())
+  name            String
+  code            String         @unique
+  parentId        String?
+  parent          Organization?  @relation("OrgTree", fields: [parentId], references: [id])
+  children        Organization[] @relation("OrgTree")
+  /// Materialized path for efficient subtree queries. Root orgs: /{id}/. Children: {parent.path}{id}/.
+  /// Enables LIKE '/{ancestor}/.../%' subtree scans without recursive CTEs. E39.
+  path            String         @unique
+  description     String?
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+  enabled         Boolean        @default(true)
+  /// IANA timezone name. Drives org-local analytics calendar windows
+  /// ("yesterday" / "this month" attribution, carried onto traffic_event
+  /// as origin_tz) and business-hours rules. Quota-enforcement period keys
+  /// are computed in UTC, not org-local. Distinct from
+  /// User.preferredTimezone (display only). E32-S1.
+  timezone        String         @default("UTC")
+  /// Provisioning source: 'local' (manual) or 'idp' (synced from IdP via SCIM/manual mapping).
+  source          String         @default("local")
+  /// External IdP group ID that maps to this org (set during SCIM group provisioning).
+  externalGroupId String?
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+
+  users    NexusUser[]
+  projects Project[]
+
+  @@index([parentId])
+}
+
+model Project {
+  id             String       @id @default(uuid())
+  name           String
+  code           String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  description    String?
+  contactName    String?
+  contactEmail   String?
+  status         String       @default("active")
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+
+  virtualKeys VirtualKey[]
+
+  @@index([organizationId])
+}
+
+/// Registered identity provider (local, OIDC, or SAML) the auth-server trusts
+/// for end-user login. One IdentityProvider row backs every federation link in
+/// UserFederatedIdentity.
+model IdentityProvider {
+  id          String   @id @default(uuid()) @db.Uuid
+  type        String // local | oidc | saml
+  name        String
+  enabled     Boolean  @default(true)
+  config      Json     @default("{}")
+  /// Name of the IamGroup every JIT-provisioned user from this IdP is added to
+  /// as a baseline (on top of any IdpGroupMapping matches). Resolved by name at
+  /// provisioning time; an empty/unresolvable name means no baseline group.
+  /// Default "developers" matches the seeded IamGroup of that name.
+  defaultRole String   @default("developers")
+  /// Whether JIT-provisioned users from this IdP get NexusUser.canAccessControlPlane.
+  /// Per-IdP and admin-controlled because one IdP may federate both CP admins
+  /// and agent end-users; defaults false (safe), opted in on the IdP form.
+  defaultControlPlaneAccess Boolean @default(false)
+  jitEnabled  Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  federatedIdentities UserFederatedIdentity[]
+  scimTokens          ScimToken[]
+  idpGroupMappings    IdpGroupMapping[]
+  scimManagedGroups   IamGroup[]              @relation("ScimManagedGroups")
+
+  @@map("IdentityProvider")
+}
+
+/// Link row between a NexusUser and an external IdentityProvider subject.
+/// One NexusUser can be linked to multiple IdPs (e.g. SSO + break-glass local).
+model UserFederatedIdentity {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String
+  idpId           String    @db.Uuid
+  externalSubject String
+  externalEmail   String?
+  rawClaims       Json?
+  linkedAt        DateTime  @default(now()) @db.Timestamptz(3)
+  lastLoginAt     DateTime? @db.Timestamptz(3)
+
+  user NexusUser        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idp  IdentityProvider @relation(fields: [idpId], references: [id])
+
+  @@unique([idpId, externalSubject])
+  @@index([userId])
+  @@map("UserFederatedIdentity")
+}
+
+/// OAuth 2.0 client registration. The desktop agent is a public client
+/// (no secret); the dashboard BFF is a confidential client
+/// (clientSecretHash populated). PKCE is mandatory for every client at
+/// /oauth/authorize — there is no per-client opt-out.
+model OAuthClient {
+  id                  String    @id
+  name                String
+  type                String // public | confidential
+  redirectUris        String[]
+  allowedScopes       String[]
+  accessTtlSeconds    Int       @default(3600)
+  refreshTtlSeconds   Int       @default(86400)
+  clientSecretHash    String?
+  /// Stamp of the last successful secret rotation. NULL means the secret has
+  /// never been rotated since creation. Surfaced in the admin detail page so
+  /// admins can judge whether a stale-secret incident is plausible.
+  lastSecretRotatedAt DateTime? @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+
+  @@map("OAuthClient")
+}
+
+/// Refresh token record. Stored hashed (never raw) so reuse-detection can
+/// chain parent/child via parentJti. sessionId groups a chain of rotations
+/// for the same login session.
+model RefreshToken {
+  jti       String    @id @db.Uuid
+  sessionId String    @db.Uuid
+  parentJti String?   @db.Uuid
+  userId    String
+  clientId  String
+  deviceId  String?
+  tokenHash Bytes
+  usedAt    DateTime? @db.Timestamptz(3)
+  expiresAt DateTime  @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user   NexusUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client OAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([clientId])
+  @@index([expiresAt])
+  @@map("RefreshToken")
+}
+
+/// Revocation ledger (structure only in Phase 1; wired into verifier in Phase 4).
+/// A single row can revoke a specific jti, all tokens for a user, a device, or
+/// a session. Rows expire naturally via expiresAt.
+model RevokedToken {
+  id              BigInt   @id @default(autoincrement())
+  scope           String // jti | user | device | session
+  targetJti       String?  @db.Uuid
+  targetUserId    String?
+  targetDeviceId  String?
+  targetSessionId String?  @db.Uuid
+  revokedAt       DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt       DateTime @db.Timestamptz(3)
+  reason          String
+  actor           String?
+
+  @@index([expiresAt])
+  @@index([targetUserId])
+  @@index([targetDeviceId])
+  @@index([targetSessionId])
+  @@map("RevokedToken")
+}
+
+/// SCIM bearer token for provisioner authentication (separate from admin OAuth tokens).
+/// The full token value is never stored — only the bcrypt hash. tokenPrefix is a
+/// display hint (e.g. "nxs_scim_abc123") shown in the UI after creation.
+model ScimToken {
+  id                 String    @id @default(uuid()) @db.Uuid
+  name               String
+  tokenHash          String    @unique
+  tokenPrefix        String
+  identityProviderId String?   @db.Uuid
+  createdBy          String
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  lastUsedAt         DateTime? @db.Timestamptz(3)
+  revokedAt          DateTime? @db.Timestamptz(3)
+
+  identityProvider IdentityProvider? @relation(fields: [identityProviderId], references: [id], onDelete: SetNull)
+  createdByUser    NexusUser         @relation("ScimTokenCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([identityProviderId])
+  @@map("ScimToken")
+}
+
+/// Maps an external IdP group to an internal IamGroup for SCIM Group provisioning.
+/// When the SCIM Groups endpoint receives a push for a group membership, this table
+/// resolves which IamGroup the user should be added to, which carries IAM policy attachments.
+model IdpGroupMapping {
+  id                 String   @id @default(uuid()) @db.Uuid
+  identityProviderId String   @db.Uuid
+  externalGroupId    String
+  externalGroupName  String?
+  iamGroupId         String
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  identityProvider IdentityProvider @relation(fields: [identityProviderId], references: [id], onDelete: Cascade)
+  iamGroup         IamGroup         @relation(fields: [iamGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([identityProviderId, externalGroupId])
+  @@index([iamGroupId])
+  @@map("IdpGroupMapping")
+}

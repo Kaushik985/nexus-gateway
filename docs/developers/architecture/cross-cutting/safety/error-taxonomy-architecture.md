@@ -1,6 +1,6 @@
 # Error taxonomy architecture
 
-Every error surface in the Nexus Gateway resolves to one of three layers: the **canonical `provcore.ProviderError`** that adapters return when an upstream HTTP call fails, the **per-ingress wire envelope** that the gateway encodes for the client (OpenAI / Anthropic / Gemini / Responses-API shape), and the **admin-API error helper** that Control Plane uses for its own admin surface. The three layers are deliberately separate — adapters reason in canonical codes without caring which client format will be encoded, the wire writers translate one canonical error into the right native shape per ingress, and the admin surface uses its own helper because it never speaks LLM dialect.
+Every error surface in the Nexus Gateway resolves to one of four layers: the **canonical `provcore.ProviderError`** that adapters return when an upstream HTTP call fails, the **per-ingress wire envelope** that the gateway encodes for the client (OpenAI / Anthropic / Gemini / Responses-API shape), the **admin-API error helper** that Control Plane uses for its own admin surface, and the **service-internal envelope** that the Hub and compliance-proxy emit on their own HTTP APIs (§9). The first three layers are deliberately separate — adapters reason in canonical codes without caring which client format will be encoded, the wire writers translate one canonical error into the right native shape per ingress, and the admin surface uses its own helper because it never speaks LLM dialect. The fourth layer now uses the same `{"error":{"message","type","code"}}` nested shape as Control Plane: all services call `packages/shared/transport/httperr` so every service surface is parseable with a single decoder.
 
 Anchor packages:
 
@@ -134,6 +134,20 @@ Control Plane's admin surface uses the same envelope shape via two helpers — `
 
 A new canonical `Code` automatically becomes a new label value on `errors_total` — no metrics-side registration needed, but the operator dashboard must add the new bucket explicitly if it's expected to be visible.
 
+## 9. Service-internal envelope (Hub + compliance-proxy)
+
+Hub and compliance-proxy HTTP APIs use the same `{"error":{"message","type","code"}}` nested shape as the Control Plane admin surface (§7), via `packages/shared/transport/httperr`.
+
+```json
+{"error": {"message": "<human-readable>", "type": "<snake_case_category>", "code": "<SCREAMING_SNAKE_MACHINE_CODE>"}}
+```
+
+**Hub** Echo handlers call `c.JSON(status, httperr.ErrJSON(msg, errType, code))` via the helper functions in each subsystem's `helpers.go` (fleet, identity, alerts, traffic ingest, observability diag). Raw-writer paths use `httperr.WriteError`. Type strings: `validation_error`, `auth_error`, `not_found`, `internal_error`, `service_unavailable`. Examples: `alerts/engine/handlers_admin.go`, `fleet/handler/hubapi/helpers.go`, `identity/handler/enroll/helpers.go`, `traffic/ingest/spill/helpers.go`. Exception: a small set of diagnostic and RPC-bridge responses (`observability/handler/diag/runtime_bridge.go` 501/503 paths, `fleet/handler/hubapi/hub_api_dlq.go`) carry richer payloads (extra `meta`, `target`, or `dispatchId` fields) that do not conform to the standard envelope and are not parsed as errors by callers.
+
+**compliance-proxy (runtime API)** raw-writer handlers call `httperr.WriteError(w, status, msg, errType, code)` which sets `Content-Type: application/json`, writes the status code, and encodes the same envelope. Covered files: `runtime/auth/auth.go`, `runtime/breakglass/break_glass.go`, `runtime/config/runtime_config.go`, `runtime/handler/handler.go`, `runtime/server/server.go`.
+
+The standard API error path across all four services uses a single `{"error":{"message","type","code"}}` shape via `packages/shared/transport/httperr`. Clients that branch only on status code and read `error.message` / `error.code` work identically across services.
+
 ## References
 
 - `packages/ai-gateway/internal/providers/core/types.go` — `ProviderError` struct + 8 canonical `Code*` constants.
@@ -144,6 +158,9 @@ A new canonical `Code` automatically becomes a new label value on `errors_total`
 - `packages/ai-gateway/internal/platform/metrics/metrics.go` — `requests_total` + `errors_total` registration.
 - `packages/shared/policy/decision/types.go` — `Reason*` constants.
 - `packages/shared/policy/hooks/core/types.go` — `Decision` vocabulary re-exports.
-- `packages/control-plane/internal/ai/providers/handler/handler.go` — CP `errJSON` helper.
+- `packages/shared/transport/httperr/httperr.go` — canonical `ErrJSON()` + `WriteError()` shared by all services.
+- `packages/control-plane/internal/platform/httperr/httperr.go` — CP re-export of the same envelope shape.
 - `packages/control-plane/internal/platform/middleware/adminauth.go` — `errorResp` helper + 401 surface.
 - `packages/control-plane/internal/platform/middleware/iamauth.go` — IAM 403 inline body.
+- `packages/nexus-hub/internal/handler/errors.go` — Hub error helpers (`badRequest`, `unauthorized`, `forbidden`, `notFound`, `internalError`, `serviceUnavailable`) all call `httperr.ErrJSON`.
+- `packages/compliance-proxy/internal/runtime/` — compliance-proxy runtime API handlers all call `httperr.WriteError`.

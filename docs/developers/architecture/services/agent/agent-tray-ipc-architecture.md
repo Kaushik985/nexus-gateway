@@ -22,10 +22,16 @@ The listener is created by `platformListen`, and the path always comes from
 
 macOS is the outlier: the daemon runs as root while the UIs run in the user's
 session, so the socket must be reachable across UIDs and is made
-world-connectable. There is no peer-credential check on the socket; the
-authorization that matters is applied per command (below). Linux and Windows
-keep the endpoint owner-scoped because the daemon and the UI run as the same
-user in single-user installs.
+world-connectable. Because the socket is world-connectable, a `LOCAL_PEERCRED`
+check (`checkPeerUID`) gates every connection: it admits only root (the daemon
+itself and admin tooling) and the current console user — the owner of
+`/dev/console`, i.e. the GUI session that runs the menu-bar app and Dashboard —
+and rejects any other local account before a single command is read. Comparing
+against the console user rather than the daemon's own UID is essential: the
+daemon is root and the legitimate clients are not, so a same-UID check would
+reject every real client. Per-command authorization (below) still applies on
+top. Linux and Windows keep the endpoint owner-scoped because the daemon and
+the UI run as the same user in single-user installs.
 
 ## Protocol
 
@@ -80,28 +86,56 @@ serves the read-only commands and degrades the rest gracefully.
 
 ## Authorization and security
 
-Because the macOS socket is world-connectable, the commands that would stop or
-suspend the agent are gated at the authorization layer rather than relying on
-socket permissions. `SHUTDOWN`, `PAUSE_PROTECTION`, and `UNENROLL` all check the
-admin `quitAllowed` policy (via `quitAllowedFn`): when the operator has disabled
-quit, each returns a `"… disabled by policy"` status and does nothing. When quit
-is allowed — the default — all three work normally and a shutdown gracefully
-exits the daemon. (`SHUTDOWN` performs the immediate exit only; keeping the
-daemon down across an OS respawn is the separate user-quit-flag mechanism the
-GUI writes — see
+Because the macOS socket is world-connectable, the commands that would turn
+protection **off** are gated at the authorization layer rather than relying on
+socket permissions. The `quitAllowed` policy is an **always-on lock**: it governs
+every way a user can disable enforcement, not just the Quit button. `SHUTDOWN`
+(quit), `PAUSE_PROTECTION` (suspend), and `UNENROLL` / sign-out (drop identity)
+all check `quitAllowedFn`: when the operator has locked the agent on, each returns
+a `"… disabled by policy"` status and does nothing. When quit is allowed — the
+default — all three work normally and a shutdown gracefully exits the daemon.
+(`SHUTDOWN` performs the immediate exit only; keeping the daemon down across an OS
+respawn is the separate user-quit-flag mechanism the GUI writes — see
 [agent-paths-abstraction-architecture.md](agent-paths-abstraction-architecture.md).)
 Gating at this layer means the policy holds on every platform regardless of
 socket mode.
+
+`AUTHENTICATE` / `AUTHENTICATE CONFIRM` (sign-in / enrollment) are deliberately
+**not** gated by `quitAllowed`. Signing in is how a device *starts* being
+protected — the opposite of turning protection off — so it must always work, even
+on a locked device. Gating it once left a `quitAllowed=false` device permanently
+stuck at the enrollment screen, unable to complete its initial SSO sign-in. If a
+fleet ever needs to forbid re-enrollment specifically, that is a separate policy.
 
 The user-facing explanation is kept out of the IPC layer: the daemon ships the
 `quitAllowed` flag and the per-locale `shutdownWarning` text in the `GET_STATUS`
 snapshot, and the UI decides what to show. The IPC error strings are
 machine-readable status, not display copy.
 
-The read-only commands are not authorization-gated, so on a multi-user macOS
-host any local user that can reach the socket can read the snapshot, traffic
-events, and applied config; a peer-credential (`LOCAL_PEERCRED`) or group-ACL
-transport check is the remaining hardening for multi-user installs.
+`quitAllowed` is enforced a second time **client-side**, by the GUI, because one
+destructive step of a quit has no server gate to fall back on: removing the
+`NETransparentProxyManager` configuration. That call lives entirely in the menu
+app, so a daemon that refuses `SHUTDOWN` does not stop the GUI from tearing the
+NE out from under it. The menu therefore (a) hides the Quit item whenever
+`quitAllowed` is false (in both the enrolled and pending-enrollment menus) and
+(b) guards `quitAgent()` itself at its entry, so any future or mis-wired caller
+is refused before any NE removal. For menu honesty under the always-on lock, the
+GUI also hides the other protection-off affordances when `quitAllowed` is false —
+**Pause** and the **Switch identity / Sign Out** submenu — so a locked device
+never shows an action the daemon would only refuse. **Resume** stays visible even
+when locked: turning protection back on is never blocked. The client-side
+`quitAllowed` value defaults
+to **false** until the first `GET_STATUS` poll returns: a fail-safe so the
+destructive path can never run during the cold-start window on a locked device
+(the poll relaxes it to the daemon's real policy within one ~2 s tick; back-compat
+for daemons that don't emit the field is a `?? true` at the poll site, not the
+initial value).
+
+The read-only commands are not authorization-gated at the command layer, so
+their protection on a multi-user macOS host comes entirely from the transport:
+the `LOCAL_PEERCRED` check described under Transport restricts the
+world-connectable socket to root and the console user, so a second local
+account cannot read the snapshot, traffic events, or applied config.
 
 ## Clients
 

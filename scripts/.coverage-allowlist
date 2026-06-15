@@ -15,6 +15,11 @@
 #      D. OS-bound — tests need kernel APIs / system keychain / packet capture.
 #      E. Network-infra-bound — tests need real S3 / NATS / Redis Sentinel.
 #      F. Integration-only — existing tests live behind build tags.
+#      G. Unreachable-defensive — provably-dead error returns guarding
+#         impossible conditions after input validation (e.g. a crypto
+#         constructor error over an already-validated fixed-size key); the
+#         reachable surface is fully tested and no seam can drive the line
+#         without padding. (Added 2026-06-09, user-approved, Phase-8.)
 #   2. Each entry MUST cite the category in the trailing comment.
 #   3. Adding to the allowlist requires explicit user approval.
 #   4. Goal: empty allowlist. Run `scripts/check-go-coverage.sh --strict-allowlist`
@@ -40,6 +45,15 @@
 # A–F category. Tracking + phase plan: docs/handoffs/unit-test-coverage-program/PLAN.md
 
 # ──────────────────────────────────────────────────────────────────────
+# (G) Unreachable-defensive — crypto-constructor error returns that are
+# provably dead after the fixed-size-key validation. Reachable failure
+# modes are fully tested; the residual cannot be driven without a padding
+# seam. User-approved 2026-06-09 (Phase-8 coverage reconciliation).
+# ──────────────────────────────────────────────────────────────────────
+*/packages/shared/core/keyderive    # G — DeriveKey32's io.ReadFull error is unreachable: HKDF-Expand of a 32-byte output reads exactly one SHA-256 block (no short read). Reachable paths (empty-master/empty-class reject, golden vector, class/master separation, DeriveSubkey) fully tested. (93.3%)
+*/packages/ai-gateway/internal/credentials/decrypt  # G — NewDecryptor's DeriveKey32 / aes.NewCipher / cipher.NewGCM errors are unreachable after the 32-byte key validation (HKDF/AES-256/GCM cannot fail on a validated key). Reachable failure modes (bad hex, wrong length, weak key, tampered ciphertext, unknown key id, *-marker strip) fully tested. (94.3%)
+
+# ──────────────────────────────────────────────────────────────────────
 # (A) cmd/* entry points — main() wiring, no business logic.
 # ──────────────────────────────────────────────────────────────────────
 
@@ -50,15 +64,22 @@
 */packages/ai-gateway/cmd/ai-gateway
 */packages/compliance-proxy/cmd/compliance-proxy
 */packages/control-plane/cmd/control-plane
-*/packages/nexus-cli/cmd/nexus            # A — entry point: os.Exit(cli.Main()) wiring only (E88-S2)
+*/packages/nexus-cli/cmd/nexus            # A — entry point: os.Exit(cli.Main()) wiring only
 */packages/nexus-hub/cmd/nexus-hub
+*/packages/shared/policy/systembundles/internal/gen  # A — `go generate` codegen for SystemBundles.generated.swift: main() only resolves the NE output path (runtime.Caller) and writes the bytes; all render logic is systembundles.RenderSwift(), tested at 100% incl. a golden staleness test asserting the committed Swift matches (F-0392/F-0368)
 
 # (A) cmd/*/wiring — DI assembly with measurable observable behavior. E85
 # Phase 7 pushed each package as far as unit tests can reach (see D-10
 # outcome table in docs/developers/specs/e85/decision-log.md). The residual
 # in each package is integration-bound:
-#   - agent/wiring  93.1% — D OS (keystore/keychain, Win/Linux paths),
-#       E network (WS reconnect closure bodies, OAuth Run path).
+#   - agent/wiring  82.3% — cmdRun's subsystem construction relocated here
+#       (one Init*/Wire*/Start* per subsystem; seams unit-tested with an
+#       injected memory keystore). Residual is D OS (BuildBridgeDeps writes
+#       the device CA under the OS StateDir; Win/Linux path helpers) and
+#       E network (WS reconnect / config-changed / status-server command
+#       closure bodies, OAuth Run path; the thingclient success path
+#       registers process-global Prometheus metrics so it can construct
+#       only once per test binary).
 #   - ai-gateway/wiring  73.4% — A `Boot` orchestrator (15-stage sequencer),
 #       C DB-bound (`InitCacheLayer`, `LoadHookConfigsFromDB`, `InitQuota`,
 #       `InitHookConfigCache`), E network (`InitThingClient`, `MountRoutes`
@@ -92,6 +113,15 @@
 */packages/control-plane/internal/identity/authserver/store/storetest
 */packages/compliance-proxy/internal/testutil
 
+# (B) traffic/adapters/api/adaptertest — shared contract suite for the thin
+# OpenAI-compat vendor adapters (fireworks/groq/mistral/moonshot/perplexity/
+# together/xai), mirroring mq.ComplianceTestSuite. RunContract takes a
+# *testing.T and is invoked only from those vendors' *_test.go; its statements
+# execute (and assert) entirely under the callers' test runs, so standalone
+# `go test ./adaptertest/` reports 0%. The behavior it asserts is covered —
+# all 7 caller packages sit at 100%.
+*/packages/shared/traffic/adapters/api/adaptertest
+
 # ──────────────────────────────────────────────────────────────────────
 # (C) DB-bound — tests require live PostgreSQL.
 # ──────────────────────────────────────────────────────────────────────
@@ -112,6 +142,15 @@
 # tuning + Ping-failure + Close) — package sits at 89.5%, the residual is
 # the live-DB happy path. Reclassified from BACKFILL 2026-05-27.
 */packages/control-plane/internal/platform/pgx
+
+# (C) nexus-hub/internal/self/shadow — 93.6% after F-0260d adapter-ladder
+# simplification. The three uncovered functions (pgxPoolConnAdapter.Exec /
+# WaitForNotification / Release) are trivial one-line delegates on
+# *pgxpool.Conn. They require a live PostgreSQL to exercise — no pgxmock
+# seam exists at the *pgxpool.Conn level. Business logic (the full listen
+# loop, LISTEN dispatch, reconnect, apply pipeline) is covered at 100% via
+# fakePooledListener. Added 2026-06-07 (audit F-0260d).
+*/packages/nexus-hub/internal/self/shadow
 
 # ──────────────────────────────────────────────────────────────────────
 # (D) OS-bound — tests need kernel APIs / system keychain / WinDivert /
@@ -136,6 +175,20 @@
 # dispatch — directly verifying the NE fail-open binding). Package sits at 36.6%
 # (rest is OS wiring). Reclassified from BACKFILL 2026-05-27.
 */packages/agent/internal/platform/darwin
+
+# (D) agent/internal/platform/linux — the Linux iptables transparent-proxy
+# platform impl. The unit-testable logic IS unit-tested: interception-health
+# verdict + reconciler health state machine (linux_health_test.go), the
+# /proc/net/tcp{,6} hex encoders + parser + address-family routing
+# (linux_process_test.go), chain-absence error classification
+# (iptables_linux_test.go), canonical rule set (reconciler_linux_test.go). The
+# remainder is OS surface needing root + real netfilter: SO_ORIGINAL_DST
+# syscalls, the iptables/ip6tables exec wrappers, the dual (v4/[::1]) accept
+# loop, handleConn's real redirected-socket relay/bump, and /proc PID
+# attribution — covered by the `linux && integration` tests (real iptables) +
+# the S-155 containerized-intercept scenario. ~22% unit / ~42% +integration.
+# Symmetric with the darwin entry above. Added 2026-06-09 (user-approved).
+*/packages/agent/internal/platform/linux
 
 # (D) Agent OS-direct shims — keychain, systray. (openbrowser removed: the
 # URL/host security validation is now unit-tested via a launch seam; only the

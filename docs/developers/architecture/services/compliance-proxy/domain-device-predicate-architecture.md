@@ -31,7 +31,7 @@ Each `InterceptionDomain` carries the `adapterId` that selects the
 `NetworkZone` (`PUBLIC` / `INTERNAL`) stamped onto audit events, and an
 `on_adapter_error` behaviour (`FAIL_OPEN` / `FAIL_CLOSED`). The in-memory types
 mirror the `InterceptionDomain` / `InterceptionPath` models in
-`tools/db-migrate/schema.prisma`; the forward gate that consumes the result is in
+`tools/db-migrate/schema/compliance.prisma`; the forward gate that consumes the result is in
 [compliance-proxy-connect-forward-architecture.md](compliance-proxy-connect-forward-architecture.md).
 
 ## 2. Device predicate
@@ -61,5 +61,5 @@ members and the Control Plane fleet handler previews them.
 - `packages/shared/policy/domain/engine.go` — host matcher, `MatchHost`, `PathAction`, `Swap`
 - `packages/shared/policy/domain/types.go` — `HostMatchType`, `PathAction`, `NetworkZone`, `AdapterErrorBehavior`, `InterceptionDomain` / `InterceptionPath`
 - `packages/shared/policy/device/predicate.go` — `Device`, `Predicate`, `Leaf`, `Evaluate`
-- `tools/db-migrate/schema.prisma` — `InterceptionDomain`, `InterceptionPath` models
+- `tools/db-migrate/schema/compliance.prisma` — `InterceptionDomain`, `InterceptionPath` models
 - `packages/nexus-hub/internal/jobs/defs/drift/smart_group_recompute.go` — smart-group membership recompute

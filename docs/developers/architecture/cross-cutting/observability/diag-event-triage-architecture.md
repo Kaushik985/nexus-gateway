@@ -121,4 +121,4 @@ A silence's only effect is the `silenced` flag on `ListDiagGroups`: it marks the
 - `packages/control-plane/internal/infrastructure/infra/diag_silences.go` — silence endpoints
 - `packages/control-plane/internal/observability/diag/diagstore/diag_silence_store.go` — silence store
 - `packages/control-plane/internal/observability/opsmetrics/opsstore/opsmetrics_store.go` — diag group aggregation, diag-mode window store
-- `tools/db-migrate/schema.prisma` — `ThingDiagEvent`, `ThingDiagModeWindow`, `DiagSilence` models
+- `tools/db-migrate/schema/nodes.prisma` — `ThingDiagEvent`, `ThingDiagModeWindow`, `DiagSilence` models

@@ -458,8 +458,8 @@ to be a real kill switch.
 | Q3: Wireshark interaction — Wireshark uses Npcap (NDIS LWF). Do our callouts see Wireshark-captured traffic differently? Should not matter (different layer) but verify. | E59-S6 testing | Empirical |
 | Q4: Boot-start vs auto-start. Currently designing for `Start="auto"` (kernel driver type, auto). Boot-start would close even the gap from `winload.exe` handing off to the SCM, but boot-start drivers cannot rely on user-mode IPC until SCM has come up (so HELLO + PUSH_POLICY land later than the first network activity, which would force longer fail-open windows). | Drift to E59-S6 perf/security review | Before GA |
 
-Each open question becomes a story-level acceptance criterion in
-`docs/developers/specs/e59-s*.md`.
+Each open question becomes a story-level acceptance criterion in the
+corresponding E59 story specification (internal; not published).
 
 ---
 

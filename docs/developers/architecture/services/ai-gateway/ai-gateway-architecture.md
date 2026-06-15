@@ -8,7 +8,7 @@ The gateway serves three families of routes:
 
 - **Canonical AI APIs** — `POST /v1/chat/completions`, `/v1/messages` (Anthropic shape), `/v1/responses` (OpenAI Responses), and `/v1/embeddings`.
 - **Provider-native shims** — endpoints that mirror a provider's own path so existing SDKs work unchanged: `/api/paas/v4/{chat/completions,embeddings}` (GLM), `/openai/deployments/` (Azure OpenAI), and `/v1beta/models/` (Gemini).
-- **Utility and internal** — `/v1/estimate` (cost preview), `/v1/ai-guard/{classify,compliance-webhook}`, and the `/internal/*` operator surfaces (`routing-simulate`, `hooks-test`, `provider-test`, `embedding-probe`, `semantic-prewarm`, and credential probe at `/internal/v1/credentials/{id}/probe`).
+- **Utility and internal** — `/v1/estimate` (cost preview), `/v1/ai-guard/{classify,compliance-webhook}`, and the `/internal/*` operator surfaces (`routing-simulate`, `hooks-test`, `provider-test`, `embedding-probe`, `semantic-prewarm`, and credential probe at `/internal/v1/credentials/{id}/probe`). The `/internal/*` routes are service-to-service admin surfaces called by the Control Plane BFF — they are gated on the shared internal-service token (`Authorization: Bearer <INTERNAL_SERVICE_TOKEN>`, constant-time compared; missing/wrong ⇒ 401, unconfigured token ⇒ 503 fail-closed), NOT virtual-key auth. The `/v1/*` data-plane routes stay on virtual-key auth.
 
 The ingress format selects the codec that reads the body; from that point the request is handled in canonical form.
 

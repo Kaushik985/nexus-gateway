@@ -1,6 +1,6 @@
 # Operator Toolkit (`nexus`)
 
-`nexus` is a single binary that operates and observes the gateway from your terminal. It is the same capability set as the web Control Plane's read and triage surfaces, reached only through the existing admin API and `/v1/*` — so everything you can do in `nexus` is governed by exactly the same IAM as the web console. It has three faces over one core: an interactive **TUI**, a scriptable **CLI**, and an **MCP server** for agents.
+`nexus` is a single binary that operates and observes the gateway from your terminal. It is the same capability set as the web Control Plane's read and triage surfaces, reached only through the existing admin API and `/v1/*` — so everything you can do in `nexus` is governed by exactly the same IAM as the web console. It has two faces over one core: an interactive **TUI** and a scriptable **CLI**.
 
 ## Environments and login
 
@@ -63,14 +63,10 @@ Every capability is also a command, so scripts and other tools can shell out to 
 - `nexus vk create [--name …]` — mint a personal Virtual Key you own; the secret is printed once and (by default) stored for this environment.
 - `nexus killswitch status` — show the current global kill-switch state; `nexus killswitch on|off` toggles it (prod requires `--yes`).
 - `nexus passthrough status` — show the three-tier emergency-passthrough snapshot; `nexus passthrough global on|off` toggles the global tier (on bypasses the hooks by default; `--bypass-cache`/`--bypass-normalize` add the others; prod requires `--yes`).
-- `nexus skill ls` — list the available agent skills (the built-in playbooks plus any you have installed); `nexus skill install <url>` downloads a skill, shows you its name, description, SHA-256 checksum, and body for review, and installs it only when you re-run with `--yes`. The built-in playbooks cover the common operations: incident triage, cost investigation, compliance audit, node-drift check, SLO-breach triage, provider-outage response, Virtual-Key hygiene, cache effectiveness, and the emergency passthrough / kill-switch drill — the agent loads the matching one before it acts.
 - `nexus resource …` — the CLI face of the OpenAPI-driven engine, reaching **every** admin endpoint without a dedicated command for each. Work search-first: `nexus resource search "<query>"` finds the operation (matched against kind, operationId, path, label, and each operation's summary) and shows each top candidate with its real OpenAPI summary — the same executable cards the built-in agent consumes; `nexus resource describe <kind>` shows every operation with its summary, path, parameters, and body fields; then `nexus resource read <kind> <operationId>` runs a read (`--param name=value` fills path placeholders, `--query name=value` adds filters) and `nexus resource invoke <kind> <operationId>` runs a write (`--body '<json>'` or `--body-file`, confirmed at a `y/N` prompt unless you pass `--yes`). `nexus resource kinds` lists every kind with its capability profile (`crud`, `config`, `report`, `action:<name>` — never an empty column); the catalog subcommands (`kinds`, `search`, `describe`) run offline with no environment or sign-in. The same tables and detail rendering as the TUI.
 
 Commands return distinct exit codes so scripts can branch: `0` success, `1` transport/other, `2` usage error, `3` authentication required, `4` IAM denied, `5` not found.
 
-## MCP server (for agents)
-
-`nexus mcp serve` exposes the toolkit as Model Context Protocol tools over stdio, so an agent or a partner platform can drive the gateway without bespoke glue. The server has no auth of its own — it runs every tool as the principal of the configured admin credential, through the same admin API and IAM, so an agent's reach is exactly what that service user's IAM policy allows. Tools are tiered: **observe** (health, traffic, models, firing alerts, node health/drift, the kill-switch state, the emergency-passthrough snapshot), **analyze** (cost, SLO, compliance KPIs, and a routing dry-run that explains where a model resolves), and **simulate** (run a crafted request through the pipeline). The **mitigate** tier is off unless you pass `--enable-mitigate`; it covers the kill switch, the global emergency passthrough, a cache flush, disabling a provider, toggling a routing rule, and revoking a Virtual Key. The entity actions take a human-friendly name (a provider name, a rule name, or a key name/prefix) and resolve it to the right id for you, so a typo fails with the list of valid names — and a name that matches more than one entity is refused rather than resolved — instead of touching the wrong thing. Because an agent can't confirm interactively, these write tools rely on being explicitly enabled plus the service user's IAM policy and server-side audit — there is no interactive Allow/Deny prompt as there is in the console.
 
 ## Installation
 
@@ -81,6 +77,5 @@ Commands return distinct exit codes so scripts can branch: `0` success, `1` tran
 - `packages/nexus-cli/cmd/nexus` — the `nexus` binary
 - `packages/nexus-cli/internal/cli/` — CLI command tree (`resource.go` for the catalog commands)
 - `packages/nexus-cli/internal/tui/` — terminal console (resource cascade under `resource/`)
-- `packages/nexus-cli/internal/mcp/` — the MCP server face
 - `packages/nexus-agent-core/capabilities/resource/` — the embedded OpenAPI catalog + search/distill engine
 - `docs/developers/architecture/nexus-operator-toolkit-architecture.md` — the architecture behind every face

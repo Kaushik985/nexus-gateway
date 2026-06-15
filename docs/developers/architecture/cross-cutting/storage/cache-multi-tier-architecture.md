@@ -18,6 +18,8 @@ What the cache does **not** serve:
 - Upstream failures — the broker's leader path returns the error directly; no entry is written.
 - Entries exceeding the per-tier size cap (L1: 1 MiB default; L2: 256 KiB default).
 
+A skipped request still runs the provider adapter's `PrepareBody` (request normaliser + provider prompt-cache marker injection, e.g. Anthropic `cache_control`) before going upstream — `stage_cache.go` `prepareUpstreamBody` runs on every skip branch as well as the cache-eligible path. Skipping the gateway's own cache never disables the provider-side prompt cache; the two tiers are independent.
+
 Streaming and non-streaming requests both cache; the L1 schema discriminator (`stream/v1` vs `response/v1`) prevents one being decoded as the other.
 
 ## Anchor packages
@@ -58,16 +60,19 @@ The proxy reads these through `IsEnabled()` / `ApplyFreshnessRules()` on the hot
 
 ## Cache key
 
-`Cache.BuildKey(provider, model, body, allowlistVersion) → "<prefix>:<sha256>"` produces the L1 cache key. Inputs:
+`Cache.BuildScopedKey(provider, model, body, allowlistVersion, scopeKey)` (or the legacy `BuildKey` for `vary_by=none`) produces the L1 cache key. `BuildScopedKey` is the current production entrypoint (`proxy.go`). Inputs:
 
 1. A schema version header `v3\n` pinning the key layout — older keys are unreachable.
 2. The upstream **provider name** and **provider model id** (the strings the gateway will send to the wire, not the client-facing alias).
 3. The **canonicalised JSON body** — object keys sorted recursively at every nesting level, array order preserved. Non-JSON bodies pass through unchanged. This guarantees that semantically identical requests with different SDK key orderings collide on the same key.
 4. The **forward-header allowlist version hash** — folded in so a yaml allowlist change invalidates entries whose `UpstreamHeaders` were recorded under a different effective filter.
+5. An optional **scope key** (e.g. `vk:<id>`, `user:<id>`, `org:<id>`) — folded as `scope=<scopeKey>\n` when non-empty. When `vary_by=none` the scope key is empty, producing a byte-identical key to the legacy layout (fleet-wide dedup is preserved). Non-empty scope keys enforce per-tenant L1 isolation for the same body + provider + model — matching the isolation that L2's tag filter applies. See `cache/core/cache.go` `BuildScopedKey`.
 
 The body that's hashed is the output of the provider adapter's `PrepareBody`, not the raw client body. That folds out cross-format ingress differences (Anthropic ingress → OpenAI target produces the same key whether the caller hit `/v1/messages` or `/v1/chat/completions`).
 
 The proxy also runs an optional `Normaliser.NormalizeKey` step on the prepared body before hashing. This strips volatile fields (e.g. provider billing nonces) that would otherwise force every request to miss. The mutation is key-only; the upstream call still receives the unmodified prepared body.
+
+**L1 skip reason `GatewayCacheSkipReasonNoEmbeddableText`** (updated label): the L2-eligibility check in `proxy_l2.go` uses this reason for all cases where no embeddable text can be extracted from the request (previously mislabeled `OversizeForEmbedding`, which only covered one sub-case). See `platform/audit/enums.go`.
 
 ## L2 — semantic vector cache
 
@@ -88,7 +93,7 @@ SCHEMA
 
 `response_body`, `usage`, and `origin_wire_shape` are payload-only HASH fields — written but NOT indexed. The reader retrieves them via `FT.SEARCH ... RETURN`, which works against unindexed fields.
 
-**Per-entry key**: `<indexName>:<sha256(EmbeddingInput)[:16]>` — 16 hex chars from a SHA-256 over the exact text fed to the embedding model. The same hash drives the L2 entry's poison-list key (see § Poisoning).
+**Per-entry key**: `<indexName>:<sha256(EmbeddingInput | vk_scope | response_kind [| upstream_provider | upstream_model])[:16]>` — 16 hex chars from a SHA-256 over the embedding text **plus** the entry's scope, response kind, and (unless `AllowCrossModel` is set) its provider + model, NUL-delimited. Folding these in keeps logically-distinct entries that share embedding text on separate HASH keys, so the same prompt written under different tenants, models, or response kinds does not mutually evict via HSET overwrite. Reads never reconstruct the key — `FT.SEARCH` locates the entry by vector + tag filter and returns the stored key — so the composition is purely a write-side uniqueness concern. The returned key drives the L2 entry's poison-list key (see § Poisoning). When `AllowCrossModel` is true the model is interchangeable for retrieval, so provider+model are dropped from the key and the newest response for a given (input, scope, kind) supersedes the prior one.
 
 **Lookup query**:
 
@@ -116,7 +121,7 @@ The proxy's cache phase runs after request hooks and before the broker. Per requ
 2. **L1 lookup** — `Cache.LookupStream` or `Cache.LookupResponse` against the canonical key. On hit, stamp `gateway_cache_status = hit`, `gateway_cache_kind = extract`, `provider_cache_status = na`, and dispatch into the HIT pipeline.
 3. **L2 lookup on L1 miss** — `Handler.tryL2Lookup` runs unconditionally; returns false (and the caller proceeds to the broker) when the L2 reader is not wired or the per-route policy disables semantic. On hit, stamp `gateway_cache_status = hit`, `gateway_cache_kind = semantic`, `gateway_cache_l2_entry_key = <reader entry key>`, `provider_cache_status = na`.
 4. **Broker path on full miss** — `streamcache.Registry.Subscribe(key, leaderFn)` returns `(subscription, isFirst, err)`. The first subscriber's `leaderFn` fires the live upstream call and stamps `gateway_cache_status = miss`; joiners share the in-flight stream and stamp `gateway_cache_status = hit_inflight`.
-5. **L2 write-back** — on the leader's terminal frame, `Handler.scheduleL2Write` fires a goroutine with a 5-second deadline that embeds the canonical prompt text and HSETs an L2 entry. L1 write-back is internal to the broker's `writeCache` step (single canonical timeline regardless of how many joiners attached).
+5. **L2 write-back** — on the leader's terminal frame, `Handler.scheduleL2Write` fires a goroutine with a 5-second deadline that embeds the canonical prompt text and HSETs an L2 entry. Both response kinds are written: a non-streaming leader writes a `response_kind=response` entry whose body is the canonical response JSON (fired from `handleNonStreamWithSubscription`, or `ServeProxy` on the direct path); a streaming leader writes a `response_kind=stream` entry whose body is the canonical `[]ChunkRecord` timeline (the broker's `writeCache` invokes `CacheMeta.OnStreamCachePersisted`, which routes the same timeline JSON L1 stored into `scheduleL2Write`). Streaming therefore L2-hits on equivalent subsequent requests rather than paying an embedding charge on a guaranteed miss. The VK scope on every write is resolved from the fleet `vary_by` setting (vk / user / org / none) — the same dimension the reader filters on — so a write and the matching read isolate identically. L1 write-back is internal to the broker's `writeCache` step (single canonical timeline regardless of how many joiners attached).
 
 Joiners do NOT issue upstream calls and do NOT reconcile against the quota counter — the leader pays the upstream cost and reconciles its own quota.
 
@@ -152,7 +157,7 @@ The audit record (and downstream `TrafficEventMessage`) carries six cache column
 | `GatewayCacheStatus` | enum `hit` \| `hit_inflight` \| `miss` \| `skipped` | Stamped by the proxy at the lookup branch (extract HIT, semantic HIT, broker leader, broker joiner, or pre-lookup classifier). |
 | `GatewayCacheSkipReason` | enum (16 values) | Set only when `GatewayCacheStatus = skipped`. Vocabulary: `disabled / no_cache / passthrough / not_cacheable / time_sensitive / oversize_for_embedding / valkey_unavailable / embedding_timeout / embedding_provider_error / embedding_dim_mismatch / semantic_search_error / semantic_search_timeout / semantic_reindex_in_progress / semantic_unavailable / embedding_circuit_open / poisoned`. |
 | `GatewayCacheKind` | enum `extract` \| `semantic` | Distinguishes L1 hits (`extract`) from L2 hits (`semantic`). |
-| `GatewayCacheL2EntryKey` | string | The L2 Redis HASH key (`<index>:<sha256[:16]>`). Stamped only on rows where `GatewayCacheKind = semantic`. The admin UI uses this as the entry id the gateway's poison check will match against. |
+| `GatewayCacheL2EntryKey` | string | The L2 Redis HASH key (`<index>:<sha256[:16]>` over embedding text + scope + kind [+ provider/model]). Stamped only on rows where `GatewayCacheKind = semantic`. The admin UI uses this as the entry id the gateway's poison check will match against. |
 | `ProviderCacheStatus` | enum `hit` \| `miss` \| `na` | Reports the upstream provider's own prompt-cache outcome from the upstream usage envelope. `na` on every gateway-served row (the upstream wasn't called). |
 
 The unified `CacheStatus` is the only column the audit drawer exposes to UI filters. The four detail columns are drill-down only; their § 6.4 layout in [`cost-estimation-architecture.md`](../../services/ai-gateway/cost-estimation-architecture.md) is the source of truth for how the drawer renders them.
@@ -188,7 +193,7 @@ The cache layer does NOT delegate to the spillstore. The two systems are indepen
 
 **L2 eviction** is per-entry `PEXPIRE` set at write time, plus index-level lifecycle. The L2 config snapshot carries a `Fingerprint = sha256(provider:model:dim)` and an explicit `RedisIndexName` (e.g. `nexus:semantic-cache:v1`). When the fingerprint changes — embedding provider, model, or dimension swap — a blue/green index rotation drops the stale index and recreates with the new dimension. Stale entries are unreachable behind the new fingerprint TAG filter even before the index drop.
 
-**Freshness — time-sensitive skip**. `cache/freshness.Detector` is a hot-swappable rule set evaluated over the canonical message stream. When `Cache.ApplyFreshnessRules()` is true AND `Detector.IsTimeSensitive(messages)` matches, `classifyCachePreLookup` returns `(skipped, time_sensitive)` so both L1 and L2 are bypassed. The detector's rule list is loaded from the Hub shadow and replaced atomically via `Detector.Reload` — no restart required.
+**Freshness — time-sensitive skip**. `cache/freshness.Detector` is a hot-swappable rule set evaluated over the canonical message stream. When `Cache.ApplyFreshnessRules()` is true AND `Detector.IsTimeSensitive(messages)` matches, `classifyCachePreLookup` returns `(skipped, time_sensitive)` so both L1 and L2 are bypassed. The detector's rule list is loaded from the Hub shadow and replaced atomically via `Detector.Reload` — no restart required. The default rule set seeds from `semantic_cache_config.time_sensitive_overrides` (the `tools/db-migrate/seed/fixtures/semantic_cache_config.json` fixture); there is no Go-side default, so if the seed never ran the rule list is empty and nothing is classified time-sensitive.
 
 **Poisoning** (above) is the third eviction-adjacent path: a poisoned L2 entry remains in Valkey but is invisible to FT.SEARCH-driven reads until the poison key TTL elapses or the entry's own TTL evicts it.
 

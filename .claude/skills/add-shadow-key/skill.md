@@ -57,17 +57,16 @@ Add the same key to the canonical seed so dev DBs + prod-data baselines start wi
 { thingKind, key: '<key>', category: 'B', needsPull: true, defaultValue: ..., ... }
 ```
 
-### 5. Write the migration
+### 5. Apply the schema change
+
+The schema is applied with `prisma db push` (no migrations in 1.0). If the new
+key needs a schema-level change (e.g. a new `thing_config_template` default row or
+a column), edit the relevant file under `tools/db-migrate/schema/`, add any default
+row to `tools/db-migrate/seed/fixtures/thing_config_template.json`, then push:
 
 ```bash
 cd tools/db-migrate
-npx prisma migrate dev --name add_thing_config_template_<key>
-```
-
-Then verify uniqueness:
-
-```bash
-npm run check:migration-timestamps
+npm run db:push
 ```
 
 ### 6. OnConfigChanged callback

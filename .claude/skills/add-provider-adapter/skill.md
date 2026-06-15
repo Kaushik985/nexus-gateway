@@ -101,7 +101,12 @@ Add the adapter under `packages/shared/traffic/adapters/api/<provider>/` and reg
 
 ### 6. Seed provider + initial models
 
-`tools/db-migrate/seed/seed.ts` — add a `Provider` row + per-`Model` entries with pricing + capabilities. If your provider is in the seed baseline, also update `tools/db-migrate/seed/data/seed-baseline.sql`.
+Add a `Provider` row to `tools/db-migrate/seed/fixtures/Provider.json` and per-`Model`
+entries to `tools/db-migrate/seed/fixtures/Model.json` (both are JSON arrays — append the
+new objects). Alternatively, add them to the source DB and re-run
+`tools/db-migrate/scripts/extract-reference-fixtures.ts` to regenerate both fixture files.
+Also update `tools/db-migrate/seed/seed.ts` if the provider needs a cache-price backfill
+multiplier (`cachePriceBackfill` block).
 
 ### 7. Map provider errors to `ErrorClass`
 

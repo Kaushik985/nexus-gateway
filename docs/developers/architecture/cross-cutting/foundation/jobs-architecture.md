@@ -1,6 +1,6 @@
 # Jobs Architecture
 
-Hub runs all of Nexus's periodic housekeeping in a **single in-process scheduler** built on `github.com/robfig/cron/v3`. There is no Sidekiq, no Celery, no Kubernetes `CronJob` resource, and no Postgres-based work queue. The 45 jobs documented in §5 are registered once at Hub boot, run inside the Hub process, and persist their definitions + run history to two Postgres tables (`job`, `job_run`) so the admin UI can show "last run / next run / 7-day run history" without scraping logs.
+Hub runs all of Nexus's periodic housekeeping in a **single in-process scheduler** built on `github.com/robfig/cron/v3`. There is no Sidekiq, no Celery, no Kubernetes `CronJob` resource, and no Postgres-based work queue. The 49 jobs documented in §5 are registered once at Hub boot, run inside the Hub process, and persist their definitions + run history to two Postgres tables (`job`, `job_run`) so the admin UI can show "last run / next run / 7-day run history" without scraping logs.
 
 Anchor packages:
 
@@ -14,7 +14,7 @@ Anchor packages:
 
 The scheduler is **scheduled work only**: jobs whose Run method is triggered by a cron tick (or a manual admin click), with the scheduler itself responsible for timeout, panic recovery, and run-history persistence. Three nearby things are out of scope:
 
-- **MQ consumers** (`hub-db-writer`, `hub-siem`, `hub-alerting`) run as long-lived goroutines under the `consumer.Manager` in the same Hub binary — see `mq-architecture.md`.
+- **MQ consumers** (`hub-db-writer`, `hub-alerting`) run as long-lived goroutines in the same Hub binary — see `mq-architecture.md`.
 - **Per-request work** in the data-plane services (AI Gateway, Compliance Proxy, Agent) — those services have no scheduler; their periodic work (cache TTLs, metric flushes) is owned by the relevant code path's own ticker.
 - **External cron** like `prod-deploy` scripts or k8s `CronJob`s — Nexus has none in production.
 
@@ -65,7 +65,7 @@ Two optional capabilities are detected by type assertion:
 `InitScheduler` runs four steps in order, and each must finish before the next starts:
 
 1. `New(logger).WithJobStore(jobStore).WithReplicaID(hubID)` — wire dependencies. No I/O yet.
-2. `sched.Register(...)` × N (46 calls) — populate the in-memory `jobs map[string]*entry`. Each entry defaults to enabled; the persisted `enabled` flag from `job.enabled` will overwrite this in step 3.
+2. `sched.Register(...)` × N (49 calls) — populate the in-memory `jobs map[string]*entry`. Each entry defaults to enabled; the persisted `enabled` flag from `job.enabled` will overwrite this in step 3.
 3. `sched.SyncDefinitions(ctx)` — for every registered job, upsert `(id, name, description, interval_sec)` into the `job` table, then read back `enabled` and reconcile the in-memory atomic. **`SyncDefinitions` does not touch the `enabled` column on upsert** — admin disables survive Hub restarts, code changes to name/description/interval propagate.
 4. `sched.RecoverStaleRuns(ctx)` — flip every `job_run` row still in `status='running'` to `'interrupted'`. These are orphans from the previous Hub process that died mid-Run; without this step the admin UI would show them as perpetually running.
 5. `sched.Start()` — construct the cron engine, register every enabled entry via `cron.AddFunc("@every <interval>", runOne)`, start the engine, then kick off every `OnStartRunner.RunOnStart()=true` entry in a detached goroutine so `Start` returns promptly.
@@ -111,11 +111,11 @@ A deadline-exceeded run that *also* fails to record its FinishRun row (DB outage
 
 ## 5. Job catalogue
 
-The 46 rows below are the complete production catalogue. Every row is anchored to a `Register()` call in `cmd/nexus-hub/wiring/jobs.go` (or `registerAlertEvalEngine` for `alerteval-engine`). Default cadences come from the job constructor's `interval` default; admins override via the corresponding `cfg.Scheduler.Intervals.*` field (and `cfg.Scheduler.Retention.*` for retention windows). Some constructors take cadence directly from `cfg.Scheduler.*Interval` with no zero-default — those rows show `(cfg)` and are documented in the operator config doc.
+The 49 rows below are the complete production catalogue. Every row is anchored to a `Register()` call in `cmd/nexus-hub/wiring/jobs.go` (or `registerAlertEvalEngine` for `alerteval-engine`). Default cadences come from the job constructor's `interval` default; admins override via the corresponding `cfg.Scheduler.Intervals.*` field (and `cfg.Scheduler.Retention.*` for retention windows). Some constructors take cadence directly from `cfg.Scheduler.*Interval` with no zero-default — those rows show `(cfg)` and are documented in the operator config doc.
 
 The 8 multi-cadence variants (rows whose file column says "cadence variant") are constructed at runtime from helper structs (`rollup_merge.go`, `thing_rollup_merge.go`, `ops_rollup_cascade.go`) rather than having one `JobID` const each. These IDs are the only ones the `scripts/check-jobs-catalogue.sh` pre-commit gate machine-verifies; the rest are honor-system but every static `JobID` const present in the tree must appear below.
 
-### 5.1 Traffic + ops rollup pipeline (13 jobs)
+### 5.1 Traffic + ops rollup pipeline (15 jobs)
 
 The 5-minute → 1-hour → 1-day → 1-month rollup cascade for both fleet-wide traffic metrics and per-Thing traffic metrics, plus the parallel ops-metrics cascade.
 
@@ -129,8 +129,10 @@ The 5-minute → 1-hour → 1-day → 1-month rollup cascade for both fleet-wide
 | `thing-merge-1h` | `defs/rollup/thing_rollup_merge.go` (cadence variant) | 5 min | Per-Thing variant of `merge-1h`. |
 | `thing-merge-1d` | `defs/rollup/thing_rollup_merge.go` (cadence variant) | 1 hour | Per-Thing variant of `merge-1d`. |
 | `thing-merge-1mo` | `defs/rollup/thing_rollup_merge.go` (cadence variant) | 24 hour | Per-Thing variant of `merge-1mo` (calendar-month boundaries). |
-| `rollup-correction` | `defs/rollup/rollup_correction.go` | 24 hour | Recomputes rollups for T-1 (yesterday) to absorb late-arriving events. Re-runs every 5-minute bucket then re-merges the 1h, 1d, and (on month boundary) 1mo layers. |
-| `metrics-rollup` | `defs/metrics/metrics_rollup.go` | 1 hour | Aggregates device fleet status/OS and agent action volume into `metric_rollup_1h`. |
+| `rollup-correction` | `defs/rollup/rollup_correction.go` | 24 hour | Recomputes fleet rollups across the trailing correction window (default 7 days) to absorb late-arriving events. Re-runs every 5-minute bucket then re-merges the 1h, 1d, and (for any sealed month the window touched) 1mo layers, with the watermark write suppressed so the backfill never rewinds the live cursor. |
+| `thing-rollup-correction` | `defs/rollup/thing_rollup_correction.go` | 24 hour | Per-Thing twin of `rollup-correction`: re-aggregates the per-Thing pipeline over the trailing window so late events whose per-Thing 5m bucket already sealed are not permanently under-counted. |
+| `metrics-rollup` | `defs/metrics/metrics_rollup.go` | 1 hour | Aggregates device fleet status/OS (GAUGE snapshots, excluded from the merge cascade) and agent action volume into `metric_rollup_1h`. |
+| `ops-rollup-5m` | `defs/metrics/ops_rollup_5m.go` | 1 min | Aggregates `metric_ops_raw` into `metric_ops_rollup_5m` — the tier that owns the raw read. Services keep per-instance rows; agents collapse into a single fleet-aggregate row (`thing_id IS NULL`) unless in diagnostic mode for the bucket. |
 | `ops-rollup-1h` | `defs/metrics/ops_rollup_1h.go` | 5 min | Aggregates `metric_ops_raw` into `metric_ops_rollup_1h`. Services keep per-instance rows; agents collapse into a single fleet-aggregate row (`thing_id IS NULL`) per metric+dim unless in diagnostic mode for the bucket. |
 | `ops-rollup-1d` | `defs/metrics/ops_rollup_cascade.go` (cadence variant) | 1 hour | Aggregates `metric_ops_rollup_1h` into `metric_ops_rollup_1d`. Sample-count-weighted averages; histograms merge element-wise. Preserves the fleet vs per-thing distinction from the 1h layer. |
 | `ops-rollup-1mo` | `defs/metrics/ops_rollup_cascade.go` (cadence variant) | 24 hour | Aggregates `metric_ops_rollup_1d` into `metric_ops_rollup_1mo` once per day, calendar-month boundaries; current (unsealed) month always excluded. |
@@ -144,7 +146,7 @@ Per-credential and per-provider health rollups feeding the `credential.*` and `p
 | `credential-health-rollup` | `defs/rollup/credential_health_rollup.go` | 5 min | Computes per-credential health (healthy / degraded / unavailable / collecting / unknown), dominantError, and trend (improving / stable / degrading) from `traffic_event` over a short (5 min) and long (1 h) window. Persists to `Credential.health*` columns; only rows whose status changed update `healthStatusChangedAt`. |
 | `provider-health-rollup` | `defs/rollup/provider_health_rollup.go` | 5 min | Recomputes `ProviderHealth` (error rate, avg latency, sample count, status) from `traffic_event` over a 30-minute rolling window. Replaces the AI Gateway in-process HealthTracker DB flush. |
 
-### 5.3 Retention + flush (6 jobs)
+### 5.3 Retention + flush (7 jobs)
 
 Periodic purge and Redis-to-DB drain jobs.
 
@@ -192,12 +194,12 @@ Reconciliation jobs that compare desired state vs reported state vs actual state
 | ID | File | Default cadence | Purpose |
 |---|---|---|---|
 | `config-drift-check` | `defs/drift/drift.go` | (cfg) | Detects Things whose reported config version differs from desired and triggers repair via the fleet manager. |
-| `stale-thing-sweep` | `defs/drift/stale_thing.go` | 30 sec | Marks Things offline when their `last_seen_at` exceeds the per-category threshold (default 60 s for service Things). |
+| `stale-thing-sweep` | `defs/drift/stale_thing.go` | 30 sec | Marks Things offline when their `last_seen_at` exceeds the per-category threshold (default 90 s for service Things — 3x the 30 s ping interval so a single jittered ping cannot flap a healthy service offline). |
 | `smart-group-recompute` | `defs/drift/smart_group_recompute.go` | 60 sec | Re-evaluates every smart `DeviceGroup`'s `membership_query` against the current device fleet and replaces the `device_group_membership_cache` rows. Runs every 60 s as a safety net; heartbeat-driven recomputes handle the steady-state. |
 | `user-identity-enrichment` | `defs/drift/identity_enrichment.go` | (cfg) | Backfills user identity fields into recent `traffic_event` rows using IAM lookups. |
 | `exemption-gc` | `defs/drift/exemption_gc.go` | 5 min | Fires a Cat B invalidate signal when compliance exemption grants have recently expired so compliance-proxy refreshes its in-memory view without waiting for the next admin mutation. |
 
-### 5.7 Audit (3 jobs)
+### 5.7 Audit (4 jobs)
 
 Integrity + observability of the admin audit pipeline.
 
@@ -205,7 +207,8 @@ Integrity + observability of the admin audit pipeline.
 |---|---|---|---|
 | `audit-chain-verify` | `defs/audit/audit_chain_verify.go` | (cfg, RunOnStart) | Walks the `AdminAuditLog` hash chain (`previousHash` / `integrityHash`) and reports tamper detection at ERROR level. |
 | `audit-freshness-check` | `defs/audit/audit_freshness_check.go` | 60 sec | Alarms when the most recent admin audit row is older than 5 min — catches the silent-stall failure class where the MQ consumer pulled the message but the INSERT failed. |
-| `siem-bridge` | `defs/audit/siem_bridge.go` | `bridge.PollInterval()` | Polls `traffic_event` and `AdminAuditLog` for new rows, classifies them, and forwards them to the configured SIEM sink. Checkpoints persisted in `system_metadata`. Registered only when `cfg.Consumers.SIEM.Enabled`. |
+| `normalize-backfill` | `defs/audit/normalize_backfill.go` | 5 min | Re-runs normalize against the raw request/response bytes for `traffic_event_normalized` rows whose sidecar is missing, all-NULL, **or stamped with a `normalize_version` other than the current schema version** — bumping `normcore.SchemaVersion` heals every historical row through this one mechanism (≈200 rows / 5-min tick, newest-first). Inline bodies are read directly; ref-only spilled bodies are fetched from the hub `SpillStore` (64 MiB read cap). Rows that cannot be filled are recorded in the `traffic_event_normalize_skip` ledger (`reason` ∈ `spill_ref_only` (no spill store wired) / `spill_fetch_failed` / `no_payload_produced`) with the schema version of the attempt; the scan excludes a skip-marked row only while its stamped version matches the current one, so every previously unfillable row re-admits exactly once per version bump — the newest-first `LIMIT` batch always advances, and the P4 "bump heals everything" invariant covers skip-marked rows too. The marker is backfill-internal (no CP store / Traffic drawer reads it). `nexus_normalize_backfill_skipped_total{reason}` is a one-time-per-row-per-version tally, not a recurring rate. |
+| `siem-bridge` | `defs/audit/siem_bridge.go` | `bridge.PollInterval()` | Polls `traffic_event` and `AdminAuditLog` for new rows, classifies them, and forwards them to the configured SIEM sink. Checkpoints persisted in `system_metadata`. Registered unconditionally whenever the scheduler is enabled; the bridge self-activates when `siem.config.enabled` is set in `system_metadata`. |
 
 ### 5.8 Quota (1 job)
 
@@ -229,19 +232,19 @@ Integrity + observability of the admin audit pipeline.
 
 | Sub-domain | Count |
 |---|---|
-| 5.1 Traffic + ops rollup | 13 |
+| 5.1 Traffic + ops rollup | 15 |
 | 5.2 Health rollup | 2 |
-| 5.3 Retention + flush | 6 |
+| 5.3 Retention + flush | 7 |
 | 5.4 State-poll alerts | 6 |
 | 5.5 Expiry + auto-revert | 7 |
 | 5.6 Drift + housekeeping | 5 |
-| 5.7 Audit | 3 |
+| 5.7 Audit | 4 |
 | 5.8 Quota | 1 |
 | 5.9 Cache infrastructure | 1 |
 | 5.10 Streaming alert engine | 1 |
-| **Total** | **46** |
+| **Total** | **49** |
 
-These 46 rows correspond 1-to-1 with the `Register()` / `registerAlertEvalEngine()` calls in `packages/nexus-hub/cmd/nexus-hub/wiring/jobs.go`. The `siem-bridge` row is registered conditionally on `cfg.Consumers.SIEM.Enabled`; every other row is registered unconditionally whenever `cfg.Scheduler.Enabled` is true.
+These 49 rows correspond 1-to-1 with the `Register()` / `registerAlertEvalEngine()` calls in `packages/nexus-hub/cmd/nexus-hub/wiring/jobs.go`. Every row, including `siem-bridge`, is registered unconditionally whenever `cfg.Scheduler.Enabled` is true.
 
 ## 6. Failure semantics
 
@@ -298,7 +301,7 @@ Four steps:
 
 1. **Code** — create `packages/nexus-hub/internal/jobs/defs/<sub-domain>/<name>.go` with a struct that implements `scheduler.Job`. Define a `<name>JobID = "<slug>"` const at top-of-file (the lockstep script's grep pattern is `[a-zA-Z]+JobID\s*=`). If the cadence should be admin-tunable, accept it from a config field; if it has a sensible default, fall back to that default in the constructor.
 2. **Wire** — add a `sched.Register(...)` call in the appropriate clause of `InitScheduler` in `packages/nexus-hub/cmd/nexus-hub/wiring/jobs.go`. Pick the right arguments — most jobs take `pool` (pgxpool), some take `raiser` (for alert-raising jobs), some take `alertStore` (for jobs that need rule params).
-3. **Catalogue** — add a row to the right §5 sub-section of this doc. The pre-commit `check-jobs-catalogue.sh` script's strict enforcement only covers the 8 multi-cadence variants today, but the convention is that every static `JobID` const must appear in §5. If you skip this and the strict scan ever turns on, the gate will fail.
+3. **Catalogue** — add a row to the right §5 sub-section of this doc. The pre-commit `check-jobs-catalogue.sh` script enforces that every static `JobID` const in the tree appears in §5 (plus the 8 multi-cadence variants by name). If you skip this the gate fails.
 4. **Config** — if the cadence is admin-tunable, add a field to `cfg.Scheduler.Intervals` and document it in the operator config doc.
 
 ### The lockstep gate's current scope
@@ -306,7 +309,7 @@ Four steps:
 `scripts/check-jobs-catalogue.sh` machine-enforces two things:
 
 1. The 8 multi-cadence variant IDs (`merge-1h`, `merge-1d`, `merge-1mo`, `thing-merge-1h`, `thing-merge-1d`, `thing-merge-1mo`, `ops-rollup-1d`, `ops-rollup-1mo`) must each appear in this doc.
-2. (Currently inactive) A glob loop intended to scan every `*.go` file under `packages/nexus-hub/internal/jobs/` for `<name>JobID = "..."` consts and verify each appears in this doc. The glob is `"$JOBS_DIR"/*.go`, which only matches top-level files; the jobs live in `defs/<sub-domain>/`, so the loop currently iterates over nothing. This is a known gap — the §5 catalogue is the convention-enforced source of truth until the glob is fixed (recursive `find` would be the trivial fix).
+2. Every `<name>JobID = "..."` const under `packages/nexus-hub/internal/jobs/` must have a matching row in this doc. The scan uses a recursive `find "$JOBS_DIR" -name '*.go'` so it reaches the jobs under `defs/<sub-domain>/` (an earlier `"$JOBS_DIR"/*.go` glob matched only top-level files and silently iterated over nothing).
 
 The lockstep is skipped entirely when this doc is absent (escape hatch added during the 2026-05-22 archive sweep). The escape hatch is documented at the top of the script; removing it re-enables strict mode.
 

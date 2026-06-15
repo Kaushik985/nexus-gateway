@@ -67,10 +67,23 @@ forward.Run(conn)
   ├─ 3. source+host hook-exempt?  → bump, but skip compliance hooks + audit "exempted"
   ├─ 4. build BumpOptions (identity, attestation verifier, compliance pipeline,
   │      source info, reject config, payload capture, domain engine,
-  │      adapter registry, normalize registry)
+  │      adapter registry, normalize registry, WithStrictFailClosed)
   ├─ 5. tlsbump.BumpConnection(...) → TLS interception + compliance pipeline
   └─    pinning error during bump? → record failure + tlsbump.PassThrough (fallback)
 ```
+
+The proxy passes `tlsbump.WithStrictFailClosed()` in step 4 (SEC-W3-01). Because
+the Compliance Proxy is a **dedicated forward-proxy appliance** that already
+returns `403` for disallowed `CONNECT`s — i.e. it can safely refuse — an
+admin-configured `failBehavior="fail-closed"` compliance hook that is *unbuildable*
+(its `implementationId` is not registered in the running binary on a partial
+deploy, or a malformed rule was pushed) makes `BuildPipeline` **error**, and the
+request is **refused** rather than forwarded uninspected. This honours the admin's
+"this scanner is mandatory" intent at *build* time, not just on runtime hook
+errors. The agent NE proxy shares the same `tlsbump` code but does **not** set this
+option: it is in the host outbound packet path where refusing would brick the
+host's DNS/DHCP/networking, so it stays fail-open by design (M8 invariant). The
+build-time gate itself lives in `shared/policy/pipeline` (`strictFailClosed`).
 
 The kill-switch check is a lock-free `atomic.Bool` read on the hot path (the
 proxy-side kill-switch state machine is in the runtime doc; the propagation

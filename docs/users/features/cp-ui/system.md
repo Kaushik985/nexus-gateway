@@ -18,13 +18,13 @@ The SYSTEM sidebar section gathers generic operations tools: a request **AI Gate
 
 **Purpose.** The Control Plane's own health and the surfaces it manages directly. Fleet-wide health for every service lives at Infrastructure → Nodes; this page links there rather than duplicating it.
 
-**What you see.** Four tabs. **Overview** shows a compact stat row (uptime, version, instance count, Go version, log level, maintenance mode), an infrastructure bar with database and Hub status plus the config version, a service-metrics card per service that auto-refreshes every 15 seconds, and a recent-errors widget. **Cache** shows the IAM policy cache size, a pointer to where the AI Gateway response cache is viewed, and a button to refresh the runtime config caches. **Providers** shows a card per provider with a health status, error rate, latency, and sample count. **Jobs** links to Infrastructure → Scheduled Jobs.
+**What you see.** Three tabs. **Overview** shows a compact stat row (uptime, version, instance count, Go version, log level, maintenance mode), an infrastructure bar with database and Hub status plus the config version, a service-metrics card per service that auto-refreshes every 15 seconds, and a recent-errors widget. **Providers** shows a card per provider with a health status, error rate, latency, and sample count. **Jobs** links to Infrastructure → Scheduled Jobs. (Forcing the fleet to reload its config is done from Infrastructure → Config Sync; cache hit-rate and savings live in Traffic → Cache ROI.)
 
 **Detail pages.** Provider Health (`/status/health`) is a full grid of per-provider cards with status, error rate, an average-latency split (upstream total versus time-to-first-byte), sample count, and adapter. A service detail page (`/status/services/<name>`) drills into one service's live telemetry, its instances and their health, and per-dimension metric breakdowns.
 
 **Key concepts.** A provider's health is a backend-supplied status the UI color-codes: `healthy` green, `degraded` amber, `unhealthy` (and `down` / `unavailable`) red, `disabled` red, and anything else neutral as `unknown`. The settings summary on Overview needs the settings read permission; without it the page still renders the rest and shows a note.
 
-**Where the data comes from.** `systemApi` (`getSettings`, `getCacheStats`, `checkReady`, `listInstances`, `listProviderHealth`, `refreshRuntimeCache`), `providerApi.list`, and `opsMetricsApi.current`.
+**Where the data comes from.** `systemApi` (`getSettings`, `checkReady`, `listInstances`, `listProviderHealth`), `providerApi.list`, and `opsMetricsApi.current`.
 
 ## Setup Wizard
 

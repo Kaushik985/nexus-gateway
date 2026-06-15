@@ -1,0 +1,150 @@
+/// E61-S2 — Fleet-wide semantic-cache embedding singleton.
+/// One row (id='singleton') per cluster; mirrors ai_guard_config exactly.
+///
+/// L1 stores the embedding provider + model choice. This is a fleet-wide
+/// decision because all routes share one Redis Vector index whose DIM is
+/// fixed at FT.CREATE time — per-route embedding choice would require one
+/// index per (model, dim) tuple, an operational nightmare.
+///
+/// Fingerprint = sha256(provider_id || ':' || model_id || ':' || dimension).
+/// L1 ConfigCache compares on reload; a non-empty mismatch emits a one-shot
+/// semantic_cache.invalidate_all job → versioned index blue/green swap (see
+/// response-cache-architecture.md §3.5). Mirrors ai_guard_config.backend_fingerprint.
+///
+/// enabled = fleet-wide kill switch. Flip false to disable semantic cache
+/// everywhere instantly without touching any routing rule.
+///
+/// Single-tenant by design: there is no `org_id` column or per-tenant
+/// variation. Nexus ships as a single-tenant on-prem product.
+///
+/// See docs/dev/architecture/response-cache-architecture.md §5.1 and
+/// docs/requirements/e61-smart-response-cache.md §FR-8.
+model SemanticCacheConfig {
+  /// Sentinel row identifier — always "singleton".
+  id                       String    @id @default("singleton")
+  /// FK to the Provider that hosts the embedding endpoint. Nullable until
+  /// first admin configuration on the Cache Embedding Settings page (E61-S6c).
+  embedding_provider_id    String?   @map("embedding_provider_id")
+  embeddingProvider        Provider? @relation("EmbeddingProviderOnSemanticCache", fields: [embedding_provider_id], references: [id], onDelete: SetNull)
+  /// FK to the Model used for embedding. Nullable until configured.
+  embedding_model_id       String?   @map("embedding_model_id")
+  embeddingModel           Model?    @relation("EmbeddingModelOnSemanticCache", fields: [embedding_model_id], references: [id], onDelete: SetNull)
+  /// Cached dimension for fast index creation (avoids extra FK lookup at
+  /// FT.CREATE time). Set by SemanticCacheStore.Save alongside the FK fields.
+  embedding_dimension      Int?      @map("embedding_dimension")
+  /// Fingerprint = sha256(provider_id || ':' || model_id || ':' || dimension).
+  embedding_fingerprint    String    @default("") @map("embedding_fingerprint")
+  /// Versioned Redis Vector index name. Bumped from v1 → v2 → v3 on
+  /// (provider, model) changes.
+  redis_index_name         String    @default("nexus:semantic-cache:v1") @map("redis_index_name")
+  enabled                  Boolean   @default(false)
+  /// Cosine similarity gate for L2 hits. Range [0.0, 1.0]; default 0.96.
+  /// Tuned fleet-wide because workloads differ (RAG/factual needs ~0.98,
+  /// creative writing tolerates ~0.92).
+  threshold                Float     @default(0.96)
+  /// Cache isolation scope. Enum: none | user | vk | org. Default "vk"
+  /// matches single-tenant deployments; multi-tenant deployments typically
+  /// flip to "org" or "user" to prevent cross-tenant leakage.
+  vary_by                  String    @default("vk") @map("vary_by")
+  /// Embedding input shaping strategy. Enum: last_user | system_plus_last_user |
+  /// recent_turns | head_plus_tail | full_truncated. Default
+  /// "system_plus_last_user". Single-turn Q&A workloads benefit from
+  /// "last_user"; multi-turn agent dialogs from "recent_turns".
+  embed_strategy           String    @default("system_plus_last_user") @map("embed_strategy")
+  /// When true, an L2 lookup may return an entry cached against a different
+  /// upstream model than the one currently being routed to. Default false
+  /// (model-specific isolation). Useful with smart-routing where the same
+  /// prompt can resolve to different upstream models — flipping true lets
+  /// cache follow the prompt instead of the model.
+  allow_cross_model        Boolean   @default(false) @map("allow_cross_model")
+  updated_at               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updated_by               String?   @map("updated_by")
+  /// Admin-edited time-sensitive freshness rule overrides. Default empty rules
+  /// blob; GET merges seed rules with these (DB overrides win per ID).
+  /// Shape: {"rules": [{id, keywords, requireQuestionMark, requireEntity,
+  ///          languages, enabled}]}.
+  time_sensitive_overrides Json      @default("{\"rules\":[]}") @map("time_sensitive_overrides") @db.JsonB
+
+  @@map("semantic_cache_config")
+}
+
+/// E72: Extract (L1 exact-match) response-cache fleet-wide config.
+///
+/// Singleton row (id = "singleton") promoted from yaml-only to admin-managed
+/// 2026-05-20 so that:
+///   1. extract cache can be toggled at runtime without a service restart
+///   2. the freshness-rules-skip gate has a non-orphan home (per-route
+///      response_cache_policy.skip_time_sensitive was retired earlier; this
+///      field's apply_freshness_rules takes over the role for both L1 + L2)
+///
+/// Hub shadow key: response_cache.extract_config.
+/// AI Gateway atomically swaps cache.Cache config on every push.
+model ExtractCacheConfig {
+  /// Sentinel row identifier — always "singleton".
+  id                    String   @id @default("singleton")
+  /// Master switch. When false the L1 hot-path lookups (LookupStream /
+  /// LookupResponse) are bypassed and traffic_event.gateway_cache_status =
+  /// "skipped" / skip_reason = "disabled".
+  enabled               Boolean  @default(true)
+  /// Cache entry TTL in seconds. Range [60, 604800] (1 minute to 7 days).
+  /// Default 3600 matches the original yaml default.
+  ttl_seconds           Int      @default(3600) @map("ttl_seconds")
+  /// When true, a freshness-rules detector match returns (Skipped,
+  /// time_sensitive) from classifyCachePreLookup, skipping BOTH L1 (extract)
+  /// AND L2 (semantic) lookups for that request. This field is physically
+  /// stored on extract_cache_config but its effect is fleet-wide across all
+  /// gateway cache layers — surfaced in the UI on the Freshness rules card
+  /// where it lives in the admin's mental model.
+  apply_freshness_rules Boolean  @default(true) @map("apply_freshness_rules")
+  updated_at            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updated_by            String?  @map("updated_by")
+
+  @@map("extract_cache_config")
+}
+
+/// E38-S13 — Prompt Cache 3-Tier Config, Tier 1 (truly global, singleton).
+/// JSONB shape governed by Go struct `cacheconfig.GlobalConfig`
+/// in `packages/shared/cacheconfig/types.go`.
+/// Knobs: normaliser_enabled, cache_master_kill_switch.
+/// Adding a new global knob requires updating the Go struct only — no DB migration.
+model CacheGlobalConfig {
+  id        String   @id @default("singleton")
+  config    Json     @default("{}")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy String?  @map("updated_by")
+
+  @@map("cache_global_config")
+}
+
+/// E38-S13 — Prompt Cache 3-Tier Config, Tier 2 (per adapter_type).
+/// One row per adapter family. JSONB shape governed by Go struct
+/// `cacheconfig.AdapterConfig` — contains adapter-specific cache knobs
+/// (anthropic_marker_*, gemini_*) AND the rule override map nested under `rules`.
+/// Field set for each adapter is enforced by Go marshaling on read/write paths.
+model CacheAdapterConfig {
+  adapterType String   @id @map("adapter_type")
+  config      Json     @default("{}")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy   String?  @map("updated_by")
+
+  @@map("cache_adapter_config")
+}
+
+/// E38-S13 — Prompt Cache 3-Tier Config, Tier 3 (per provider override).
+/// One row per Provider that has at least one knob overridden. Empty/absent
+/// row = "fully inherits from Tier 2 + Tier 1". JSONB shape governed by Go
+/// struct `cacheconfig.ProviderConfig`, which is a strict subset of
+/// AdapterConfig (no `rules` — rules stay Tier 2 only per ADR-2).
+/// The CP handler validates on PUT that every key is appropriate for the
+/// Provider's adapter_type; DB-level CHECK cannot be expressed because it
+/// would require a cross-table reference.
+model CacheProviderConfig {
+  providerId String   @id @map("provider_id")
+  config     Json     @default("{}")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy  String?  @map("updated_by")
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("cache_provider_config")
+}

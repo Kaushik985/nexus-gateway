@@ -1,0 +1,412 @@
+/// Unified traffic event table — single table for data-plane flow events only.
+/// Replaces AuditLog, matrix_audit_event, and AgentAuditEvent.
+/// Source discriminator indicates origin binary: ai-gateway | compliance-proxy | agent.
+/// Admin actions live in AdminAuditLog; Thing lifecycle events get a dedicated thing_event table.
+/// A CHECK constraint (see migration 2026-04-21-traffic-event-source-check) pins the allowed set.
+model traffic_event {
+  id                         String                    @id @default(uuid())
+  source                     String // ai-gateway | compliance-proxy | agent
+  timestamp                  DateTime                  @default(now()) @db.Timestamptz(3)
+  // Common fields
+  source_ip                  String?                   @map("source_ip")
+  target_host                String?                   @map("target_host")
+  /// E58/E41: incoming HTTP method as observed at the ingress (what the
+  /// client called). For AI gateway: `/v1/chat/completions`, `/v1/messages`,
+  /// `/v1/responses`, `:generateContent` — the surface the client hit.
+  /// For compliance proxy + agent: same as the captured upstream call.
+  method                     String?
+  path                       String?
+  /// E87: canonical request modality, one of the typology.EndpointKind
+  /// strings ("chat", "embeddings", "stt", "tts", "image_generation",
+  /// "batch", ...). Stamped by the producing service onto the audit
+  /// Record and persisted here so the audit trail / analytics can group
+  /// traffic by endpoint kind without re-deriving it from `path`.
+  /// Empty string for non-AI traffic (compliance-proxy / agent forwards)
+  /// that does not classify a modality.
+  endpoint_type              String                    @default("") @map("endpoint_type")
+  /// E58-S1/E41: HTTP method actually sent to the upstream provider.
+  /// For AI gateway: may differ from `method` (e.g. E57 routes a chat-
+  /// completions request to OpenAI Responses API via POST /v1/responses).
+  /// For compliance-proxy + agent: same as `method`.
+  target_method              String?                   @map("target_method")
+  /// E58-S1/E41: HTTP path actually sent to the upstream provider.
+  /// For AI gateway: differs from `path` when the client's surface differs
+  /// from the upstream's surface (Anthropic /v1/messages vs OpenAI /v1/chat/completions
+  /// vs Gemini :generateContent vs OpenAI Responses /v1/responses).
+  /// For compliance-proxy + agent: same as `path` (transparent forwarding).
+  target_path                String?                   @map("target_path")
+  status_code                Int?                      @map("status_code")
+  latency_ms                 Int?                      @map("latency_ms")
+  // E50 latency phase breakdown. All nullable; producers omit when not
+  // measured. See docs/users/product/architecture.md "Latency Phase Taxonomy (E50)".
+  /// TTFB observed by the producer service from its forward destination.
+  /// For streaming responses: first SSE chunk arrival.
+  upstream_ttfb_ms           Int?                      @map("upstream_ttfb_ms")
+  /// Full upstream round-trip duration: header + body for non-stream, last
+  /// chunk + connection close for stream.
+  upstream_total_ms          Int?                      @map("upstream_total_ms")
+  /// Aggregate of per-hook latency on the request side
+  /// (SUM(request_hooks_pipeline[*].latencyMs)).
+  request_hooks_ms           Int?                      @map("request_hooks_ms")
+  /// Aggregate of per-hook latency on the response side.
+  response_hooks_ms          Int?                      @map("response_hooks_ms")
+  /// Long-tail per-source phase durations (ms). Closed key set per `source`:
+  ///   ai-gateway       → auth_ms / quota_ms / routing_ms / cache_lookup_ms /
+  ///                       req_adapter_ms / resp_adapter_ms
+  ///   compliance-proxy → conn_setup_ms / tls_handshake_ms
+  ///   agent            → intercept_ms
+  /// Keys omitted when the phase did not run or measured zero.
+  latency_breakdown          Json?                     @map("latency_breakdown")
+  created_at                 DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  // Request tracing
+  trace_id                   String?                   @map("trace_id")
+  external_request_id        String?                   @map("external_request_id")
+  // Entity attribution (who/what originated this traffic)
+  entity_type                String?                   @map("entity_type") // "user" | "project" | "unknown"
+  entity_id                  String?                   @map("entity_id")
+  entity_name                String?                   @map("entity_name")
+  org_id                     String?                   @map("org_id")
+  org_name                   String?                   @map("org_name")
+  // Structured identity snapshot (JSONB). Producer keys (ai-gateway
+  // recordToMessage): vk {id,name}, user {id,name}, project {id,name},
+  // apiCredential {id,name}, status ("matched" | "pending"). Owner subtrees
+  // (user/project) are present only when the corresponding FK resolved at
+  // request time. The Hub IdentityEnricher may later add IP-derived
+  // enrichment (e.g. method/device/user.email) on "pending" rows.
+  identity                   Json?                     @map("identity")
+  // AI/Provider (ID + denormalized name)
+  provider_id                String?                   @map("provider_id")
+  provider_name              String?                   @map("provider_name")
+  model_id                   String?                   @map("model_id")
+  model_name                 String?                   @map("model_name")
+  prompt_tokens              Int?                      @map("prompt_tokens")
+  completion_tokens          Int?                      @map("completion_tokens")
+  total_tokens               Int?                      @map("total_tokens")
+  /// E53-s4: per-request reasoning / chain-of-thought tokens reported by
+  /// providers in `usage.completion_tokens_details.reasoning_tokens`
+  /// (OpenAI / DeepSeek / Moonshot / Kimi), `usage.thoughtsTokenCount`
+  /// (Gemini), and `usage.thinking_tokens` (Anthropic). NULL when the
+  /// upstream doesn't report it. No backfill — historical rows stay NULL.
+  reasoning_tokens           Int?                      @map("reasoning_tokens")
+  /// E58-S1: cost in USD attributable to reasoning_tokens. Computed as
+  /// ReasoningTokens × outputPricePerMillion / 1e6 (reasoning is billed
+  /// at the output rate by all three frontier providers). Already counted
+  /// inside cost_usd; surfaced separately for the Cost dashboard's
+  /// "reasoning ratio" widget. NULL when reasoning_tokens is NULL.
+  reasoning_cost_usd         Decimal?                  @map("reasoning_cost_usd") @db.Decimal(12, 8)
+  estimated_cost_usd         Decimal?                  @map("estimated_cost_usd") @db.Decimal(12, 6)
+  // E59-S1: cache outcome — unified rollup (HIT | MISS) plus four detail columns.
+  // cache_status is derived at write time from gateway_cache_status + provider_cache_status
+  // per cost-estimation-architecture.md § 6.4. UI filters bind only to cache_status;
+  // the four detail columns surface in the audit drawer via the three layouts in § 6.4.
+  cache_status               String?                   @map("cache_status")
+  gateway_cache_status       String?                   @map("gateway_cache_status")
+  gateway_cache_skip_reason  String?                   @map("gateway_cache_skip_reason")
+  gateway_cache_kind         String?                   @map("gateway_cache_kind")
+  /// 2026-05-21 E68 bug fix: Redis HASH key of the L2 semantic-cache entry
+  /// that served this row. Stamped only when gateway_cache_kind='semantic'.
+  /// Format: "<redis_index_name>:<sha256(EmbeddingInput)[:16]>". Surfaced to
+  /// the audit drawer's "Mark as bad cache hit" thumbs-down so the admin
+  /// poison-list POST carries the actual key the Reader's IsPoisoned check
+  /// will match against; before this column the UI posted traffic_event.id
+  /// which never matched, making the action a silent no-op in production.
+  gateway_cache_l2_entry_key String?                   @map("gateway_cache_l2_entry_key")
+  provider_cache_status      String?                   @map("provider_cache_status")
+  routed_provider_id         String?                   @map("routed_provider_id")
+  routed_provider_name       String?                   @map("routed_provider_name")
+  routed_model_id            String?                   @map("routed_model_id")
+  routed_model_name          String?                   @map("routed_model_name")
+  routing_rule_id            String?                   @map("routing_rule_id")
+  routing_rule_name          String?                   @map("routing_rule_name")
+  // Compliance — dual pipeline (E33). Request and response stages each
+  // record their own decision, reason, reason_code, hooks_pipeline, and
+  // blocking_rule. Analytics that want a "single overall decision"
+  // derive worst_of(request_hook_decision, response_hook_decision).
+  request_hook_decision      String?                   @map("request_hook_decision")
+  request_hook_reason        String?                   @map("request_hook_reason")
+  request_hook_reason_code   String?                   @map("request_hook_reason_code")
+  request_blocking_rule      Json?                     @map("request_blocking_rule")
+  response_hook_decision     String?                   @map("response_hook_decision")
+  response_hook_reason       String?                   @map("response_hook_reason")
+  response_hook_reason_code  String?                   @map("response_hook_reason_code")
+  response_blocking_rule     Json?                     @map("response_blocking_rule")
+  compliance_tags            String[]                  @default([]) @map("compliance_tags")
+  // TLS interception ("bump") outcome. Plain string (not a Prisma enum) so the
+  // data plane can emit new values without a migration. The emitted value set is
+  // the BumpStatus enum in packages/shared/schemas/configtypes/enums/enums_manual.go:
+  // BUMP_SUCCESS, BUMP_FAILED_PASSTHROUGH, BUMP_EXEMPT_CONFIGURED,
+  // BUMP_EXEMPT_PINNED, BUMP_DISABLED_EMERGENCY.
+  bump_status                String?                   @map("bump_status")
+  // E60 agent attestation passthrough — DESIGN CONTRACT for these columns:
+  // when an incoming CONNECT carries a verified X-Nexus-Attestation header and
+  // CP transparently tunnels (skipping its own MITM + hook pipeline),
+  // attestation_verified=true ↔ attestation_agent_id = the agent's Thing UUID.
+  // CURRENT IMPLEMENTATION: the attestation-verified path emits NO CP
+  // traffic_event (the agent's own audit row is the system-of-record), so these
+  // two columns are not populated today — both are NULL on every row.
+  // See docs/developers/architecture/services/agent/agent-attestation-architecture.md § 5.
+  attestation_verified       Boolean?                  @map("attestation_verified")
+  attestation_agent_id       String?                   @map("attestation_agent_id")
+  // LLM signal extraction (E18)
+  /// Provider-identifying prefix fragment of the caller's API key (e.g. "sk-ant-", "nvk_", "AIza", "aws-sigv4").
+  api_key_class              String?                   @map("api_key_class")
+  /// SHA256(key)[:8] hex. Non-reversible; stable per-key. Semantics depend on `source`:
+  /// ai-gateway → caller's virtual key (internal attribution);
+  /// compliance-proxy/agent → caller's real provider key (external attribution).
+  api_key_fingerprint        String?                   @map("api_key_fingerprint")
+  /// Extraction tier: ok | streaming_reported | streaming_estimated |
+  /// streaming_unavailable | streaming_error | estimated | truncated |
+  /// parse_failed | no_body | non_llm. "truncated" = the non-streaming
+  /// response body was clamped at the read cap before usage extraction, so
+  /// the token counts are incomplete and must not be billed as confirmed
+  /// (audit F-0349). CHECK constraint enforced via raw SQL migration.
+  usage_extraction_status    String?                   @map("usage_extraction_status")
+  /// Structured failure-reason classification (E34-S3). Any producer that
+  /// classifies a non-2xx outcome may populate this with its own enum
+  /// vocabulary. ai-gateway uses RATE_LIMITED / QUOTA_EXCEEDED /
+  /// ROUTING_NO_MATCH / AUTH_INVALID / AUTH_KEY_EXPIRED / USAGE_QUERY_FAILED
+  /// (sourced from writeDetailedErr's `code` arg). compliance-proxy may use
+  /// codes for hook reject / bump failure / inspection block; agent may use
+  /// codes for local interception decisions. NULL on success AND on
+  /// failures the producer chose not to classify (e.g. raw upstream
+  /// 5xx propagated unchanged — leave NULL so upstream-error alerts can
+  /// distinguish them from Nexus-classified failures).
+  error_code                 String?                   @map("error_code")
+  /// Human-readable failure description paired with error_code. For ops to
+  /// skim without looking up the code dictionary (the `message` arg to
+  /// writeDetailedError on the ai-gateway side). NULL when error_code is NULL.
+  error_reason               String?                   @map("error_reason")
+  // Agent-specific
+  source_process             String?                   @map("source_process")
+  action                     String?
+  internal_purpose           String?                   @map("internal_purpose") // "ai-guard" | null; filter in analytics
+  /// IANA timezone of the event's owning org at the time of capture
+  /// (e.g. "Asia/Shanghai"). The `timestamp` column is always a UTC
+  /// instant; this field tells compliance / regulatory readers what
+  /// the local civil time was at the place where the event was
+  /// generated, so reports can render in jurisdiction-local time
+  /// without ambiguity. Empty/null for system rows that don't bind
+  /// to a tenant. E32-S1.
+  origin_tz                  String?                   @map("origin_tz")
+  // JSONB
+  request_hooks_pipeline     Json?                     @map("request_hooks_pipeline")
+  response_hooks_pipeline    Json?                     @map("response_hooks_pipeline")
+  routing_trace              Json?                     @map("routing_trace")
+  details                    Json?
+  // Prompt cache metrics (E38). All nullable; absent when provider did not report cache usage.
+  /// Tokens written to upstream provider prompt cache this request (Anthropic: cache_creation_input_tokens).
+  cache_creation_tokens      Int?                      @map("cache_creation_tokens")
+  /// Tokens served from upstream provider prompt cache this request (Anthropic: cache_read_input_tokens; OpenAI: prompt_tokens_details.cached_tokens).
+  cache_read_tokens          Int?                      @map("cache_read_tokens")
+  /// Number of normaliser rule matches that removed bytes from the upstream request body (E38-S3).
+  normalized_strip_count     Int?                      @map("normalized_strip_count")
+  /// Total bytes removed by normaliser rules from the upstream request body.
+  normalized_strip_bytes     Int?                      @map("normalized_strip_bytes")
+  /// Number of cache_control markers injected by L4 injection (0–4).
+  cache_marker_injected      Int?                      @map("cache_marker_injected")
+  /// Cost of writing to provider prompt cache this request (USD), computed from the Model row's cachedInputWritePricePerMillion.
+  cache_write_cost_usd       Decimal?                  @map("cache_write_cost_usd") @db.Decimal(12, 8)
+  /// Savings from reading from provider prompt cache this request (USD).
+  cache_read_savings_usd     Decimal?                  @map("cache_read_savings_usd") @db.Decimal(12, 8)
+  /// Net cache savings = cache_read_savings_usd - cache_write_cost_usd. Negative on first turn (write cost), positive on subsequent turns.
+  cache_net_savings_usd      Decimal?                  @map("cache_net_savings_usd") @db.Decimal(12, 8)
+  /// Full cost that would have been charged if the L1/L2/L3 response cache had missed (USD). Zero or null for cache misses.
+  gateway_cache_savings_usd  Decimal?                  @map("gateway_cache_savings_usd") @db.Decimal(12, 8)
+  /// E61-S2: cost in USD of the embedding call on the L1-miss path (DECIMAL(20,10)
+  /// for high-precision accounting at sub-cent granularity). NULL on rows where
+  /// no embedding was produced (L1 hit, semantic disabled, or pre-E61). Used by
+  /// Cache ROI: net_savings = gateway_cache_savings_usd - SUM(embedding_cost_usd).
+  embedding_cost_usd         Decimal?                  @map("embedding_cost_usd") @db.Decimal(20, 10)
+  /// E61-S2: which embedding model produced the embedding for this request.
+  /// Nullable FK with SET NULL on provider/model removal so historical rows stay
+  /// intact. Records model attribution for per-model ROI breakdown after admin
+  /// swaps the L1 embedding model. Disambiguated from the upstream routing model
+  /// (model_id) via a named relation.
+  embedding_model_id         String?                   @map("embedding_model_id")
+  embeddingModel             Model?                    @relation("EmbeddingModelOnTraffic", fields: [embedding_model_id], references: [id], onDelete: SetNull)
+  /// 2026-05-21 internal-ops cost accounting: ai-guard classifier call
+  /// cost (when an admin-enabled ai-guard hook ran an LLM-backed classifier).
+  /// Same per-token formula as the primary cost. NULL when no ai-guard
+  /// hook fired on this request.
+  ai_guard_cost_usd          Decimal?                  @map("ai_guard_cost_usd") @db.Decimal(20, 10)
+  /// 2026-05-21 catch-all for future hook-type internal model calls
+  /// (prompt-shield, custom hooks invoking an LLM). Shape:
+  ///   [{type, model, prompt_tokens, completion_tokens, cost_usd, latency_ms}]
+  /// Reserved for cost types we don't yet have a dedicated column for; on
+  /// promotion to a known type a follow-up migration adds the column.
+  internal_ops_breakdown     Json?                     @map("internal_ops_breakdown")
+  // Thing attribution (E39 follow-up). Identifies the Thing instance that
+  // emitted this traffic_event. Semantic depends on `source`:
+  //   source='agent'            → originating agent device (Hub fills from
+  //                               mTLS-resolved Thing context on /agent-audit).
+  //   source='ai-gateway'       → the gateway instance that processed the
+  //                               request (producer fills from its own cfg).
+  //   source='compliance-proxy' → the proxy instance that processed the
+  //                               request (producer fills from its own cfg).
+  // NULL on rows written before this wire-up landed.
+  /// Thing ID of the Thing instance that emitted this traffic_event.
+  thing_id                   String?                   @map("thing_id")
+  /// Denormalized thing.name SNAPSHOT at emit time — NOT auto-updated when the
+  /// thing is later renamed. Treat as the historical label; JOIN thing on
+  /// thing_id for the live name. Kept top-level so analytics can group/display
+  /// without forcing a JOIN.
+  thing_name                 String?                   @map("thing_name")
+  // Provider credential attribution (E41). Top-level for windowed group-by in the
+  // credential-health-rollup job. Also available via identity->'apiCredential'->>'id'.
+  credential_id              String?                   @map("credential_id")
+  // E48 emergency-passthrough audit fan-out. Empty / NULL when no bypass
+  // fired. passthrough_flags carries the canonical-order slice from
+  // passthrough.Config.Flags() — currently one or more of
+  // {bypassHooks, bypassCache, bypassNormalize}. passthrough_reason is
+  // the operator-supplied justification (≥20 chars per DB CHECK on
+  // gateway_passthrough_config_*). Partial index on
+  // (timestamp DESC) WHERE passthrough_flags IS NOT NULL optimises
+  // "show every request that bypassed compliance in the last 30 days".
+  passthrough_flags          String[]                  @map("passthrough_flags")
+  passthrough_reason         String?                   @map("passthrough_reason")
+  // Relations
+  payload                    traffic_event_payload?
+  /// E46 — canonical normalized representation of the captured request/response.
+  /// Populated at capture time by the shared/normalize layer; NULL when capture
+  /// was disabled, the body was unsupported, or normalize ran but failed
+  /// (the row itself records the failure with status='failed').
+  normalized                 traffic_event_normalized?
+  /// Terminal marker written by the normalize-backfill job when a row can
+  /// never be filled (spilled body / no payload produced), so the job stops
+  /// re-scanning it. Backfill-internal; not read by the CP store or UI.
+  normalizeSkip              traffic_event_normalize_skip?
+
+  @@index([source, timestamp])
+  @@index([timestamp])
+  @@index([entity_id, timestamp])
+  @@index([org_id, timestamp])
+  @@index([provider_name, timestamp])
+  @@index([provider_id, timestamp])
+  @@index([request_hook_decision, timestamp])
+  @@index([response_hook_decision, timestamp])
+  @@index([target_host, timestamp])
+  @@index([thing_id, timestamp])
+  // E59-S1: cache filter index. UI binds to cache_status (HIT|MISS); drawer
+  // reads the four detail columns without indexing (single-row lookup).
+  @@index([cache_status, timestamp])
+  // E41 v2: partial index optimised for the credential-health-rollup query
+  // (WHERE source='ai-gateway' AND credential_id IS NOT NULL AND timestamp >= …).
+  // Declared via raw SQL in the migration since Prisma doesn't yet model
+  // partial indexes (see migration 20260513*_e41_v2_credential_state_v2).
+  // The full-table secondary index used in v1 is replaced.
+  @@map("traffic_event")
+}
+
+/// 1:1 child of traffic_event for optional request/response body storage.
+/// Populated based on system_metadata "payload_capture.config" + per-resource
+/// override columns (interception_domain.capture_*, Provider.capture_*).
+///
+/// Body storage is two-tier (E33):
+///   inline_request_body  — JSONB inline copy when extracted size < 256 KiB
+///   request_spill_ref    — JSONB { backend, key, size, sha256, content_type }
+///                          when stored via shared/spillstore (large bodies)
+/// Exactly one of (inline_*, *_spill_ref) is set per direction; both NULL means
+/// capture was disabled for that scope.
+///
+/// `*_size_bytes` is the true extracted size before any inline truncation.
+/// `*_truncated` is true when the inline copy was capped at the threshold.
+model traffic_event_payload {
+  traffic_event_id      String   @id
+  inline_request_body   Json?    @map("inline_request_body")
+  inline_response_body  Json?    @map("inline_response_body")
+  request_spill_ref     Json?    @map("request_spill_ref")
+  response_spill_ref    Json?    @map("response_spill_ref")
+  request_size_bytes    BigInt?  @map("request_size_bytes")
+  response_size_bytes   BigInt?  @map("response_size_bytes")
+  request_truncated     Boolean  @default(false) @map("request_truncated")
+  response_truncated    Boolean  @default(false) @map("response_truncated")
+  request_content_type  String?  @map("request_content_type")
+  response_content_type String?  @map("response_content_type")
+  created_at            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  traffic_event traffic_event @relation(fields: [traffic_event_id], references: [id], onDelete: Cascade)
+
+  @@map("traffic_event_payload")
+}
+
+/// E46 — 1:1 sidecar of traffic_event storing the canonical
+/// NormalizedPayload (provider-agnostic representation of the captured
+/// request and response). Splits storage so the wide traffic_event row
+/// stays stable, normalized JSON can be cold-tiered independently, and
+/// schema versioning is per-row.
+///
+/// `request_status` and `response_status` are one of `ok` / `partial` /
+/// `failed`. When `failed`, the corresponding *_normalized column is
+/// NULL and `*_error_reason` carries the reason. The parent traffic_event
+/// is unaffected by a normalize failure.
+///
+/// Masking provenance is carried on the parent traffic_event
+/// (`compliance_tags`) and inside the normalized payload itself (redacted
+/// markers + rule ids). The TransformSpan records persist in the redaction-span sidecar columns below.
+model traffic_event_normalized {
+  traffic_event_id      String   @id
+  request_normalized    Json?    @map("request_normalized")
+  response_normalized   Json?    @map("response_normalized")
+  request_status        String?  @map("request_status") // "ok" | "partial" | "failed"
+  response_status       String?  @map("response_status")
+  request_error_reason  String?  @map("request_error_reason")
+  response_error_reason String?  @map("response_error_reason")
+  normalize_version     String   @default("1") @map("normalize_version")
+  // Post-redact transform spans for inline audit-UI marking; set only when
+  // storageAction=="redact", NULL otherwise.
+  request_redaction_spans  Json? @map("request_redaction_spans")
+  response_redaction_spans Json? @map("response_redaction_spans")
+  created_at            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  traffic_event traffic_event @relation(fields: [traffic_event_id], references: [id], onDelete: Cascade)
+
+  @@index([request_status])
+  @@index([response_status])
+  @@map("traffic_event_normalized")
+}
+
+/// normalize-backfill skip ledger — the terminal marker for traffic_event
+/// rows the backfill job can never fill (spilled body / no payload / capture
+/// failure). The job LEFT JOINs this and excludes recorded rows so a few
+/// unfillable rows can no longer starve the newest-first LIMIT batch.
+/// Deliberately separate from traffic_event_normalized (whose status fields
+/// the CP store + admin Traffic drawer render) — only the backfill job
+/// touches this. reason ∈ {'spill_ref_only','no_payload_produced'}.
+model traffic_event_normalize_skip {
+  traffic_event_id String   @id
+  reason           String   @map("reason")
+  attempted_at     DateTime @default(now()) @map("attempted_at") @db.Timestamptz(3)
+  /// Schema version the failed attempt ran under. The scan re-admits a
+  /// skip-marked row whenever this differs from the current
+  /// normcore.SchemaVersion, so a version bump retries every previously
+  /// unfillable row exactly once with the new decoders (the P4
+  /// "bump heals everything" invariant). NULL = marked before the
+  /// column existed, re-admitted on the first post-upgrade scan.
+  normalize_version String? @map("normalize_version")
+
+  traffic_event traffic_event @relation(fields: [traffic_event_id], references: [id], onDelete: Cascade)
+
+  @@map("traffic_event_normalize_skip")
+}
+
+/// Dead-letter queue for traffic_event MQ messages. Populated by the Hub
+/// TrafficEventWriter consumer when a single message has been redelivered
+/// more than `redeliveryThresholdAttempts` times (default 5) — typically
+/// because the row violates a constraint, references a missing column, or
+/// hits some other persistent DB-side error. ACKing + writing here breaks
+/// the redeliver-forever loop and lets the broker move on; operators
+/// inspect and decide whether to fix the bug + requeue or discard.
+model traffic_event_dlq {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  msgId         String   @map("msg_id")
+  subject       String
+  payload       Bytes
+  deliveryCount Int      @map("delivery_count")
+  lastError     String?  @map("last_error")
+  firstSeenAt   DateTime @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  dlqInsertedAt DateTime @default(now()) @map("dlq_inserted_at") @db.Timestamptz(6)
+
+  @@index([msgId], map: "traffic_event_dlq_msg_id_idx")
+  @@index([dlqInsertedAt(sort: Desc)], map: "traffic_event_dlq_inserted_at_idx")
+  @@map("traffic_event_dlq")
+}

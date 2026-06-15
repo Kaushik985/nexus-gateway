@@ -74,7 +74,7 @@ End the doc with:
 
 - `packages/control-plane/internal/platform/crypto/` — vault implementations
 - `packages/ai-gateway/internal/credentials/` — gateway-side decrypt path
-- `tools/db-migrate/schema.prisma` — Credential model
+- `tools/db-migrate/schema/providers.prisma` — Credential model
 ```
 
 Paths only. No line numbers, no descriptions longer than one phrase per path.

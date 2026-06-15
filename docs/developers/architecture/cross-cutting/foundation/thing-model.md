@@ -20,9 +20,9 @@ Vocabulary note: "Thing" and "shadow" are internal-narrative words. No code path
 
 ## §2 — Thing entity (DB schema)
 
-The `thing` table at `tools/db-migrate/schema.prisma` is the registry. Every Thing has a single row keyed by `id`.
+The `thing` table at `tools/db-migrate/schema/nodes.prisma` is the registry. Every Thing has a single row keyed by `id`.
 
-**Five Thing types** (schema comment at `schema.prisma`, closed set enforced at `packages/shared/schemas/configkey/configkey_test.go`):
+**Five Thing types** (schema comment at `schema/nodes.prisma`, closed set enforced at `packages/shared/schemas/configkey/configkey_test.go`):
 
 | `type` | `id` shape | Extension row |
 |---|---|---|
@@ -32,26 +32,26 @@ The `thing` table at `tools/db-migrate/schema.prisma` is the registry. Every Thi
 | `compliance-proxy` | same | `thing_service` |
 | `agent` | random UUID issued at first enroll; **same hardware reuses the existing `id`** via `physical_id` UNIQUE (see below) | `thing_agent` |
 
-**Status state machine** (`schema.prisma`): `enrolled` → `online` ⇆ `offline` / `drift` / `revoked`. Default on insert is `enrolled`. Writers per value: `online` is set by `manager.RegisterThing` (called from HTTP enrollment + every WS connect) and by Hub's own `selfreg.Manager` at boot — the upsert's `ON CONFLICT` `CASE WHEN EXCLUDED.status='online' AND thing.status<>'online'` block also resets `process_started_at` and clears `reported_outcomes` whenever this transition fires; `offline` is set by `manager.MarkOffline` (called on WS disconnect) and by the periodic `jobs/defs/drift/stale_thing` job (`MarkStaleOffline`); `drift` is set by the periodic `jobs/defs/drift/drift` job when `desired_ver != reported_ver` on an `online` row and auto-flips back to `online` on the next catching-up `HandleShadowReport`; `revoked` is set by admin-driven revocation flows.
+**Status state machine** (`schema/nodes.prisma`): `enrolled` → `online` ⇆ `offline` / `drift` / `revoked`. Default on insert is `enrolled`. Writers per value: `online` is set by `manager.RegisterThing` (called from HTTP enrollment + every WS connect) and by Hub's own `selfreg.Manager` at boot — the upsert's `ON CONFLICT` `CASE WHEN EXCLUDED.status='online' AND thing.status<>'online'` block also resets `process_started_at` and clears `reported_outcomes` whenever this transition fires; `offline` is set by `manager.MarkOffline` (called on WS disconnect) and by the periodic `jobs/defs/drift/stale_thing` job (`MarkStaleOffline`); `drift` is set by the periodic `jobs/defs/drift/drift` job when `desired_ver != reported_ver` on an `online` row and auto-flips back to `online` on the next catching-up `HandleShadowReport`; `revoked` is set by admin-driven revocation flows.
 
-**Auth and connection** (`schema.prisma`): `auth_type` ∈ {`bearer`, `mtls`, `apikey`} default `bearer`; `conn_protocol` ∈ {`http`, `websocket`} default `http`. (The schema string also lists `mqtt` for historical reasons; no live code path produces it — confirmed by `grep -rE 'mqtt|MQTT' packages/ --include='*.go'` returning zero non-test hits.)
+**Auth and connection** (`schema/nodes.prisma`): `auth_type` ∈ {`bearer`, `mtls`, `apikey`} default `bearer`; `conn_protocol` ∈ {`http`, `websocket`} default `http`. (The schema string also lists `mqtt` for historical reasons; no live code path produces it — confirmed by `grep -rE 'mqtt|MQTT' packages/ --include='*.go'` returning zero non-test hits.)
 
-**Promoted identity columns** (`schema.prisma`): `hostname`, `primary_ip`, `os`, `os_version`, `tags`, `physical_id` were lifted out of the `metadata` jsonb so list / detail UIs can render and filter without crawling JSON. `physical_id` semantics differ by type:
+**Promoted identity columns** (`schema/nodes.prisma`): `hostname`, `primary_ip`, `os`, `os_version`, `tags`, `physical_id` were lifted out of the `metadata` jsonb so list / detail UIs can render and filter without crawling JSON. `physical_id` semantics differ by type:
 
-- **agent**: 32-hex SHA-256 of `IOPlatformUUID + serial + MAC + cpu brand`, computed by `packages/shared/core/metrics/platform/fingerprint.go` (`computeFingerprintSignalsFn`, with `hardwareUUID` reading `IOPlatformUUID` from `ioreg` on darwin). A partial UNIQUE constraint `WHERE type='agent' AND physical_id IS NOT NULL` (migration `tools/db-migrate/migrations/20260521000000_thing_physical_id_column/`) is what makes the agent's `thing.id` stable across reinstalls — at first enroll Hub issues a random UUID; on re-enroll from the same hardware Hub matches the fingerprint and returns the existing row's `id`. Without this constraint the `thing.id` would be regenerated on every reinstall (schema comment notes "random thing.id; same Mac re-enrolls produce different IDs without this"). Hardware changes that perturb any of the four fingerprint inputs (motherboard swap, new primary NIC, OS-level UUID reset) WILL produce a new fingerprint and therefore a new `thing.id` — the stability is "stable per hardware identity", not "permanent".
+- **agent**: 32-hex SHA-256 of `IOPlatformUUID + serial + MAC + cpu brand`, computed by `packages/shared/core/metrics/platform/fingerprint.go` (`computeFingerprintSignalsFn`, with `hardwareUUID` reading `IOPlatformUUID` from `ioreg` on darwin). A partial UNIQUE constraint `WHERE type='agent' AND physical_id IS NOT NULL` (`thing_type_physical_id_uniq` in `tools/db-migrate/schema-extras.sql`, applied post-`db push`) is what makes the agent's `thing.id` stable across reinstalls — at first enroll Hub issues a random UUID; on re-enroll from the same hardware Hub matches the fingerprint and returns the existing row's `id`. Without this constraint the `thing.id` would be regenerated on every reinstall (schema comment notes "random thing.id; same Mac re-enrolls produce different IDs without this"). Hardware changes that perturb any of the four fingerprint inputs (motherboard swap, new primary NIC, OS-level UUID reset) WILL produce a new fingerprint and therefore a new `thing.id` — the stability is "stable per hardware identity", not "permanent".
 - **services**: yaml-configured `id` or auto-derived `{hostname}-{type}-{port}`. The partial UNIQUE deliberately does not cover them; their PK is already deterministic.
 
-**Indexes** (`schema.prisma`): `(type, status)` for fleet-view filters; `(status, last_seen_at)` for the offline-sweep job.
+**Indexes** (`schema/nodes.prisma`): `(type, status)` for fleet-view filters; `(status, last_seen_at)` for the offline-sweep job.
 
-**ThingService extension** (`schema.prisma`, 1:1 with parent): `role` ∈ {api, scheduler, canary, worker} default `default`, `metrics_url` (Prometheus scrape), `management_url` (admin HTTP base).
+**ThingService extension** (`schema/nodes.prisma`, 1:1 with parent): `role` ∈ {api, scheduler, canary, worker} default `default`, `metrics_url` (Prometheus scrape), `management_url` (admin HTTP base).
 
-**ThingAgent extension** (`schema.prisma`, 1:1 with parent): `cert_serial UNIQUE`, `cert_expires_at`, `previous_cert_serial`, `cert_renewed_at`, `sysinfo`, `trust_level Int default 0`, `current_assignment_id`. Trust level semantics at `schema.prisma`: `0=unknown, 1=enrolled, 2=identified (user linked), 3=compliant (cert valid + user linked)`.
+**ThingAgent extension** (`schema/nodes.prisma`, 1:1 with parent): `cert_serial UNIQUE`, `cert_expires_at`, `previous_cert_serial`, `cert_renewed_at`, `sysinfo`, `trust_level Int default 0`, `current_assignment_id`. Trust level semantics at `schema/nodes.prisma`: `0=unknown, 1=enrolled, 2=identified (user linked), 3=compliant (cert valid + user linked)`.
 
-**EnrollmentToken** (`schema.prisma`) carries the one-time secret that turns into a `thing` row; status flows `pending` → `used` | `expired` | `revoked`. The token is stored as `token_hash` (SHA-256 of the raw secret) so the DB never holds the bearer value.
+**EnrollmentToken** (`schema/nodes.prisma`) carries the one-time secret that turns into a `thing` row; status flows `pending` → `used` | `expired` | `revoked`. The token is stored as `token_hash` (SHA-256 of the raw secret) so the DB never holds the bearer value.
 
 ## §3 — Shadow protocol (DB columns)
 
-Six columns on `thing` carry the shadow state (`schema.prisma`):
+Six columns on `thing` carry the shadow state (`schema/nodes.prisma`):
 
 | Column | Type | Written by | Read by |
 |---|---|---|---|
@@ -62,7 +62,7 @@ Six columns on `thing` carry the shadow state (`schema.prisma`):
 | `reported_ver` | BigInt default 0 | Hub when Thing sends `shadow_report` | Same as above |
 | `process_started_at` | timestamptz | Hub, captured on the offline→online transition | UI uptime; used to interpret `reported_outcomes` correctly across restarts |
 
-`reported_outcomes` is `{key: {appliedAt, appliedVersion, applyError}}`. It is **reset to `{}` on Thing process restart** and repopulated by the next successful apply. Correlate with `process_started_at` to distinguish "fresh process, no apply yet" from "applied successfully a while ago" (`schema.prisma`).
+`reported_outcomes` is `{key: {appliedAt, appliedVersion, applyError}}`. It is **reset to `{}` on Thing process restart** and repopulated by the next successful apply. Correlate with `process_started_at` to distinguish "fresh process, no apply yet" from "applied successfully a while ago" (`schema/nodes.prisma`).
 
 `thing.desired` is the **merged wire-format cache** — it is recomputed by Hub whenever a template state, an override, or an override expiry changes. The cascade rule and its single source of truth are §4.
 
@@ -70,11 +70,11 @@ Six columns on `thing` carry the shadow state (`schema.prisma`):
 
 The merged `thing.desired` is assembled from two tables.
 
-**`thing_config_template`** (`schema.prisma`) carries the canonical per-(type, key) desired state. Composite PK `(type, config_key)`. Columns: `state` jsonb default `{}`, `version` BigInt default 1 (monotonic, incremented on every admin write), `updated_at`, `updated_by`. One row per legal `(thing_type, config_key)` tuple (see §5 for the legal set).
+**`thing_config_template`** (`schema/nodes.prisma`) carries the canonical per-(type, key) desired state. Composite PK `(type, config_key)`. Columns: `state` jsonb default `{}`, `version` BigInt default 1 (monotonic, incremented on every admin write), `updated_at`, `updated_by`. One row per legal `(thing_type, config_key)` tuple (see §5 for the legal set).
 
-**`thing_config_override`** (`schema.prisma`) carries per-Thing whole-key replacements. Composite PK `(thing_id, config_key)`. Columns: `state` jsonb (REQUIRED, no default — admins must hand-write the override state), `template_ver_at_set` BigInt (snapshotted at override creation; the template_ver staleness predicate is `current template.version > template_ver_at_set`), `set_by`, `set_at`, `reason` varchar(500) (DB-level CHECK + handler validation), `expires_at` (NULL = permanent; non-NULL must satisfy `expires_at > set_at` via DB CHECK), `emergency_override` bool default `false` (true for break-glass writes — `configKey == "killswitch"` or `reason` starts with `break-glass:`).
+**`thing_config_override`** (`schema/nodes.prisma`) carries per-Thing whole-key replacements. Composite PK `(thing_id, config_key)`. Columns: `state` jsonb (REQUIRED, no default — admins must hand-write the override state), `template_ver_at_set` BigInt (snapshotted at override creation; the template_ver staleness predicate is `current template.version > template_ver_at_set`), `set_by`, `set_at`, `reason` varchar(500) (DB-level CHECK + handler validation), `expires_at` (NULL = permanent; non-NULL must satisfy `expires_at > set_at` via DB CHECK), `emergency_override` bool default `false` (true for break-glass writes — `configKey == "killswitch"` or `reason` starts with `break-glass:`).
 
-**Cascade rule** (comment at `schema.prisma`):
+**Cascade rule** (comment at `schema/nodes.prisma`):
 
 ```
 thing.desired[k] = override[thing_id, k]  if present
@@ -90,7 +90,7 @@ thing.desired[k] = override[thing_id, k]  if present
 
 The blacklist is unexported on purpose; the contract is enforced via `IsOverridable(key) bool` (`override_policy.go`), with `IsBlacklisted` and `BlacklistedKeys` for the inverse predicate and read-only enumeration. Adding entries is a deliberate policy change and must update SDD + spec in the same PR (`override_policy.go`).
 
-**Audit trail**: `ConfigChangeEvent` (`schema.prisma`) is insert-only. Written by Hub's config update handler when CP pushes a change. Fields cover `thing_type`, `config_key`, `action`, `actor_id`, `actor_name`, `new_state`, `new_version`, `source_ip`, `emergency_override`. The audit query path uses three indexes: `(thing_type, timestamp)`, `(config_key, timestamp)`, `(actor_id, timestamp)`.
+**Audit trail**: `ConfigChangeEvent` (`schema/nodes.prisma`) is insert-only. Written by Hub's config update handler when CP pushes a change. Fields cover `thing_type`, `config_key`, `action`, `actor_id`, `actor_name`, `new_state`, `new_version`, `source_ip`, `emergency_override`. The audit query path uses three indexes: `(thing_type, timestamp)`, `(config_key, timestamp)`, `(actor_id, timestamp)`.
 
 ## §5 — Type A vs Type B configKey semantics
 
@@ -107,7 +107,7 @@ Every configKey is one of two types. The distinction governs how the Thing's `On
 **Reload mechanics differ between service Things and agent Things:**
 
 - **Service Thing** receives a Type B `config_changed` → reads the corresponding table from the same PostgreSQL it is already connected to.
-- **Agent Thing** receives a Type B `config_changed` carrying a `{needsPull: true}` stub. The agent's `configloader.Loader` (registered via `RegisterRawPull`) detects the stub and calls an HTTP puller (`packages/agent/cmd/agent/configdispatch.go` `agentPullConfig`) → `GET /api/internal/things/config/<configKey>?type=agent` with `Authorization: Bearer <deviceToken>` and `X-Thing-Id: <thingID>` headers. The Hub-side handler is `SingleConfigPull` (`packages/nexus-hub/internal/fleet/handler/hubapi/internal_things.go`), which dispatches Cat B loader → template fallback. Loaders live in `packages/nexus-hub/internal/compliance/catbagent/` (one file per agent Type B key: `exemptions.go`, `hook_config.go`, `installed_rule_packs.go`, `interception_domains.go`, `payload_capture.go`, `streaming_compliance.go`, `user_context.go`); they are wired into the storage layer at `packages/nexus-hub/cmd/nexus-hub/wiring/storage.go`. (`packages/agent/internal/sync/shadow/snapshot.go` defines a `ConfigSnapshot` struct that is retained for offline-fallback persistence to local SQLCipher via `SaveConfigSnapshot`/`LoadLatestConfigSnapshot`; it is **not** the live-pull wire format.)
+- **Agent Thing** receives a Type B `config_changed` carrying minimal state bytes that serve only as a pull signal. The agent's `configloader.Loader` (registered via `RegisterRawPull`) discards those bytes and, driven by the registration-time pull flag (not any `{needsPull: true}` marker in the payload), calls an HTTP puller (`packages/agent/cmd/agent/configdispatch.go` `agentPullConfig`) → `GET /api/internal/things/config/<configKey>?type=agent` with `Authorization: Bearer <deviceToken>` and `X-Thing-Id: <thingID>` headers. The Hub-side handler is `SingleConfigPull` (`packages/nexus-hub/internal/fleet/handler/hubapi/internal_things.go`), which dispatches Cat B loader → template fallback. Loaders live in `packages/nexus-hub/internal/compliance/catbagent/` (one file per agent Type B key: `exemptions.go`, `hook_config.go`, `installed_rule_packs.go`, `interception_domains.go`, `payload_capture.go`, `streaming_compliance.go`, `user_context.go`); they are wired into the storage layer at `packages/nexus-hub/cmd/nexus-hub/wiring/storage.go`. (`packages/agent/internal/sync/shadow/snapshot.go` defines a `ConfigSnapshot` struct that is retained for offline-fallback persistence to local SQLCipher via `SaveConfigSnapshot`/`LoadLatestConfigSnapshot`; it is **not** the live-pull wire format.)
 
 The agent never connects to PostgreSQL directly. Every byte of agent state comes from Hub over HTTP.
 
@@ -171,7 +171,7 @@ type ConfigState struct {
 2. For each Type A key: apply directly from `ConfigState.State`.
 3. For each Type B key: compare `ConfigState.Version` against the receiver's last-applied version for that key. On change:
    - Service Thing: read the corresponding DB table directly.
-   - Agent Thing: detect the `{needsPull: true}` stub via the `configloader.RegisterRawPull` path and issue `GET /api/internal/things/config/<configKey>?type=agent` to Hub.
+   - Agent Thing: the `configloader.RegisterRawPull` flag triggers an HTTP pull — `GET /api/internal/things/config/<configKey>?type=agent` to Hub — regardless of the pushed bytes (which are a signal only, not a `{needsPull: true}` marker).
 4. Build the `reported` map reflecting what was actually applied.
 5. Return the `reported` map. Return an error **only** if the apply fundamentally failed; partial applies should still return the partial `reported` map (the Hub stamp on `reported_outcomes` is per-key, so a partial success is recorded accurately).
 
@@ -181,7 +181,7 @@ The callback is called synchronously on the client's internal goroutine; the rec
 
 - **No callback registered → skip + log WARN** ("Config changed but no OnConfigChanged callback registered", `shadow.go`).
 - **`desiredVer <= reportedVer` → skip + log "config_already_applied"** unless the `Force` flag is set on the Hub message (`shadow.go`, `Force` semantics at `client.go`).
-- **callback returns error → log error, increment `configApplies("failure")`, do NOT send shadow_report** (`shadow.go`). The next push or reconnect snapshot will retry.
+- **callback returns error → log error, increment `configApplies("failure")`, still send the PARTIAL shadow_report, do NOT advance `reportedVer`** (`shadow.go`). The callback is continue-on-error (§7 point 5): it returns the partial `reported` map for the keys that applied, and the per-key `reportedOutcomes` ledger carries success/error detail for every key. `applyConfig` sends that report at the *current* `reportedVer` (not `desiredVer`) so the node's global `reported_ver` stays behind `desired_ver` (it correctly shows drift) while Hub and the Nodes page still receive per-key convergence + the failing key's `applyError`. `reportedVer` is advanced to `desiredVer` only on the all-success path AND when no key from a prior round is still failing (failed keys are tracked in `Client.failed`, which holds the global version back until everything converges — per-key dispatch no longer re-runs siblings, so a clean round cannot falsely advance past a still-broken sibling). A **bounded backoff retry timer** (F-0117) proactively re-attempts the failed keys — re-applying the full desired snapshot so the complete reported map re-lands at the advanced version — and cancels on convergence; the next push or reconnect snapshot is the backstop once the retry budget is exhausted. The forced re-sync path (`applyConfigForce`, A02 §10) applies the same partial-report-on-error behavior. See A02 §11 for the retry tuning + the Hub-side per-key merge that makes single-key reports safe.
 
 ## §8 — Hub-side fleet packages
 
@@ -238,7 +238,7 @@ The same mapping is referenced by `.cursor/rules/iot-terminology-boundary.mdc`; 
 
 ## References
 
-- Schema — `tools/db-migrate/schema.prisma`
+- Schema — `tools/db-migrate/schema/nodes.prisma`
 - Thing client — `packages/shared/transport/thingclient/`
 - ConfigKey constants + validation — `packages/shared/schemas/configkey/`
 - Override blacklist — `packages/shared/schemas/configtypes/policy/override_policy.go`

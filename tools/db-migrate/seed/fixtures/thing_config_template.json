@@ -1,0 +1,423 @@
+[
+  {
+    "type": "agent",
+    "config_key": "agent_settings",
+    "state": {
+      "quitAllowed": true,
+      "shutdownWarning": {
+        "en": "Closing Nexus Agent will stop AI traffic monitoring on this device. Your IT team will be notified. Are you sure?",
+        "es": "Cerrar Nexus Agent detendrá la supervisión de tráfico de IA en este dispositivo. Se notificará a su equipo de TI. ¿Está seguro?",
+        "zh": "关闭 Nexus Agent 将停止本设备上的 AI 流量监控。您的 IT 团队会收到通知。确定要关闭吗？"
+      },
+      "autoUpdateChannel": "stable",
+      "autoUpdateEnabled": true,
+      "trafficUploadLevel": "processed",
+      "shutdownWarningEnabled": true,
+      "shutdownWarningMessage": "",
+      "forceQUICFallbackBundles": [
+        "com.google.Chrome",
+        "com.google.Chrome.canary",
+        "com.microsoft.edgemac",
+        "com.brave.Browser",
+        "company.thebrowser.Browser",
+        "org.mozilla.firefox",
+        "com.vivaldi.Vivaldi",
+        "com.apple.Safari"
+      ]
+    },
+    "version": 6,
+    "updated_at": "2026-05-15T04:03:01.992+00:00",
+    "updated_by": "configreconcile"
+  },
+  {
+    "type": "agent",
+    "config_key": "diag_mode",
+    "state": null,
+    "version": 2,
+    "updated_at": "2026-05-13T16:39:29.089+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "agent",
+    "config_key": "exemptions",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "agent",
+    "config_key": "hooks",
+    "state": null,
+    "version": 9,
+    "updated_at": "2026-05-15T10:38:31.364+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "agent",
+    "config_key": "interception_domains",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "agent",
+    "config_key": "killswitch",
+    "state": {
+      "engaged": false
+    },
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "agent",
+    "config_key": "payload_capture",
+    "state": {
+      "enabled": false
+    },
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "agent",
+    "config_key": "streaming_compliance",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-14T14:34:13.556+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "ai_guard",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "cache",
+    "state": {
+      "global": {
+        "normaliser_enabled": true,
+        "cache_master_kill_switch": false
+      },
+      "adapters": {
+        "glm": {
+          "rules": {
+            "glm-field-order-normalize": {
+              "enabled": true
+            }
+          }
+        },
+        "gemini": {
+          "ttl_seconds": 3600,
+          "cache_enabled": true,
+          "min_system_chars": 4096,
+          "circuit_breaker_open_secs": 300,
+          "circuit_breaker_threshold": 5
+        },
+        "openai": {
+          "rules": {
+            "openai-field-order-normalize": {
+              "enabled": true
+            }
+          }
+        },
+        "vertex": {
+          "ttl_seconds": 3600,
+          "cache_enabled": false,
+          "min_system_chars": 4096,
+          "circuit_breaker_open_secs": 300,
+          "circuit_breaker_threshold": 5
+        },
+        "bedrock": {
+          "rules": {
+            "bedrock-claude-cch-strip": {
+              "enabled": false
+            }
+          },
+          "marker_inject_enabled": true,
+          "marker_boundary3_enabled": true
+        },
+        "deepseek": {
+          "rules": {
+            "deepseek-field-order-normalize": {
+              "enabled": true
+            }
+          }
+        },
+        "moonshot": {
+          "rules": {
+            "moonshot-field-order-normalize": {
+              "enabled": true
+            }
+          }
+        },
+        "anthropic": {
+          "rules": {
+            "claude-code-cch-strip": {
+              "enabled": false
+            }
+          },
+          "marker_inject_enabled": true,
+          "marker_boundary3_enabled": true
+        },
+        "azure-openai": {
+          "rules": {
+            "azure-openai-field-order-normalize": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "providers": {
+        "dee77e2b-fbe8-4281-9d87-cd8886f90450": {}
+      }
+    },
+    "version": 19,
+    "updated_at": "2026-05-13T15:04:10.177+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "credential_reliability",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "credentials",
+    "state": null,
+    "version": 2,
+    "updated_at": "2026-05-12T13:19:03.242+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "gateway_passthrough",
+    "state": {
+      "global": {
+        "reason": null,
+        "enabled": false,
+        "bypassCache": true,
+        "bypassHooks": true,
+        "bypassNormalize": true
+      },
+      "adapters": {},
+      "providers": {}
+    },
+    "version": 7,
+    "updated_at": "2026-05-13T16:14:25.936+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "hooks",
+    "state": null,
+    "version": 9,
+    "updated_at": "2026-05-15T10:38:31.357+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "log_level",
+    "state": {
+      "level": "info"
+    },
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:43.723+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "models",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "observability",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-10T16:45:26.988+00:00",
+    "updated_by": "seed-script"
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "organizations",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "payload_capture",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "providers",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "quota_overrides",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "quota_policies",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "routing_rules",
+    "state": null,
+    "version": 17,
+    "updated_at": "2026-05-14T17:12:19.659+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "ai-gateway",
+    "config_key": "virtual_keys",
+    "state": {},
+    "version": 1,
+    "updated_at": "2026-05-15T17:40:20.56+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "exemptions",
+    "state": null,
+    "version": 4062,
+    "updated_at": "2026-05-16T10:10:58.255+00:00",
+    "updated_by": "00000000-0000-0000-0000-000000000001"
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "hooks",
+    "state": null,
+    "version": 10,
+    "updated_at": "2026-05-15T10:38:31.361+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "interception_domains",
+    "state": null,
+    "version": 177,
+    "updated_at": "2026-05-12T03:28:33.858+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "killswitch",
+    "state": {
+      "engaged": false
+    },
+    "version": 7,
+    "updated_at": "2026-05-11T11:14:48.003+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "log_level",
+    "state": {
+      "level": "info"
+    },
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:43.723+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "observability",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-10T16:45:25.348+00:00",
+    "updated_by": "seed-script"
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "onboarding",
+    "state": {
+      "enabled": false
+    },
+    "version": 3,
+    "updated_at": "2026-05-11T06:19:27.086+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "payload_capture",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-10T16:45:26.751+00:00",
+    "updated_by": "seed-script"
+  },
+  {
+    "type": "compliance-proxy",
+    "config_key": "streaming_compliance",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-14T14:34:13.55+00:00",
+    "updated_by": ""
+  },
+  {
+    "type": "control-plane",
+    "config_key": "log_level",
+    "state": {
+      "level": "info"
+    },
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:43.723+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "control-plane",
+    "config_key": "observability",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "nexus-hub",
+    "config_key": "log_level",
+    "state": {
+      "level": "info"
+    },
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:43.723+00:00",
+    "updated_by": null
+  },
+  {
+    "type": "nexus-hub",
+    "config_key": "observability",
+    "state": null,
+    "version": 1,
+    "updated_at": "2026-05-13T03:37:15.384+00:00",
+    "updated_by": null
+  }
+]

@@ -1,0 +1,388 @@
+[
+  {
+    "id": "1885de8a-90ac-46ee-be33-5e1b90e74f5f",
+    "name": "ip-access-filter",
+    "type": "builtin",
+    "implementationId": "ip-access-filter",
+    "stage": "request",
+    "category": "traffic_control",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "mode": "blocklist",
+      "allowlist": [],
+      "blocklist": []
+    },
+    "priority": 4,
+    "timeoutMs": 500,
+    "failBehavior": "fail-closed",
+    "enabled": false,
+    "applicableIngress": [
+      "AI_GATEWAY"
+    ],
+    "createdAt": "2026-05-08T14:45:49.488+00:00",
+    "updatedAt": "2026-05-10T16:41:15.503+00:00"
+  },
+  {
+    "id": "20b82564-5ce3-4d0b-a102-da5f3bf3f29b",
+    "name": "pii-scanner",
+    "type": "builtin",
+    "implementationId": "pii-detector",
+    "stage": "request",
+    "category": "compliance",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "onMatch": {
+        "storageAction": "redact",
+        "inflightAction": "block-hard"
+      },
+      "patternDefinitions": [
+        {
+          "id": "email",
+          "flags": "g",
+          "regex": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
+        },
+        {
+          "id": "credit_card",
+          "flags": "g",
+          "regex": "\\b(?:\\d{4}[-\\s]?){3}\\d{4}\\b"
+        },
+        {
+          "id": "ssn",
+          "flags": "g",
+          "regex": "\\b\\d{3}[-\\s]?\\d{2}[-\\s]?\\d{4}\\b"
+        },
+        {
+          "id": "phone",
+          "flags": "g",
+          "regex": "\\b(?:\\+?1[-.\\s]?)?(?:\\(?\\d{3}\\)?[-.\\s]?)?\\d{3}[-.\\s]?\\d{4}\\b"
+        }
+      ]
+    },
+    "priority": 10,
+    "timeoutMs": 3000,
+    "failBehavior": "fail-closed",
+    "enabled": true,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:48.036+00:00",
+    "updatedAt": "2026-05-15T10:38:31.355+00:00"
+  },
+  {
+    "id": "679786c9-466e-495a-9ad5-b545973374a8",
+    "name": "data-residency-eu",
+    "type": "builtin",
+    "implementationId": "data-residency",
+    "stage": "request",
+    "category": "compliance",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "policies": [
+        {
+          "allowedRegions": [
+            "eu-west-1",
+            "eu-central-1"
+          ],
+          "classification": "CONFIDENTIAL"
+        },
+        {
+          "allowedRegions": [
+            "eu-west-1"
+          ],
+          "classification": "RESTRICTED"
+        }
+      ]
+    },
+    "priority": 15,
+    "timeoutMs": 500,
+    "failBehavior": "fail-closed",
+    "enabled": false,
+    "applicableIngress": [
+      "AI_GATEWAY"
+    ],
+    "createdAt": "2026-05-08T14:45:50.448+00:00",
+    "updatedAt": "2026-05-10T16:41:16.025+00:00"
+  },
+  {
+    "id": "6fd3320a-2719-4f18-9597-318a3268cd94",
+    "name": "request-content-safety",
+    "type": "builtin",
+    "implementationId": "content-safety",
+    "stage": "request",
+    "category": "compliance",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "onMatch": {
+        "storageAction": "redact",
+        "inflightAction": "block-soft"
+      },
+      "categories": {
+        "sexual": true,
+        "illegal": true,
+        "violence": true,
+        "self_harm": true,
+        "hate_speech": true
+      }
+    },
+    "priority": 7,
+    "timeoutMs": 3000,
+    "failBehavior": "fail-open",
+    "enabled": false,
+    "applicableIngress": [
+      "AI_GATEWAY",
+      "COMPLIANCE_PROXY"
+    ],
+    "createdAt": "2026-05-08T14:45:51.236+00:00",
+    "updatedAt": "2026-05-10T16:41:16.834+00:00"
+  },
+  {
+    "id": "a6719df5-a1eb-4fd7-b740-5fd65c19ee85",
+    "name": "response-quality-signals",
+    "type": "builtin",
+    "implementationId": "quality-checker",
+    "stage": "response",
+    "category": "quality",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "onMatch": {
+        "storageAction": "keep",
+        "inflightAction": "approve"
+      },
+      "detectRefusals": true,
+      "minResponseLength": 10,
+      "expectedFinishReasons": [
+        "stop",
+        "end_turn"
+      ]
+    },
+    "priority": 5,
+    "timeoutMs": 2000,
+    "failBehavior": "fail-open",
+    "enabled": true,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:50.974+00:00",
+    "updatedAt": "2026-05-13T18:21:53.614+00:00"
+  },
+  {
+    "id": "ac9380e3-1c5e-45c4-a869-8cb646459d4d",
+    "name": "request-body-size-cap",
+    "type": "builtin",
+    "implementationId": "request-size-validator",
+    "stage": "request",
+    "category": "traffic_control",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "maxSizeBytes": 1048576,
+      "excludeContentTypes": [
+        "multipart/form-data"
+      ]
+    },
+    "priority": 9,
+    "timeoutMs": 2000,
+    "failBehavior": "fail-open",
+    "enabled": false,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:50.185+00:00",
+    "updatedAt": "2026-05-10T16:41:15.783+00:00"
+  },
+  {
+    "id": "aed59996-9f18-48f2-a259-a37abac4d108",
+    "name": "noop-baseline",
+    "type": "builtin",
+    "implementationId": "noop",
+    "stage": "request",
+    "category": "custom",
+    "endpoint": null,
+    "script": null,
+    "config": {},
+    "priority": 1,
+    "timeoutMs": 500,
+    "failBehavior": "fail-open",
+    "enabled": true,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:51.76+00:00",
+    "updatedAt": "2026-05-10T16:41:17.358+00:00"
+  },
+  {
+    "id": "aefd407f-8a38-4838-bc8c-d104982d548c",
+    "name": "compliance-webhook",
+    "type": "webhook",
+    "implementationId": "webhook-forward",
+    "stage": "request",
+    "category": "custom",
+    "endpoint": "https://api.nexus.ai/v1/ai-guard/compliance-webhook",
+    "script": null,
+    "config": {
+      "timeoutMs": 5000
+    },
+    "priority": 30,
+    "timeoutMs": 5000,
+    "failBehavior": "fail-open",
+    "enabled": false,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:50.712+00:00",
+    "updatedAt": "2026-05-12T12:34:55.88+00:00"
+  },
+  {
+    "id": "b2f2d960-54a5-4f01-abf7-47877f73bce3",
+    "name": "pii-outbound-scanner",
+    "type": "builtin",
+    "implementationId": "pii-detector",
+    "stage": "response",
+    "category": "compliance",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "onMatch": {
+        "storageAction": "redact",
+        "inflightAction": "block-hard"
+      },
+      "patternDefinitions": [
+        {
+          "id": "email",
+          "flags": "g",
+          "regex": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"
+        },
+        {
+          "id": "phone",
+          "flags": "g",
+          "regex": "\\b(?:\\+?1[-.\\s]?)?(?:\\(?\\d{3}\\)?[-.\\s]?)?\\d{3}[-.\\s]?\\d{4}\\b"
+        },
+        {
+          "id": "ssn",
+          "flags": "g",
+          "regex": "\\b\\d{3}[-\\s]?\\d{2}[-\\s]?\\d{4}\\b"
+        },
+        {
+          "id": "credit_card",
+          "flags": "g",
+          "regex": "\\b(?:\\d{4}[-\\s]?){3}\\d{4}\\b"
+        }
+      ]
+    },
+    "priority": 12,
+    "timeoutMs": 3000,
+    "failBehavior": "fail-closed",
+    "enabled": false,
+    "applicableIngress": [
+      "AI_GATEWAY",
+      "COMPLIANCE_PROXY"
+    ],
+    "createdAt": "2026-05-08T14:45:48.301+00:00",
+    "updatedAt": "2026-05-12T21:14:42.494+00:00"
+  },
+  {
+    "id": "c5978ee3-e4ff-4110-b24d-792033a28bf8",
+    "name": "global-rate-limit",
+    "type": "builtin",
+    "implementationId": "rate-limiter",
+    "stage": "request",
+    "category": "traffic_control",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "keyType": "source_ip",
+      "maxRequests": 1000,
+      "windowSeconds": 60
+    },
+    "priority": 8,
+    "timeoutMs": 2000,
+    "failBehavior": "fail-open",
+    "enabled": false,
+    "applicableIngress": [
+      "AI_GATEWAY",
+      "AGENT"
+    ],
+    "createdAt": "2026-05-08T14:45:49.223+00:00",
+    "updatedAt": "2026-05-10T16:41:15.263+00:00"
+  },
+  {
+    "id": "d152a4ee-eff7-43a6-b7e2-d4eb3a813cbe",
+    "name": "response-content-safety",
+    "type": "builtin",
+    "implementationId": "content-safety",
+    "stage": "response",
+    "category": "compliance",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "onMatch": {
+        "storageAction": "redact",
+        "inflightAction": "block-soft"
+      },
+      "categories": {
+        "sexual": true,
+        "illegal": true,
+        "violence": true,
+        "self_harm": true,
+        "hate_speech": true
+      }
+    },
+    "priority": 7,
+    "timeoutMs": 3000,
+    "failBehavior": "fail-open",
+    "enabled": false,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:51.497+00:00",
+    "updatedAt": "2026-05-10T16:41:17.073+00:00"
+  },
+  {
+    "id": "f13a2ae9-7d91-4ab6-8238-b87e30622240",
+    "name": "keyword-blocker",
+    "type": "builtin",
+    "implementationId": "keyword-filter",
+    "stage": "request",
+    "category": "compliance",
+    "endpoint": null,
+    "script": null,
+    "config": {
+      "onMatch": {
+        "storageAction": "redact",
+        "inflightAction": "block-hard"
+      },
+      "patterns": [
+        {
+          "pattern": "\\bconfidential\\b",
+          "category": "business",
+          "severity": "hard"
+        },
+        {
+          "pattern": "\\binternal[\\s-]only\\b",
+          "category": "business",
+          "severity": "hard"
+        },
+        {
+          "pattern": "\\bsecret[-\\s]project[-\\s]alpha\\b",
+          "category": "business",
+          "severity": "hard"
+        }
+      ],
+      "caseSensitive": false
+    },
+    "priority": 20,
+    "timeoutMs": 1000,
+    "failBehavior": "fail-open",
+    "enabled": true,
+    "applicableIngress": [
+      "ALL"
+    ],
+    "createdAt": "2026-05-08T14:45:48.957+00:00",
+    "updatedAt": "2026-05-13T18:22:58.085+00:00"
+  }
+]

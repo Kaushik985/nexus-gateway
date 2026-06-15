@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verify a rename has been fully swept across all 14 layers (Go source,
-# tests, yaml, env examples, SQL seed, DB migrations, UI source, UI i18n,
+# tests, yaml, env examples, seed fixtures, DB schema, UI source, UI i18n,
 # prod systemd EnvironmentFile, prod DB rows, docs, skills, CLAUDE.md +
 # cursor rules, and test fixtures).
 #
@@ -178,8 +178,8 @@ check_one() {
   # ─── Layer 5: seed SQL ────────────────────────────────────────────────
   scan_layer 5  "seed SQL"       "$old" 'tools/db-migrate/seed/' || failed=1
 
-  # ─── Layer 6: DB migrations ───────────────────────────────────────────
-  scan_layer 6  "DB migrations"  "$old" 'tools/db-migrate/migrations/' || failed=1
+  # ─── Layer 6: DB schema (Prisma folder + post-push extras) ────────────
+  scan_layer 6  "DB schema"  "$old" 'tools/db-migrate/schema/' 'tools/db-migrate/schema-extras.sql' || failed=1
 
   # ─── Layer 7: admin UI source ─────────────────────────────────────────
   scan_layer 7  "admin UI source" "$old" \

@@ -1,0 +1,1466 @@
+[
+  {
+    "id": "05c1737e-2e4c-404a-a22b-90cae3b47ca8",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-io-003",
+    "category": "prompt_injection.instruction_override",
+    "severity": "hard",
+    "pattern": "(?i)forget\\s+(everything|all)\\s+(you\\s+were\\s+told|above|before)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:instruction-override"
+    ]
+  },
+  {
+    "id": "0602075d-d47c-4e67-8a67-3240fcaa806a",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-env-001",
+    "category": "tool_call.env_exfil",
+    "severity": "soft",
+    "pattern": "(?i)(?:os\\.environ|process\\.env|getenv)\\s*\\[\\s*[\"'](?:AWS_|OPENAI_|ANTHROPIC_|GITHUB_|STRIPE_)",
+    "flags": null,
+    "description": "Programmatic read of a credential-prefixed environment variable.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:exfiltration",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "0677f2f1-5769-45d4-9a35-cb0f14e0cc65",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-h-003",
+    "category": "content_safety.hate_speech",
+    "severity": "warn",
+    "pattern": "(?i)\\b(?:white\\s+power|white\\s+supremac(?:y|ist)|14\\s*words|sieg\\s+heil|blood\\s+and\\s+soil)\\b",
+    "flags": null,
+    "description": "Supremacist / neo-nazi slogan markers.",
+    "labels": [
+      "detector:content-safety",
+      "category:hate_speech",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "0a0d736c-d2f1-4875-9fc2-327596e4a4fd",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-de-001",
+    "category": "prompt_injection.escalation",
+    "severity": "hard",
+    "pattern": "(?i)(developer|admin|root|god|debug)\\s+mode\\s+(on|enabled|active|unlocked)\\b\\s*[.!,;:]",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:mode-escalation"
+    ]
+  },
+  {
+    "id": "0d16e588-fb50-4dd1-af1b-8595db3215d8",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-fs-001",
+    "category": "tool_call.filesystem",
+    "severity": "hard",
+    "pattern": "(?i)(?:write|open|create|append)[^\\n]{0,40}?(?:/etc/(?:passwd|shadow|sudoers|ssh/|cron\\.|hosts)|~/\\.ssh/|C:\\\\Windows\\\\(?:System32|SysWOW64))",
+    "flags": null,
+    "description": "Write attempt against well-known sensitive system paths.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:tampering",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "10b3d614-e439-4a2c-87e6-e7bbb48f0cc4",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-v-001",
+    "category": "content_safety.violence",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:how\\s+(?:to|do\\s+i)|best\\s+way\\s+to)\\s+(?:murder|assassinate|kill)\\s+(?:a\\s+person|someone|him|her|them)\\b",
+    "flags": null,
+    "description": "How-to framing targeting a human (excludes \"kill the process\" idiom).",
+    "labels": [
+      "detector:content-safety",
+      "category:violence",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "17233807-304d-4861-9b46-763b3603898c",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-mt-001",
+    "category": "prompt_injection.meta",
+    "severity": "soft",
+    "pattern": "(?i)do\\s+not\\s+(refuse|say\\s+no|reject|deny)\\s+(this|my|any)\\s+request",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:meta"
+    ]
+  },
+  {
+    "id": "19ee7896-5123-444c-a94e-3caafa866120",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-sh-006",
+    "category": "content_safety.self_harm",
+    "severity": "warn",
+    "pattern": "(?i)\\b(?:lethal|fatal|effective)\\s+(?:dose|dosage|amount)\\s+of\\s+(?:tylenol|acetaminophen|paracetamol|aspirin|insulin|fentanyl|opioids?)\\s+(?:to|for)\\s+(?:die|kill\\s+(?:myself|me)|suicide|overdose)\\b",
+    "flags": null,
+    "description": "Lethal-dose query for known overdose vectors.",
+    "labels": [
+      "detector:content-safety",
+      "category:self_harm",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "1e09181e-7400-42e3-bffc-9e926f5c6d5a",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-generic-bearer",
+    "category": "secret_leak.generic",
+    "severity": "warn",
+    "pattern": "(?i)(?:authorization|bearer|api[_-]?key)\\s*[:=]\\s*[\"']?[A-Za-z0-9_-]{30,}",
+    "flags": null,
+    "description": "Labeled bearer / API-key context with a 30+ char opaque value.",
+    "labels": [
+      "detector:secret-leak",
+      "format:bearer",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "21e0f3af-ac61-416c-8a16-4bfcb6b73a15",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-sh-004",
+    "category": "content_safety.self_harm",
+    "severity": "warn",
+    "pattern": "(?i)\\b(?:pro[-\\s]?ana|pro[-\\s]?mia|thinspo|meanspo|bonespo)\\b",
+    "flags": null,
+    "description": "Pro-anorexia / pro-bulimia community markers.",
+    "labels": [
+      "detector:content-safety",
+      "category:self_harm",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "27ef7732-bb63-4fd4-84f6-8d3729161f67",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-ssrf-003",
+    "category": "tool_call.ssrf",
+    "severity": "soft",
+    "pattern": "(?i)\\.(?:internal|cluster\\.local|svc\\.cluster\\.local)\\b",
+    "flags": null,
+    "description": "Kubernetes / internal-service DNS suffix.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:ssrf",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "28e79db6-fac4-4f3f-84dd-c06181521fea",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-azure-storage",
+    "category": "secret_leak.azure",
+    "severity": "hard",
+    "pattern": "(?i)DefaultEndpointsProtocol=https?;AccountName=[^;]+;AccountKey=[A-Za-z0-9+/=]{80,100};",
+    "flags": null,
+    "description": "Azure storage connection string.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:azure",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "2918df56-1f64-4b89-8efc-a65f98f3079b",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-i-001",
+    "category": "content_safety.illegal",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:how\\s+(?:to|do\\s+i)|step[-\\s]?by[-\\s]?step)\\s+(?:synthesi[sz]e|cook|make|manufacture)\\s+(?:meth(?:amphetamine)?|fentanyl|heroin|cocaine|crack|mdma|lsd)\\b",
+    "flags": null,
+    "description": "Drug synthesis how-to.",
+    "labels": [
+      "detector:content-safety",
+      "category:illegal",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "296d0cbc-2144-4548-9290-2a15fc85e312",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-sh-003",
+    "category": "tool_call.shell",
+    "severity": "soft",
+    "pattern": "(?i)(shell|bash|system|execve?|popen)\\s*\\([^)]*(?:rm|dd|mkfs|shutdown|reboot)",
+    "flags": null,
+    "description": "System-call wrappers invoked with destructive verbs.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:destructive",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "3094fb63-e82f-43b2-93d1-6ae61e1e80f2",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-jwt",
+    "category": "secret_leak.jwt",
+    "severity": "soft",
+    "pattern": "\\beyJ[A-Za-z0-9_-]{10,}\\.eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b",
+    "flags": null,
+    "description": "JWT-shaped token.",
+    "labels": [
+      "detector:secret-leak",
+      "format:jwt",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "32a5d063-bc98-478b-8a21-a605eea679c4",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-sh-001",
+    "category": "content_safety.self_harm",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:how\\s+(?:to|do\\s+i)|best\\s+way\\s+to|easiest\\s+way\\s+to)\\s+(?:commit\\s+suicide|kill\\s+myself|end\\s+my\\s+(?:life|existence))\\b",
+    "flags": null,
+    "description": "Direct suicide how-to request.",
+    "labels": [
+      "detector:content-safety",
+      "category:self_harm",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "335d0409-57a7-489a-919b-abf036551a50",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-sp-003",
+    "category": "prompt_injection.system_leak",
+    "severity": "soft",
+    "pattern": "(?i)(repeat|echo)\\s+(the\\s+)?(text\\s+)?(above|before\\s+this|starting\\s+with)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:system-leak"
+    ]
+  },
+  {
+    "id": "336a3477-e200-40e2-be01-66c8fd136e77",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-mailgun",
+    "category": "secret_leak.mailgun",
+    "severity": "hard",
+    "pattern": "\\bkey-[a-f0-9]{32}\\b",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:secret-leak",
+      "provider:mailgun",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "3582e402-84bf-40db-a775-30f5997ec975",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-sendgrid",
+    "category": "secret_leak.sendgrid",
+    "severity": "hard",
+    "pattern": "\\bSG\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{43}\\b",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:secret-leak",
+      "provider:sendgrid",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "39234ca3-84a5-4f60-8767-ecfd688764d8",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-tr-001",
+    "category": "prompt_injection.system_leak",
+    "severity": "soft",
+    "pattern": "(?i)translate\\s+(your|the)\\s+(system|original)\\s+(prompt|instructions?)\\s+(to|into)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:system-leak"
+    ]
+  },
+  {
+    "id": "3969f1eb-20c9-41dc-979b-715871e125b9",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-de-002",
+    "category": "prompt_injection.escalation",
+    "severity": "hard",
+    "pattern": "(?i)(enable|activate|unlock|enter)\\s+(developer|admin|root|debug|maintenance)\\s+mode",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:mode-escalation"
+    ]
+  },
+  {
+    "id": "3b571f72-c801-441c-aaae-cc1c8dd260db",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-slack-bot",
+    "category": "secret_leak.slack",
+    "severity": "hard",
+    "pattern": "\\bxox[abpr]-[A-Za-z0-9-]{10,}\\b",
+    "flags": null,
+    "description": "Slack bot / app / user / refresh token.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:slack",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "3faee73f-276b-4214-8f72-9c3cc91193cd",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-gcp-api",
+    "category": "secret_leak.gcp",
+    "severity": "hard",
+    "pattern": "\\bAIza[0-9A-Za-z_-]{35}\\b",
+    "flags": null,
+    "description": "Google Cloud API key.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:gcp",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "4334460e-bd60-4a38-9f35-b7975ea44e56",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-en-001",
+    "category": "prompt_injection.encoded",
+    "severity": "soft",
+    "pattern": "(?i)(base64|b64|hex|rot13)\\s*[:(]?\\s*[A-Za-z0-9+/=]{40,}",
+    "flags": null,
+    "description": "Long encoded blob — potential payload smuggling.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:encoded-payload"
+    ]
+  },
+  {
+    "id": "44f22102-15df-47bc-9cb7-652b6530e992",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-sql-001",
+    "category": "tool_call.sqli",
+    "severity": "soft",
+    "pattern": "(?i)'\\s*(?:or|union\\s+select|--|;\\s*drop\\s+table|;\\s*delete\\s+from)",
+    "flags": null,
+    "description": "Classic tautology / piggy-back SQLi markers.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:sqli",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "455a29e8-8767-478d-a776-af158e596a06",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-ssh-private",
+    "category": "secret_leak.ssh",
+    "severity": "hard",
+    "pattern": "-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----",
+    "flags": null,
+    "description": "SSH private key header.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:ssh",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "46fc1115-e982-4bd7-84d4-9a6f0fc7c7ec",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-i-005",
+    "category": "content_safety.illegal",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:dark[-\\s]?(?:web|net)|silk\\s+road|dread\\s+forum|alphabay)\\s+(?:market(?:place)?|listing|vendor|onion\\s+(?:link|url|address)|drug\\s+market)\\b",
+    "flags": null,
+    "description": "Dark-web marketplace / vendor lookup.",
+    "labels": [
+      "detector:content-safety",
+      "category:illegal",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "490f5db3-33c4-49d6-8e6f-2c1286d473e0",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-k8s-001",
+    "category": "tool_call.kubernetes",
+    "severity": "soft",
+    "pattern": "(?i)kubectl\\s+delete\\s+(?:ns|namespace|deploy(?:ment)?|sts|pv|pvc)\\s+\\w+",
+    "flags": null,
+    "description": "kubectl delete against a high-impact resource type.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:destructive",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "516fa7a6-2d17-4d96-8383-ca9dfc7da7cb",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-io-002",
+    "category": "prompt_injection.instruction_override",
+    "severity": "hard",
+    "pattern": "(?i)disregard\\s+(all\\s+)?(previous|earlier)\\s+(instructions?|rules?)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:instruction-override"
+    ]
+  },
+  {
+    "id": "51ccaece-90db-4393-9b9a-2568b72bd50a",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-twilio",
+    "category": "secret_leak.twilio",
+    "severity": "hard",
+    "pattern": "\\bAC[a-f0-9]{32}\\b",
+    "flags": null,
+    "description": "Twilio Account SID (paired with Auth Token in practice).",
+    "labels": [
+      "detector:secret-leak",
+      "provider:twilio",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "54ce5378-b5b0-4b6f-8c5d-8ed8c47066e5",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-sh-005",
+    "category": "content_safety.self_harm",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:cut|burn|hurt)\\s+myself\\s+(?:to|so\\s+(?:i|that))\\s+(?:die|bleed\\s+out|feel\\s+(?:something|alive))\\b",
+    "flags": null,
+    "description": "First-person self-injury intent statement.",
+    "labels": [
+      "detector:content-safety",
+      "category:self_harm",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "56f51288-eb41-4c79-82d1-2918fa596266",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-stripe",
+    "category": "secret_leak.stripe",
+    "severity": "hard",
+    "pattern": "\\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}\\b",
+    "flags": null,
+    "description": "Stripe secret key (live/test).",
+    "labels": [
+      "detector:secret-leak",
+      "provider:stripe",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "571793cc-2bd2-4104-88c6-a726363e77de",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-x-006",
+    "category": "content_safety.sexual",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:incest(?:uous)?|sex\\s+with\\s+(?:my|her|his)\\s+(?:sister|brother|mother|father|daughter|son))\\s+(?:story|stories|fantas(?:y|ies)|roleplay)\\b",
+    "flags": null,
+    "description": "Incest narrative request.",
+    "labels": [
+      "detector:content-safety",
+      "category:sexual",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "58d94125-f5fa-477c-83d7-9e9934c44e8b",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-hp-001",
+    "category": "prompt_injection.pretext",
+    "severity": "soft",
+    "pattern": "(?i)(imagine|pretend|hypothetically|in\\s+a\\s+world|let(?:'|\\s*s))\\s+(you|we|there)\\s+(are|were|have|had)\\s+(no|without)\\s+(rules?|restrictions?|limits?|guidelines?)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:pretext"
+    ]
+  },
+  {
+    "id": "5bdd40c9-580d-4926-888f-b0b95bcae9a8",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-io-004",
+    "category": "prompt_injection.instruction_override",
+    "severity": "soft",
+    "pattern": "(?i)(you\\s+are\\s+now|from\\s+now\\s+on)\\s+(a|an)\\s+[a-z ]+(that\\s+)?(?:can|will|must)",
+    "flags": null,
+    "description": "Role reassignment to a permissive persona.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:role-reassignment"
+    ]
+  },
+  {
+    "id": "5c971fc9-750e-455b-9504-8b72b0572669",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-h-004",
+    "category": "content_safety.hate_speech",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:deport|expel|remove|exterminate)\\s+(?:all\\s+)?(?:the\\s+)?(?:jews|muslims|blacks|gays|immigrants|migrants)\\b",
+    "flags": null,
+    "description": "Group expulsion / extermination rhetoric.",
+    "labels": [
+      "detector:content-safety",
+      "category:hate_speech",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "5e86eeb7-71ec-4013-b08c-36178a3528c0",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-ev-001",
+    "category": "tool_call.code_eval",
+    "severity": "hard",
+    "pattern": "(?i)\\b(?:eval|exec)\\s*\\(\\s*(?:request|req|user|input|arg)",
+    "flags": null,
+    "description": "Python-style eval/exec invoked on request / user-controlled input.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:rce",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "609769f7-1a01-449d-8f30-c60a41cf0d6b",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-x-004",
+    "category": "content_safety.sexual",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:revenge\\s+porn|leak(?:ed)?\\s+nudes?|share\\s+(?:her|his|their)\\s+(?:nudes?|intimate\\s+(?:photos?|videos?))\\s+without\\s+consent)\\b",
+    "flags": null,
+    "description": "Revenge-porn / non-consensual intimate-image distribution.",
+    "labels": [
+      "detector:content-safety",
+      "category:sexual",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "6150c1d9-b86b-4233-91af-52ac8d720954",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-sql-002",
+    "category": "tool_call.sqli",
+    "severity": "soft",
+    "pattern": "(?i)\\bxp_cmdshell\\b|\\bsys\\.tables\\b|\\bxp_regread\\b",
+    "flags": null,
+    "description": "SQL Server escape primitives commonly abused by injections.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:sqli",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "61c8892e-9517-46b3-b468-6c708f88d69f",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-sp-001",
+    "category": "prompt_injection.system_leak",
+    "severity": "hard",
+    "pattern": "(?i)(print|reveal|show|display|output)\\s+(your\\s+)?(system\\s+prompt|initial\\s+instructions?|system\\s+message)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:system-leak"
+    ]
+  },
+  {
+    "id": "62744c78-fab0-4285-8e2f-654ad2e8fced",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-rv-001",
+    "category": "jailbreak.reveal",
+    "severity": "warn",
+    "pattern": "(?i)(nothing\\s+is\\s+off\\s+limits|all\\s+topics\\s+are\\s+allowed|there\\s+are\\s+no\\s+restrictions)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:reveal-conditioning"
+    ]
+  },
+  {
+    "id": "62d28f6c-5b87-4cdb-85f2-625eeda0f19c",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-gh-fine",
+    "category": "secret_leak.github",
+    "severity": "hard",
+    "pattern": "\\bgithub_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59}\\b",
+    "flags": null,
+    "description": "GitHub fine-grained PAT.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:github",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "6434e93d-a0d3-4083-abcf-0dcc453a1719",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-h-002",
+    "category": "content_safety.hate_speech",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:[a-z]+s?)\\s+(?:are|is)\\s+(?:an?\\s+)?inferior\\s+(?:race|ethnicity|species|people|group)\\b",
+    "flags": null,
+    "description": "Dehumanization framed as biological / inherent inferiority.",
+    "labels": [
+      "detector:content-safety",
+      "category:hate_speech",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "6685f82b-f326-46b5-bc63-091618a4dc11",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-ssrf-002",
+    "category": "tool_call.ssrf",
+    "severity": "soft",
+    "pattern": "(?i)https?://(?:10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|192\\.168\\.\\d{1,3}\\.\\d{1,3}|172\\.(?:1[6-9]|2\\d|3[01])\\.\\d{1,3}\\.\\d{1,3})",
+    "flags": null,
+    "description": "RFC1918 (private) IP target in a URL.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:ssrf",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "6842cb99-ddfa-4f13-b972-f1cc724069fd",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-v-002",
+    "category": "content_safety.violence",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:bomb|explosive|ied|pipe\\s+bomb)\\s+(?:making|construction|build(?:ing)?|recipe|instructions?)\\b",
+    "flags": null,
+    "description": "Weapon / explosive construction how-to.",
+    "labels": [
+      "detector:content-safety",
+      "category:violence",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "6aca553d-622a-406a-b845-d8cc9347895a",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-h-005",
+    "category": "content_safety.hate_speech",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:the\\s+)?holocaust\\s+(?:didn'?t\\s+happen|never\\s+happened|is\\s+(?:a\\s+)?(?:lie|hoax|myth|fake|fabrication)|was\\s+(?:faked|fabricated|made\\s+up))\\b",
+    "flags": null,
+    "description": "Holocaust-denial assertion (does NOT match neutral references like \"the book discusses the Holocaust\").",
+    "labels": [
+      "detector:content-safety",
+      "category:hate_speech",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "6c5724d9-9415-49f9-a656-c970d972b5b2",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-re-001",
+    "category": "jailbreak.research",
+    "severity": "soft",
+    "pattern": "(?i)for\\s+(academic|research|educational)\\s+(purposes?|only),?\\s+(tell\\s+me|explain|describe)\\s+how\\s+to",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:research-pretext"
+    ]
+  },
+  {
+    "id": "735fac4e-4455-4b9e-9d0f-09348207ec0c",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-dm-001",
+    "category": "jailbreak.developer_mode",
+    "severity": "hard",
+    "pattern": "(?i)(activate|enable|engage|enter)\\s+(chatgpt\\s+)?(developer|dev|dan|godmode|maker)\\s+mode",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:developer-mode"
+    ]
+  },
+  {
+    "id": "768106cb-6384-44c4-863b-12c75ac1de08",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-et-001",
+    "category": "jailbreak.evil_twin",
+    "severity": "hard",
+    "pattern": "(?i)(you\\s+have\\s+an?\\s+(evil|dark|shadow)\\s+twin|act\\s+as\\s+if\\s+you\\s+were\\s+(evil|malicious|uncensored))",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:evil-twin"
+    ]
+  },
+  {
+    "id": "77d282b6-7fed-4003-8564-bf77a9f1a320",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-heroku",
+    "category": "secret_leak.heroku",
+    "severity": "soft",
+    "pattern": "\\bhrku-[A-Za-z0-9_-]{30,}\\b",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:secret-leak",
+      "provider:heroku",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "78e153c6-7402-4a39-ab0c-b06cd11f5af9",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-anthropic",
+    "category": "secret_leak.anthropic",
+    "severity": "hard",
+    "pattern": "\\bsk-ant-[A-Za-z0-9_-]{40,}",
+    "flags": null,
+    "description": "Anthropic API key.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:anthropic",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "7a1921f2-d37d-4b59-affd-4a147d2a8276",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-sh-001",
+    "category": "tool_call.shell",
+    "severity": "hard",
+    "pattern": "(?i)\\b(rm\\s+-rf\\s+/|:\\(\\)\\s*\\{\\s*:\\|:&\\s*\\};:|\\|\\s*(sh|bash)\\s*$)",
+    "flags": null,
+    "description": "rm -rf /, classic fork-bomb, or pipe-to-shell tail.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:destructive",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "7ba021af-92e2-4a16-9401-c9dc22a43bbf",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-env-block",
+    "category": "secret_leak.env",
+    "severity": "soft",
+    "pattern": "(?m)^[A-Z_][A-Z0-9_]{3,}\\s*=\\s*(?:sk-|AKIA|AIza|ghp_|xoxb-)[A-Za-z0-9_-]{10,}",
+    "flags": null,
+    "description": ".env-style line with a known-prefix secret value.",
+    "labels": [
+      "detector:secret-leak",
+      "format:dotenv",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "7e3736e5-9a9f-42bc-ad5c-cb695cd512fa",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-hs-001",
+    "category": "jailbreak.hypothetical",
+    "severity": "soft",
+    "pattern": "(?i)(hypothetically|in\\s+a\\s+fictional|in\\s+a\\s+story|for\\s+a\\s+novel),?\\s+(how\\s+would|describe|explain)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:hypothetical"
+    ]
+  },
+  {
+    "id": "801ca5d2-6c1f-4ae7-8550-1a5a2762997e",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-mt-002",
+    "category": "prompt_injection.meta",
+    "severity": "soft",
+    "pattern": "(?i)(you\\s+must|you\\s+have\\s+to|you\\s+should)\\s+(comply|obey|answer)\\s+(everything|anything|all)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:meta"
+    ]
+  },
+  {
+    "id": "8036d3a8-8081-4776-b93b-f3f450ccbffc",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-dc-001",
+    "category": "prompt_injection.delimiter",
+    "severity": "hard",
+    "pattern": "(?i)(---\\s*end\\s+of\\s+(prompt|system)|```\\s*end|<\\s*/?(system|assistant)\\s*>)",
+    "flags": null,
+    "description": "Injected delimiter attempting to close the system context.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:delimiter-confusion"
+    ]
+  },
+  {
+    "id": "8178a374-c098-432b-836c-0933bdef9798",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-x-005",
+    "category": "content_safety.sexual",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:bestiality|zoophilia|sex\\s+with\\s+(?:a\\s+)?(?:dog|horse|animal))\\b",
+    "flags": null,
+    "description": "Bestiality content markers.",
+    "labels": [
+      "detector:content-safety",
+      "category:sexual",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "82164f09-e64c-4981-a030-a207220bcd3e",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-db-001",
+    "category": "tool_call.database",
+    "severity": "hard",
+    "pattern": "(?i)(?:drop\\s+(?:table|database|schema)|truncate\\s+table)\\s+\\w+",
+    "flags": null,
+    "description": "Destructive DDL (DROP / TRUNCATE) against a named object.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:destructive",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "85014e96-7c8c-4cbc-b0f6-2f1391210037",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-i-003",
+    "category": "content_safety.illegal",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:how\\s+(?:to|do\\s+i)|best\\s+(?:way|method)\\s+(?:to|for))\\s+(?:launder(?:ing)?\\s+money|money\\s+laundering|hide\\s+(?:cash|funds)\\s+from\\s+(?:the\\s+)?(?:irs|tax\\s+authorities))\\b",
+    "flags": null,
+    "description": "Money-laundering how-to request.",
+    "labels": [
+      "detector:content-safety",
+      "category:illegal",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "868843cd-baa6-46ca-b624-b7be3a292f71",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-openai",
+    "category": "secret_leak.openai",
+    "severity": "hard",
+    "pattern": "\\bsk-(?:proj-)?[A-Za-z0-9_-]{40,}",
+    "flags": null,
+    "description": "OpenAI API key (classic + project-scoped).",
+    "labels": [
+      "detector:secret-leak",
+      "provider:openai",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "88599127-926f-4514-b77f-066f940ddc22",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-i-004",
+    "category": "content_safety.illegal",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:how\\s+(?:to|do\\s+i)|guide\\s+(?:to|for))\\s+(?:counterfeit(?:ing)?|forg(?:e|ing|ery))\\s+(?:a\\s+)?(?:passport|driver'?s?\\s+licen[sc]e|id\\s+card|currency|bank\\s*notes?|us\\s+dollars?)\\b",
+    "flags": null,
+    "description": "Counterfeit document / currency how-to.",
+    "labels": [
+      "detector:content-safety",
+      "category:illegal",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "89fcad52-2c63-48f4-b023-0e598cc685dc",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-tm-001",
+    "category": "prompt_injection.tool_misuse",
+    "severity": "soft",
+    "pattern": "(?i)(use|invoke|call)\\s+(the\\s+)?(shell|exec|eval|os\\.system)\\s+(tool|function)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:tool-misuse"
+    ]
+  },
+  {
+    "id": "8bcb21d4-4527-4a97-b71b-db50228c62e9",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-io-001",
+    "category": "prompt_injection.instruction_override",
+    "severity": "hard",
+    "pattern": "(?i)ignore\\s+(all\\s+|every\\s+)?(previous|earlier|above|prior)\\s+(instructions?|rules?|prompts?)",
+    "flags": null,
+    "description": "Classic instruction-override preamble.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:instruction-override"
+    ]
+  },
+  {
+    "id": "8c4ddfce-8640-4f9e-bff0-c9848ddb39b9",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-re-002",
+    "category": "jailbreak.research",
+    "severity": "soft",
+    "pattern": "(?i)i\\s+am\\s+a\\s+(researcher|security\\s+professional|red\\s+teamer|penetration\\s+tester)\\s+and\\s+(i\\s+need|i\\'?m\\s+testing)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:research-pretext"
+    ]
+  },
+  {
+    "id": "8e5dd18a-2eef-4e1c-8d82-d8a115900ffb",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-h-001",
+    "category": "content_safety.hate_speech",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:tell\\s+me|give\\s+me|list)\\s+(?:a\\s+)?(?:racial|ethnic|homophobic|transphobic)\\s+slurs?\\b",
+    "flags": null,
+    "description": "Direct request for slur enumeration.",
+    "labels": [
+      "detector:content-safety",
+      "category:hate_speech",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "8ec092d5-24df-4733-a10f-296b3623ffca",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-ii-001",
+    "category": "prompt_injection.indirect",
+    "severity": "hard",
+    "pattern": "(?i)IMPORTANT\\s*:?\\s*(if\\s+)?you\\s+are\\s+(reading|an\\s+ai|an\\s+assistant)",
+    "flags": null,
+    "description": "Indirect injection often found in scraped web content.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:indirect"
+    ]
+  },
+  {
+    "id": "911d742d-8dc4-466e-89b6-0e42029f164a",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-ts-001",
+    "category": "jailbreak.smuggle",
+    "severity": "soft",
+    "pattern": "(?i)h\\W*o\\W*w\\W+t\\W*o\\W+(make|build|create)\\W+(a\\s+)?(bomb|weapon|explosive|poison)",
+    "flags": null,
+    "description": "Obfuscated how-to-harm via inserted delimiters.",
+    "labels": [
+      "detector:jailbreak",
+      "attack:smuggle"
+    ]
+  },
+  {
+    "id": "911e6e4c-e49b-4cfa-b81f-d92f1662ab10",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-dm-002",
+    "category": "jailbreak.developer_mode",
+    "severity": "hard",
+    "pattern": "(?i)(developer|dev)\\s+mode.{0,40}(can|will|must)\\s+(generate|produce|write|say)\\s+(anything|any\\s+content)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:developer-mode"
+    ]
+  },
+  {
+    "id": "92d19f55-0990-4a83-bdb2-1967fa9cc4c4",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-gh-classic",
+    "category": "secret_leak.github",
+    "severity": "hard",
+    "pattern": "\\bgh[pousr]_[A-Za-z0-9]{36,}\\b",
+    "flags": null,
+    "description": "GitHub classic PAT / OAuth / user / server / refresh token.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:github",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "9495abd6-0c24-4891-b126-0da302ad4b64",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-gcp-svc",
+    "category": "secret_leak.gcp",
+    "severity": "hard",
+    "pattern": "\"type\"\\s*:\\s*\"service_account\"",
+    "flags": null,
+    "description": "GCP service-account JSON header.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:gcp",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "9568058e-a05e-4e35-9176-59c537b93ed1",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-fm-001",
+    "category": "jailbreak.format",
+    "severity": "soft",
+    "pattern": "(?i)respond\\s+(only\\s+)?in\\s+(base64|hex|leet|rot13|backwards)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:format-override"
+    ]
+  },
+  {
+    "id": "97efee7a-c743-43b0-910d-60099e3b0be3",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-v-003",
+    "category": "content_safety.violence",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:shoot|stab|strangle|poison|behead)\\s+(?:them|him|her|the\\s+(?:victim|target|family|children))\\b",
+    "flags": null,
+    "description": "Physical-harm verb directed at a human target.",
+    "labels": [
+      "detector:content-safety",
+      "category:violence",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "9bb534c7-2a0f-428a-a9bb-1dae2436f81b",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-square",
+    "category": "secret_leak.square",
+    "severity": "hard",
+    "pattern": "\\bsq0(?:atp|csp|idp)-[A-Za-z0-9_-]{20,}\\b",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:secret-leak",
+      "provider:square",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "9f876ba1-51fa-4072-8c5a-4ce5014eeec9",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-od-001",
+    "category": "jailbreak.negation",
+    "severity": "soft",
+    "pattern": "(?i)(opposite\\s+day|do\\s+the\\s+opposite\\s+of|say\\s+yes\\s+to\\s+everything)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:negation"
+    ]
+  },
+  {
+    "id": "a4b8d963-94a0-4795-9c07-15de8a034c66",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-dan-003",
+    "category": "jailbreak.dan",
+    "severity": "hard",
+    "pattern": "(?i)(stay\\s+in\\s+character\\s+as\\s+DAN|DAN\\s+mode\\s+(enabled|on))",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:dan"
+    ]
+  },
+  {
+    "id": "a7e32cd3-ceb6-4397-b423-97f0d4504af9",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-x-001",
+    "category": "content_safety.sexual",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:child|minor|underage|preteen|teen(?:age)?\\s+girl|teen(?:age)?\\s+boy)\\s+(?:sex|sexual|porn|nude|naked|erotic)\\b",
+    "flags": null,
+    "description": "Minor + sexual context (CSAM proximity).",
+    "labels": [
+      "detector:content-safety",
+      "category:sexual",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "abc813ec-3bdf-4483-86af-1eae66c7c749",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-dc-002",
+    "category": "prompt_injection.delimiter",
+    "severity": "soft",
+    "pattern": "(?s)```[^\\n]*\\n[^\\n]*(?:ignore|forget|override)[^\\n]*\\n```",
+    "flags": null,
+    "description": "Fenced-code block containing an override phrase.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:delimiter-confusion"
+    ]
+  },
+  {
+    "id": "adc36534-ad83-4ddb-bbec-1afef3016d64",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-ev-002",
+    "category": "tool_call.code_eval",
+    "severity": "hard",
+    "pattern": "(?i)pickle\\.loads?\\s*\\(|yaml\\.load\\s*\\(|Marshal\\.load\\s*\\(",
+    "flags": null,
+    "description": "Unsafe deserialization primitives (pickle / unsafe yaml.load / Ruby Marshal).",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:deserialization",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "b26e56dd-9733-463f-80a2-ccd0909e4797",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-aws-secret",
+    "category": "secret_leak.aws",
+    "severity": "hard",
+    "pattern": "(?i)aws(?:_secret_access_key|\\s+secret(?:\\s+access)?\\s+key)\\s*[:=]\\s*[\"']?([A-Za-z0-9/+=]{40})",
+    "flags": null,
+    "description": "AWS Secret labeled context.",
+    "labels": [
+      "detector:secret-leak",
+      "provider:aws",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "b60be980-e8e0-4c92-a9d4-4377c1cb8b32",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-sh-003",
+    "category": "content_safety.self_harm",
+    "severity": "soft",
+    "pattern": "(?i)\\boverdose\\s+(?:on\\s+\\w+\\s+(?:to|so\\s+i)\\s+die|and\\s+(?:die|end\\s+it))\\b",
+    "flags": null,
+    "description": "Overdose-to-die request (does NOT match \"the overdose epidemic\").",
+    "labels": [
+      "detector:content-safety",
+      "category:self_harm",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "bc0ea724-9d32-42aa-823b-4756250a24e4",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-gm-001",
+    "category": "jailbreak.grandma",
+    "severity": "hard",
+    "pattern": "(?i)my\\s+(grandma|grandmother|grandpa|grandfather)\\s+used\\s+to\\s+(read|recite|tell)\\s+me\\s+(the\\s+)?(recipes?|formulas?|keys?|passwords?|instructions?)",
+    "flags": null,
+    "description": "Grandma pretext exploit.",
+    "labels": [
+      "detector:jailbreak",
+      "attack:grandma"
+    ]
+  },
+  {
+    "id": "bcb5f907-b1dc-4e49-a360-9996d35455d4",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-pr-001",
+    "category": "prompt_injection.priming",
+    "severity": "warn",
+    "pattern": "(?i)(save|remember|store)\\s+this\\s+(as|for)\\s+(future|later|the\\s+next)\\s+(conversation|request|message)",
+    "flags": null,
+    "description": "Priming the model for a multi-turn attack.",
+    "labels": [
+      "detector:prompt-injection",
+      "attack:priming"
+    ]
+  },
+  {
+    "id": "be84a6fe-f1f4-465f-a284-6ee09408c035",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-dan-001",
+    "category": "jailbreak.dan",
+    "severity": "hard",
+    "pattern": "(?i)\\bDAN\\b.{0,80}(do\\s+anything\\s+now|no\\s+restrictions|unrestricted)",
+    "flags": null,
+    "description": "Classic DAN jailbreak pattern.",
+    "labels": [
+      "detector:jailbreak",
+      "attack:dan"
+    ]
+  },
+  {
+    "id": "c4574303-4958-452a-8ed8-78bde04d9497",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-sp-002",
+    "category": "prompt_injection.system_leak",
+    "severity": "hard",
+    "pattern": "(?i)(what\\s+are|tell\\s+me)\\s+your\\s+(initial|original|system)\\s+(instructions?|prompts?|rules?)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:system-leak"
+    ]
+  },
+  {
+    "id": "cc03d78a-5428-4964-b55a-f3ee6b9e30be",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-v-004",
+    "category": "content_safety.violence",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:carry\\s+out|plan|organize|execute)\\s+(?:a\\s+)?(?:massacre|genocide|ethnic\\s+cleansing|mass\\s+shooting)\\b",
+    "flags": null,
+    "description": "Mass / group violence planning.",
+    "labels": [
+      "detector:content-safety",
+      "category:violence",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "cd9c729e-f5f6-46f9-ae55-31b9aba38543",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-i-002",
+    "category": "content_safety.illegal",
+    "severity": "soft",
+    "pattern": "(?i)\\bhuman\\s+trafficking\\s+(?:routes?|networks?|operation|ring|methods?|how\\s+to)\\b",
+    "flags": null,
+    "description": "Human-trafficking operational discussion (does NOT match \"human trafficking survivor / awareness / hotline\").",
+    "labels": [
+      "detector:content-safety",
+      "category:illegal",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "d4fc866a-2642-4f6c-96c6-b953a941d057",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-sh-002",
+    "category": "content_safety.self_harm",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:instructions?|guide|tutorial|methods?)\\s+for\\s+self[-\\s]?harm(?:ing)?\\b",
+    "flags": null,
+    "description": "Self-harm instruction request.",
+    "labels": [
+      "detector:content-safety",
+      "category:self_harm",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "d8adfd81-0ca5-4be4-a9d6-54be6d4ee134",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-pem-cert",
+    "category": "secret_leak.pem",
+    "severity": "warn",
+    "pattern": "-----BEGIN CERTIFICATE-----",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:secret-leak",
+      "format:pem",
+      "severity:internal"
+    ]
+  },
+  {
+    "id": "dab15ed2-97e8-4bdd-9e80-6419f9cdb953",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-ssrf-001",
+    "category": "tool_call.ssrf",
+    "severity": "hard",
+    "pattern": "(?i)https?://(?:169\\.254\\.(?:\\d{1,3}\\.){2}\\d{1,3}|localhost|127\\.0\\.0\\.1|metadata\\.google\\.internal|instance-data\\.ec2\\.internal)",
+    "flags": null,
+    "description": "Cloud-metadata or loopback target in a URL.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:ssrf",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "ddb5ccec-5844-4974-bb16-ff3e16e219b8",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-hp-002",
+    "category": "prompt_injection.pretext",
+    "severity": "soft",
+    "pattern": "(?i)(roleplay|role-play|play\\s+the\\s+role\\s+of)\\s+[a-z ]+(that\\s+)?(?:never\\s+refuses|ignores\\s+rules)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:pretext"
+    ]
+  },
+  {
+    "id": "de11dc95-edc6-43a3-99b5-c72fbd70c1d0",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-ii-002",
+    "category": "prompt_injection.indirect",
+    "severity": "hard",
+    "pattern": "(?i)\\[SYSTEM\\]\\s*(override|new\\s+instructions?|update)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:indirect"
+    ]
+  },
+  {
+    "id": "de168636-0221-4c98-89ae-09f694bb7fa2",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-azure-sub",
+    "category": "secret_leak.azure",
+    "severity": "soft",
+    "pattern": "(?i)subscription[_\\s-]?id\\s*[:=]\\s*[\"']?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:secret-leak",
+      "provider:azure",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "e121a089-1864-4733-9f3e-8a58def4dc5d",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "ruleId": "pi-tr-002",
+    "category": "prompt_injection.system_leak",
+    "severity": "soft",
+    "pattern": "(?i)(summarize|paraphrase)\\s+(your|the)\\s+(initial|original|system)\\s+(prompt|instructions?)",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:prompt-injection",
+      "attack:system-leak"
+    ]
+  },
+  {
+    "id": "e20ffc39-e8df-4f87-a89e-b3de69d23321",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-x-003",
+    "category": "content_safety.sexual",
+    "severity": "warn",
+    "pattern": "(?i)\\b(?:write|describe|generate)\\s+(?:a\\s+)?(?:graphic|explicit|hardcore|pornographic)\\s+(?:sex\\s+scene|sexual\\s+(?:scene|encounter|description))\\b",
+    "flags": null,
+    "description": "Graphic pornographic generation request.",
+    "labels": [
+      "detector:content-safety",
+      "category:sexual",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "e339d732-99ee-4468-b5b7-ea94b1e1b32a",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-v-005",
+    "category": "content_safety.violence",
+    "severity": "warn",
+    "pattern": "(?i)\\b(?:torture|maim|mutilate|dismember)\\s+(?:them|him|her|the\\s+(?:victim|prisoner|hostage))\\b",
+    "flags": null,
+    "description": "Torture / mutilation directed at a human target.",
+    "labels": [
+      "detector:content-safety",
+      "category:violence",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "ece9aa28-4437-4838-8a44-255b0e30fa0b",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-fs-002",
+    "category": "tool_call.filesystem",
+    "severity": "soft",
+    "pattern": "(?i)\\.\\.\\/.{0,40}(?:etc|bin|boot|root|home)",
+    "flags": null,
+    "description": "Path-traversal segment escaping into a system directory.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:traversal",
+      "severity:confidential"
+    ]
+  },
+  {
+    "id": "ef80f145-3065-43f9-9c88-545944fbb3ce",
+    "packId": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "ruleId": "jb-dan-002",
+    "category": "jailbreak.dan",
+    "severity": "hard",
+    "pattern": "(?i)you\\s+are\\s+DAN,\\s+which\\s+stands\\s+for",
+    "flags": null,
+    "description": null,
+    "labels": [
+      "detector:jailbreak",
+      "attack:dan"
+    ]
+  },
+  {
+    "id": "f50d68ab-c05d-477c-bd8f-9513d2fbf71c",
+    "packId": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "ruleId": "tc-sh-002",
+    "category": "tool_call.shell",
+    "severity": "hard",
+    "pattern": "\\b(?:curl|wget)\\s+[^\\s|]+\\s*\\|\\s*(?:sh|bash|sudo\\s+bash)",
+    "flags": null,
+    "description": "curl|wget piped directly to a shell interpreter.",
+    "labels": [
+      "detector:tool-call-safety",
+      "risk:rce",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "f77c0d1d-5afe-40e8-a4b5-efc81e279086",
+    "packId": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "ruleId": "cs-x-002",
+    "category": "content_safety.sexual",
+    "severity": "soft",
+    "pattern": "(?i)\\b(?:rape|non[-\\s]?consensual\\s+(?:sex|intercourse|act)|forced\\s+(?:sex|intercourse))\\s+(?:fantas(?:y|ies)|story|stories|scenario|roleplay)\\b",
+    "flags": null,
+    "description": "Non-consensual sexual content as narrative request.",
+    "labels": [
+      "detector:content-safety",
+      "category:sexual",
+      "severity:restricted"
+    ]
+  },
+  {
+    "id": "fb327582-675f-4c80-b150-7c71a204051c",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "ruleId": "sl-aws-access",
+    "category": "secret_leak.aws",
+    "severity": "hard",
+    "pattern": "(?i)\\b(AKIA|ASIA)[0-9A-Z]{16}\\b",
+    "flags": null,
+    "description": "AWS Access Key ID (long-term or session).",
+    "labels": [
+      "detector:secret-leak",
+      "provider:aws",
+      "severity:restricted"
+    ]
+  }
+]

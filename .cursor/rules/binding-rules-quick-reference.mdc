@@ -23,7 +23,7 @@ Canonical text lives in **`CLAUDE.md`** + the rule files listed below. This file
 - **Self-audit before "done" — 4 questions × 2 rounds** → `completion-time-self-audit.mdc`.
 - **Adversarial product review + less-is-more** → `adversarial-product-review.mdc`. Steel-man and attack before building; delete instead of add.
 - **Real implementation only** in production code. Mocks only in tests.
-- **No backward compatibility** → `no-backward-compatibility.mdc`. Pre-GA greenfield. Delete obsolete code, no `@deprecated`.
+- **Release compat policy (1.0 GA)** → `release-compat-policy.mdc`. Shipped contracts stay backward compatible (or migrate); internal-only code is greenfield — delete obsolete code, no `@deprecated`.
 - **No silent skips / no silent forks** — ask the user with concrete options when ambiguous.
 - **Worktree per session** → `worktree-per-session.mdc`. Each parallel session runs in its own `git worktree` under `./worktrees/`.
 - **Sub-agent dispatch discipline** → `sub-agent-dispatch.mdc`. Goal+non-goals in first 3 lines; 2-round self-audit demanded; per-file touched-paths report required.

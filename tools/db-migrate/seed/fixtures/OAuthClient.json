@@ -1,0 +1,36 @@
+[
+  {
+    "id": "agent-desktop",
+    "name": "Nexus Agent (Desktop)",
+    "type": "public",
+    "redirectUris": ["http://127.0.0.1:*/callback"],
+    "allowedScopes": ["traffic:write", "shadow:read", "openid", "profile", "email"],
+    "accessTtlSeconds": 3600,
+    "refreshTtlSeconds": 86400,
+    "clientSecretHash": null
+  },
+  {
+    "id": "cp-ui",
+    "name": "Nexus Control Plane UI",
+    "type": "public",
+    "redirectUris": [
+      "http://localhost:3000/auth/callback",
+      "http://127.0.0.1:3000/auth/callback",
+      "https://localhost:3000/auth/callback"
+    ],
+    "allowedScopes": ["admin", "openid", "profile", "email"],
+    "accessTtlSeconds": 3600,
+    "refreshTtlSeconds": 86400,
+    "clientSecretHash": null
+  },
+  {
+    "id": "tui",
+    "name": "Nexus Operator Toolkit (CLI/TUI)",
+    "type": "public",
+    "redirectUris": ["http://127.0.0.1:*/callback"],
+    "allowedScopes": ["admin", "openid", "profile", "email"],
+    "accessTtlSeconds": 3600,
+    "refreshTtlSeconds": 86400,
+    "clientSecretHash": null
+  }
+]

@@ -26,8 +26,12 @@ code-challenge methods.
 `/oauth/authorize` is the front door. It requires `response_type=code`, looks up
 the client, and rejects a `redirect_uri` that is not registered for that client.
 Because a bad redirect target is untrusted, an invalid `redirect_uri` is rendered
-as an error by the auth server rather than reflected back via a redirect. The
-request's `code_challenge` is captured with the challenge method restricted to
+as an error by the auth server rather than reflected back via a redirect. PKCE
+is mandatory for every client and there is no per-client toggle: a missing
+`code_challenge` is rejected at authorize time because the token endpoint
+unconditionally requires a `code_verifier` — so a code minted without a
+challenge could never be exchanged. The request's
+`code_challenge` is captured with the challenge method restricted to
 `S256` — the `plain` method is rejected unconditionally. The pending request is
 stored server-side under a short-lived handle, and the browser is redirected to
 the hosted login page carrying that handle.

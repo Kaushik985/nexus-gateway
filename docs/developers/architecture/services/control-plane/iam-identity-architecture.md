@@ -79,6 +79,26 @@ engine exposes per-principal and global cache invalidation. Each evaluation
 reports whether it was a cache hit, which feeds the `cache` label on the
 `iam.eval_total` metric.
 
+### Cache-coherency bound on a multi-replica Control Plane
+
+The L1 cache is in-process and the L2 cache is Redis. On every IAM mutation the
+handler calls `InvalidateCache`, which clears the local L1 map and deletes the
+matching Redis L2 keys. Consistent with the "Redis is a pure cache, no pub/sub"
+model, this invalidation is **not broadcast to other Control Plane replicas**:
+each replica's in-process L1 keeps serving the pre-change policy until its entry
+expires (the L1 TTL, currently 10s). So on an HA deployment a privilege change
+can take up to the L1 TTL to be reflected uniformly across all replicas — a
+bounded, time-limited stale-**grant** window.
+
+This is mitigated for the security-critical case (privilege *reduction*): the
+same mutation handlers that change a policy or group also fan out a `scope=user`
+token revocation over MQ to every affected principal, which rejects the existing
+token cluster-wide on its next refresh regardless of L1 state. The residual
+exposure is therefore limited to changes that do not invalidate the token (and
+to deployments where the MQ revocation channel is wired). If immediate
+cross-replica coherency is ever required, the correct mechanism is a short MQ
+invalidation signal (not Redis pub/sub), keeping the cache pure.
+
 ## Principals, groups, and managed roles
 
 IAM stores attachments and group memberships keyed on a principal type and id.
@@ -95,15 +115,59 @@ catalog), and `NexusIncidentResponse`. The catalog documents which service each
 role owns — the provider-admin role owns the gateway service, the security-admin
 role owns compliance and agent, and the viewer role reads across the catalog.
 
+The `agent-device` resource (service: `agent`) exposes fleet-management verbs: `create`, `read`, `update`, `delete`, and `force-resync`. Note: `admin:agent-device.rotate` (certificate rotation) was removed when Hub-issued P-256 mTLS device certificates were deprecated in favour of agent self-signed identity; agents no longer request certificate renewal through the Hub.
+
+### Grant ceiling (no privilege escalation)
+
+Authoring an IAM policy or conferring one (attaching a policy to a principal or
+group, or adding a principal to a group) is bounded by the **caller's own**
+permissions: a principal may never grant a permission it does not itself hold.
+Without this, a delegated "IAM operator" holding only `iam-policy.*` /
+`iam-group.*` could author or attach an `admin:*` policy to itself (or a group it
+belongs to) and silently become super-admin (SEC-M6-02 / SEC-M6-03).
+
+The boundary is enforced at the five privilege-conferring chokepoints —
+`CreateIAMPolicy`, `UpdateIAMPolicy` (when the document changes),
+`AttachPrincipalPolicy`, `AttachIAMGroupPolicy`, and `AddIAMGroupMember` (which
+checks every policy attached to the joined group) — via
+`Engine.PrincipalCoversDocument` (`internal/identity/iam/boundary.go`). For each
+`Allow` statement in the candidate document, the caller must evaluate `Allow` for
+every concrete catalog action the statement matches (so a wildcard like `admin:*`
+expands across the catalog and each expanded action must be held) **and** each
+literal action token (so a bare `*` or a non-catalog identifier is bounded
+directly). Candidate `Deny` statements and `Condition`s are ignored — that is
+conservative, it can only reject a grant, never permit one. A super-admin (whose
+own policy `Allow`s every action on the universal NRN) covers any document and
+passes with no special-casing. The check fails **closed**: a missing engine
+(`503`) or an evaluation error (`500`) blocks the grant rather than skipping it,
+and an uncovered permission returns `403` with code `PRIVILEGE_ESCALATION_BLOCKED`.
+
+The conferring routes remain gated on the existing `iam-policy` / `iam-group`
+verbs; the ceiling is an **independent** subset check layered on top, so it closes
+the escalation regardless of which verb a delegated policy granted. A dedicated
+higher "grant" verb was considered and deliberately not added — it would not close
+any attack surface the ceiling does not already close, while adding catalog, seed,
+and UI surface (less-is-more).
+
+The `assistant` resource (service: `iam`) exposes two actions: `admin:assistant.read`
+(required to issue chat/models/sessions GET requests and open the SSE stream)
+and `admin:assistant.write` (required to start chat turns, confirm/deny
+dangerous-write confirmations, interrupt a turn, and delete sessions). All 9
+assistant routes in `RegisterAssistantRoutes` are individually gated —
+read verbs on `.read`, mutating verbs on `.write`. The widget itself renders
+for every logged-in admin; a principal without the grant is refused by the
+server-side IAM gate on its first call (inference cannot start, so the shared
+system VK cannot be spent by an ungranted login).
+
 ## Request-time enforcement
 
 `packages/control-plane/internal/platform/middleware/iamauth.go` is where a grant
 becomes an allow or a 403. Handlers wrap each admin route with
 `iamMW(action)`, which is `RequireIAMPermission` bound to the engine and a
 catalog action. The middleware requires an authenticated admin (401 otherwise),
-short-circuits for the `bootstrap` and `dev` principals, derives the request NRN
-via `BuildRequestNRNForAction` (or a caller-supplied resource function), maps the
-session principal type to the IAM type, and evaluates. On a deny it returns 403
+derives the request NRN via `BuildRequestNRNForAction` (or a caller-supplied
+resource function), maps the session principal type to the IAM type, and
+evaluates. On a deny it returns 403
 with an `IAM_ACCESS_DENIED` body carrying the action, resource, and reason; every
 evaluation increments `iam.eval_total` labelled by decision and cache outcome.
 
@@ -133,9 +197,11 @@ or a route path therefore has to update both sides to the same action.
 
 - `packages/shared/identity/iam/` — canonical resource/verb/service catalog
 - `packages/control-plane/internal/identity/iam/` — engine, NRN, conditions, cache, validator
+- `packages/control-plane/internal/identity/iam/boundary.go` — grant ceiling (`PrincipalCoversDocument`, no privilege escalation)
+- `packages/control-plane/internal/identity/users/handler/iam_grant_ceiling.go` — ceiling enforcement at the conferring handlers
 - `packages/control-plane/internal/platform/middleware/iamauth.go` — request-time enforcement middleware
 - `packages/control-plane/internal/identity/users/iamstore/` — policy / group / attachment storage + loader
 - `packages/control-plane/internal/identity/users/handler/me.go` — per-principal permissions endpoint
 - `packages/control-plane-ui/src/routes/shellRouteConfig.tsx` — UI route + nav `allowedActions`
 - `packages/control-plane-ui/src/auth/guards/RequireRole.tsx` — UI permission guard
-- `tools/db-migrate/seed/data/seed-baseline.sql` — seeded managed policies + built-in groups
+- `tools/db-migrate/seed/fixtures/IamPolicy.json` + `tools/db-migrate/seed/fixtures/IamGroup.json` (+ `IamGroupPolicyAttachment.json`) — seeded managed policies + built-in groups + their attachments

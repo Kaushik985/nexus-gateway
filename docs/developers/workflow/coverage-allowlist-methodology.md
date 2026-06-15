@@ -199,14 +199,20 @@ inflate the denominator at ~100% (this exact bug had padded the Agent dashboard
 - **`coverage.exclude` is the allowlist.** Only genuinely un-coverable-in-unit-
   scope surfaces belong there — app bootstrap (`main.tsx`, `ReactDOM.createRoot`
   on a real DOM), `*.d.ts`, Storybook `*.stories.tsx`, and the test harness
-  (`src/test/**`, MSW handlers). Adding an exclude needs the same A–F-grade
-  justification as a Go allowlist entry.
+  (`src/test/**`, MSW handlers), and imported JSON resource bundles
+  (`src/**/*.json` — no executable statements; Vitest 4's V8 provider counts
+  imported JSON modules, which only distorts the denominator). Adding an
+  exclude needs the same A–F-grade justification as a Go allowlist entry.
 - **`coverage.thresholds` is the gate.** Today they are a **regression-guard
   ratchet at the current baseline** (so develop stays green while the backfill
   runs — the same move as the Go gate's now-emptied BACKFILL-PENDING section),
   plus higher per-directory floors on the core business-logic dirs that already
   meet them (`src/hooks` 95, `src/auth` 84, `src/lib`/`src/api`). **Raise the
-  floors as coverage lands; never lower them.**
+  floors as coverage lands; never lower them.** One exception: a coverage
+  *instrument* change — a Vitest major whose V8 remapping counts a different
+  statement/branch population for the same code and tests — re-pins the floors
+  at the newly measured honest baseline in the same PR as the upgrade (numbers
+  may move in either direction; any metric that measures higher ratchets up).
 
 **Burn-down (the remaining work).** The bulk of the gap is presentational —
 `control-plane-ui/src/pages` (27.7%, ~14.5k stmts) and `src/components`

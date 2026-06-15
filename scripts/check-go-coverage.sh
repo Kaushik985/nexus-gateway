@@ -103,9 +103,14 @@ is_allowed() {
 }
 
 # Run coverage per module.
-declare -a FAILED_PKGS
-declare -a UNNECESSARY_ALLOWLIST
-declare -a OK_PKGS
+# Initialise with `=()` rather than a bare `declare -a`: under `set -u`,
+# bash 5.x treats a declared-but-never-assigned array as unbound, so
+# `${#FAILED_PKGS[@]}` would throw "unbound variable" on a clean tree with
+# zero failures (the common case) — a false gate failure. The `=()` form is
+# bound-and-empty on both bash 3.2 and 5.x.
+declare -a FAILED_PKGS=()
+declare -a UNNECESSARY_ALLOWLIST=()
+declare -a OK_PKGS=()
 
 run_module() {
   local module="$1"

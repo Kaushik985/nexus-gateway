@@ -116,25 +116,51 @@ clean recovery is to reinstall a build signed with the same team identifier (the
 
 ## Install and uninstall
 
-Installation goes through the `.pkg` only — never by copying the `.app` into
-`/Applications` — because the package's pre/post-install scripts do the wiring:
+Registration is **bundle-tied via `SMAppService`** (macOS 13+), the modern
+replacement for the deprecated `SMJobBless` / `SMLoginItemSetEnabled`. The daemon
+launchd plist ships *inside* the app bundle at
+`Contents/Library/LaunchDaemons/com.nexus-gateway.agent.plist` (a `BundleProgram`
+relative to the bundle), and the menu app registers it on first launch via
+`SMAppService.daemon(plistName:)` — a system-domain boot daemon (root,
+`RunAtLoad`, `KeepAlive`), so pre-login enforcement is preserved (it is **not** a
+per-user login agent). The menu app registers itself as a Login Item via
+`SMAppService.mainApp` (replacing the old per-user `LaunchAgent`). Both
+registrations are brokered by `smd`/launchd with a one-time approval — the
+unprivileged menu app needs no `sudo` and no `launchctl bootstrap`. On a managed
+device the `com.apple.servicemanagement` profile pre-approves both, so
+`register()` lands in `.enabled` silently. See `LaunchServiceManager.swift`.
 
-- bootstrap the LaunchDaemon (`launchctl`) from
-  `/Library/LaunchDaemons/com.nexus-gateway.agent.plist`, which runs the daemon
-  as root with `RunAtLoad` and `KeepAlive`;
-- set ownership and permissions on the state directory (`root:wheel`, with
+Because the registration is tied to the `.app`, **deleting the app deregisters
+the daemon** and schedules the NE extension for removal — no orphaned
+`/Library/LaunchDaemons` plist, no launchd spawn-error spam, and the
+`disabled.plist`-override `Bootstrap failed: 5: Input/output error` class is
+gone (there is no free-standing plist to bootstrap or get stuck disabled).
+
+Installation still goes through the `.pkg` only — never by copying the `.app`
+into `/Applications` — but the post-install script no longer bootstraps launchd.
+It only:
+
+- sets ownership and permissions on the state directory (`root:wheel`, with
   `agent.yaml` mode `640`), the world-writable flags directory used for
   privilege-free signaling, and the log directory (see
-  [agent-paths-abstraction-architecture.md](agent-paths-abstraction-architecture.md)
-  for the path layout and the flags-directory boundary);
-- run `nexus-agent install-ca`, which generates the device CA, persists it under
-  the state directory, and installs it into the system trust store so
-  intercepted TLS is trusted by host clients (idempotent — reused on upgrade).
+  [agent-paths-abstraction-architecture.md](agent-paths-abstraction-architecture.md));
+- runs `nexus-agent install-ca` (device CA → state dir + system trust store;
+  idempotent on upgrade) and writes the CLI-trust env vars
+  (`NEXUS_DEVICE_CA_PEM` / `NODE_EXTRA_CA_CERTS` / `SSL_CERT_FILE`) into the
+  console user's shell rc files;
+- removes any classic `/Library/LaunchDaemons` + `/Library/LaunchAgents` plists
+  left by a pre-SMAppService build (one-time migration — no parallel legacy
+  path), then opens the app once in the console user's session so SMAppService
+  registration + NE activation (and, on unmanaged devices, the approval prompts)
+  kick off immediately;
+- flushes the DNS cache (`mDNSResponder`) after the NE state change.
 
-The uninstall script is idempotent (safe on a never-installed machine) and stops
-the daemon, removes the extension, and optionally wipes the per-user `~/.nexus`
-data. Upgrades must uninstall first: `launchctl` does not pick up a replaced
-daemon binary unless the running daemon is stopped and re-bootstrapped.
+The uninstall script is idempotent: it stops the running daemon by label
+(classic or SMAppService), removes the app (which deregisters the SMAppService
+daemon and schedules the NE for removal), cleans any classic `/Library` residue,
+wipes state/logs/keychain, and optionally the per-user `~/.nexus` data. Upgrades
+no longer require a manual uninstall-first: preinstall boots out the running
+daemon by label and the post-install app launch re-registers the new bundle.
 
 ## References
 
@@ -147,7 +173,8 @@ daemon binary unless the running daemon is stopped and re-bootstrapped.
 - `packages/agent/platform/darwin/NexusAgent/NexusAgentDaemon.entitlements` — Go daemon entitlements
 - `packages/agent/platform/darwin/NexusAgent/NexusAgentExtension/NexusAgentExtension.entitlements` — extension entitlements
 - `packages/agent/platform/darwin/NexusAgent/NexusAgentExtension/Info.plist` — extension bundle (`SYSX`, `NEProviderClasses`)
-- `packages/agent/platform/darwin/installer/postinstall.sh` — LaunchDaemon bootstrap, permissions, `install-ca`
-- `packages/agent/platform/darwin/installer/LaunchDaemon.plist` — the daemon launchd job
+- `packages/agent/platform/darwin/NexusAgentUI/Sources/App/LaunchServiceManager.swift` — SMAppService daemon + login-item registration (`register`/`status`/approval deep-link)
+- `packages/agent/platform/darwin/installer/postinstall.sh` — state dirs, permissions, `install-ca`, CLI-trust env vars, classic-registration migration, DNS flush, first-launch app open (no launchd bootstrap)
+- `packages/agent/platform/darwin/installer/LaunchDaemon.plist` — the SMAppService daemon job (`BundleProgram`), embedded in the app at `Contents/Library/LaunchDaemons/`
 - `packages/agent/platform/darwin/installer/Distribution.xml` — the productbuild distribution definition
 - `packages/agent/platform/darwin/installer/nexus-agent.mobileconfig.template` — MDM pre-approval profile template

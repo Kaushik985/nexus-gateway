@@ -1,0 +1,134 @@
+model AdminApiKey {
+  id                 String        @id @default(uuid())
+  name               String
+  keyHash            String        @unique
+  keyPrefix          String
+  /// HMAC keyring version that produced keyHash (SEC-W2-01 Layer A). Mirrors
+  /// Credential.encryption_key_id. New keys are stamped the keyring's *current
+  /// version; on admission under an older version the CP auth path lazy-rehashes
+  /// to current and bumps this column (it never touches the rotation-lifecycle
+  /// columns status/rotatedAt/rotatedFromId — those are an orthogonal concern).
+  keyVersion         String        @default("v1") @map("key_version")
+  createdBy          String
+  enabled            Boolean       @default(true)
+  /// Lifecycle state — orthogonal to the `enabled` quick-toggle.
+  /// active     accepted by auth middleware (steady state)
+  /// rotating   superseded but still accepted during the rotation window
+  /// expired    natural sunset (past expiresAt or operator-retired)
+  /// unavailable explicitly revoked (compromise, withdrawal); rejected
+  /// CHECK constraint enforced by 20260610000000_admin_api_key_rotation.
+  status             String        @default("active")
+  lastUsedAt         DateTime?     @db.Timestamptz(3)
+  expiresAt          DateTime?     @db.Timestamptz(3)
+  /// Stamp of the moment status transitioned active → rotating.
+  rotatedAt          DateTime?     @db.Timestamptz(3)
+  /// Predecessor row: set on the newly-minted key during a rotate operation.
+  /// FK ON DELETE SET NULL keeps the successor row valid if the predecessor
+  /// is later purged.
+  rotatedFromId      String?
+  rotatedFrom        AdminApiKey?  @relation("AdminApiKeyRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  rotationSuccessors AdminApiKey[] @relation("AdminApiKeyRotation")
+  /// Optional owning dashboard user: programmatic admin calls use their IAM identity and audit attribution.
+  ownerUserId        String?
+  ownerUser          NexusUser?    @relation("AdminApiKeyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([keyHash])
+  @@index([ownerUserId])
+}
+
+model AdminAuditLog {
+  id              String   @id @default(uuid())
+  sequenceNumber  Int      @default(autoincrement())
+  timestamp       DateTime @default(now()) @db.Timestamptz(3)
+  actorId         String
+  actorLabel      String
+  actorRole       String?
+  sourceIp        String?
+  action          String // create | update | delete | flush | export | rollback | simulate | reset
+  entityType      String // policy | hook | provider | credential | virtualKey | routingRule | config | apiKey
+  entityId        String?
+  beforeState     Json?
+  afterState      Json?
+  /// Gateway-generated id for this admin HTTP request (matches access logs / response `x-nexus-request-id`)
+  nexusRequestId  String?
+  /// Tamper-evident hash chain (F3). Genesis row has previousHash = NULL;
+  /// every subsequent row stores the prior row's integrityHash. integrityHash
+  /// is NOT NULL — see packages/nexus-hub/internal/traffic/chain/chain.go for
+  /// the canonical payload + hash recipe. Both writer paths (CP→MQ consumer
+  /// and Hub direct in-tx) call chain.NextHash to populate these columns under
+  /// a pg_advisory_xact_lock so concurrent inserts cannot produce a fork.
+  previousHash    String?
+  integrityHash   String
+  /// Exact bytes that were SHA-256'd to produce integrityHash (canonical
+  /// JSON payload from audit.canonicalizePayload). Stored verbatim so
+  /// VerifyChain can recompute the hash without depending on jsonb
+  /// roundtrip stability — JSONB normalises key order and whitespace,
+  /// which would otherwise break the chain on every row that has a
+  /// non-null beforeState/afterState. The jsonb columns above are now
+  /// display copies only; this column is the cryptographic source of
+  /// truth.
+  hashInput       Bytes
+  /// Channel that initiated the mutation: "assistant" for an AI-initiated admin
+  /// write performed by the web assistant on a user's behalf (optionally
+  /// suffixed with the sub-agent marker), NULL for a direct human/UI action.
+  /// Set server-side from an unforgeable in-process context value (never a
+  /// wire header) and folded into the tamper-evident hash chain so the
+  /// AI-attribution marker cannot be stripped without breaking integrityHash.
+  via             String?
+
+  @@index([timestamp])
+  @@index([actorId])
+  @@index([entityType])
+  @@index([nexusRequestId])
+  @@index([sequenceNumber])
+  @@index([via])
+}
+
+// ─── System Metadata (S30 — generic key/value store) ──────────────────────────
+//
+// Small global key/value table used for cross-process state that is too small
+// to deserve its own model: setup-wizard completion flag, one-shot migration
+// markers, future feature toggles, etc. Values are JSONB so callers can store
+// structured payloads without further migrations.
+model SystemMetadata {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy String?  @map("updated_by")
+
+  @@map("system_metadata")
+}
+
+/// Scheduler job definition. Upserted on Hub startup from code; source of
+/// truth for `enabled` toggles and human-readable metadata.
+model Job {
+  id          String   @id
+  name        String
+  description String
+  intervalSec Int
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  runs        JobRun[]
+
+  @@map("job")
+}
+
+/// One row per job execution attempt. Retention is enforced by the
+/// job-retention scheduled job, which keeps the latest N rows per jobId.
+model JobRun {
+  id         String    @id @default(uuid())
+  jobId      String
+  job        Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  startedAt  DateTime  @db.Timestamptz(3)
+  finishedAt DateTime? @db.Timestamptz(3)
+  durationMs Int?
+  status     String // running | success | error | skipped | interrupted (set by startup recovery for runs orphaned by a prior process crash)
+  error      String?
+  replicaId  String?
+
+  @@index([jobId, startedAt(sort: Desc)])
+  @@map("job_run")
+}

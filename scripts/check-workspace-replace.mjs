@@ -47,9 +47,9 @@ import { dirname, basename, resolve } from 'node:path';
 
 const REPO_ROOT = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
 
-const SIBLING_PATH_RE = /github\.com\/ai-nexus-platform\/nexus-gateway\/packages\/([a-z][a-z0-9-]*)/;
-const REQUIRE_LINE_RE = /^\s*github\.com\/ai-nexus-platform\/nexus-gateway\/packages\/([a-z][a-z0-9-]*)\s+(\S+)/;
-const REPLACE_LINE_RE = /^replace\s+github\.com\/ai-nexus-platform\/nexus-gateway\/packages\/([a-z][a-z0-9-]*)\s*=>\s*(\S+)/;
+const SIBLING_PATH_RE = /github\.com\/AlphaBitCore\/nexus-gateway\/packages\/([a-z][a-z0-9-]*)/;
+const REQUIRE_LINE_RE = /^\s*github\.com\/AlphaBitCore\/nexus-gateway\/packages\/([a-z][a-z0-9-]*)\s+(\S+)/;
+const REPLACE_LINE_RE = /^replace\s+github\.com\/AlphaBitCore\/nexus-gateway\/packages\/([a-z][a-z0-9-]*)\s*=>\s*(\S+)/;
 
 function listGoMods() {
   const out = execSync('git ls-files "packages/*/go.mod"', { encoding: 'utf-8', cwd: REPO_ROOT });
@@ -65,11 +65,13 @@ function ownModulePath(modFile) {
   return m ? m[1] : null;
 }
 
-function checkOne(modFile) {
+// checkModText runs the require/replace rules (Rules 1-2) against go.mod text
+// directly, without touching the filesystem, so the self-test fixture can drive
+// the exact regexes that silently rotted in F-0317. `ownModule` is passed in so
+// the self-test does not need a real `module` line resolved from disk.
+function checkModText(modFile, text, ownModule) {
   const violations = [];
-  const text = readFileSync(resolve(REPO_ROOT, modFile), 'utf-8');
   const lines = text.split('\n');
-  const ownModule = ownModulePath(modFile);
 
   // Collect sibling requires (excluding self-references — a sibling-shaped
   // path that IS this module's own path is normal).
@@ -132,6 +134,13 @@ function checkOne(modFile) {
     }
   }
 
+  return violations;
+}
+
+function checkOne(modFile) {
+  const text = readFileSync(resolve(REPO_ROOT, modFile), 'utf-8');
+  const violations = checkModText(modFile, text, ownModulePath(modFile));
+
   // Rule 3: go.sum (next to go.mod) must not have any sibling-package lines.
   const sumFile = modFile.replace(/go\.mod$/, 'go.sum');
   const sumAbs = resolve(REPO_ROOT, sumFile);
@@ -152,6 +161,52 @@ function checkOne(modFile) {
   }
 
   return violations;
+}
+
+// --selftest drives the require/replace regexes against in-memory fixtures so a
+// future regex drift (the exact F-0317 failure: the patterns hardcoded the wrong
+// org and silently matched nothing) can never ship green. A known-bad go.mod MUST
+// produce violations and a known-good one MUST produce none; if the regexes stop
+// matching the real module path, the bad fixture yields zero violations and this
+// self-test fails loudly. Run by CI alongside the live scan.
+if (process.argv.includes('--selftest')) {
+  const ownModule = 'github.com/AlphaBitCore/nexus-gateway/packages/example';
+  const badMod = [
+    'module github.com/AlphaBitCore/nexus-gateway/packages/example',
+    '',
+    'require (',
+    // sibling at a real pseudo-version (Rule 1 violation) AND with no replace (Rule 2):
+    '\tgithub.com/AlphaBitCore/nexus-gateway/packages/shared v0.0.0-20260101000000-abcdef123456',
+    ')',
+  ].join('\n');
+  const goodMod = [
+    'module github.com/AlphaBitCore/nexus-gateway/packages/example',
+    '',
+    'require github.com/AlphaBitCore/nexus-gateway/packages/shared v0.0.0',
+    '',
+    'replace github.com/AlphaBitCore/nexus-gateway/packages/shared => ../shared',
+  ].join('\n');
+
+  const badViolations = checkModText('selftest-bad/go.mod', badMod, ownModule);
+  const goodViolations = checkModText('selftest-good/go.mod', goodMod, ownModule);
+  const failures = [];
+  if (badViolations.length === 0) {
+    failures.push(
+      'self-test FAILED: the known-bad fixture produced ZERO violations — the require/replace ' +
+        'regexes match nothing (the F-0317 silent-no-op regression). Check SIBLING/REQUIRE/REPLACE_LINE_RE.',
+    );
+  }
+  if (goodViolations.length !== 0) {
+    failures.push(
+      `self-test FAILED: the known-good fixture produced ${goodViolations.length} violation(s); expected 0.`,
+    );
+  }
+  if (failures.length > 0) {
+    for (const f of failures) console.error(`[check:workspace-replace] ${f}`);
+    process.exit(1);
+  }
+  console.log('[check:workspace-replace] ✓ self-test passed (bad fixture rejected, good fixture accepted)');
+  process.exit(0);
 }
 
 const allViolations = [];

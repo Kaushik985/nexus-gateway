@@ -2,8 +2,9 @@
 
 The agent keeps itself current in two ways: it always tells the operator when a
 newer build is available, and — when it is given a signing key — it can
-download, verify, and swap in the new binary itself. A boot-time crash-loop
-guard backs both modes by rolling back to the previous binary if a fresh install
+download, verify, and apply the new build itself (a whole-bundle `.pkg` install
+on macOS, an in-place binary swap elsewhere). A boot-time crash-loop guard backs
+the binary-swap mode by rolling back to the previous binary if a fresh install
 fails to stay up. This document covers the two operating modes, the Hub
 update-check contract, the auto-install lifecycle and its mandatory signature
 chain, and the crash-loop rollback.
@@ -16,7 +17,9 @@ chain, and the crash-loop rollback.
   "newer build available" signal to the Dashboard, but installs nothing — the
   operator installs the new `.pkg` manually.
 - **Auto-install.** In addition to the signal, the updater downloads the new
-  binary, verifies it, and swaps it into place.
+  artifact, verifies it, and applies it — a whole-bundle `.pkg` install on macOS
+  (which also re-registers SMAppService + the NE), an in-place binary swap on
+  other platforms.
 
 Auto-install requires two conditions together: the updater is enabled
 (`updaterEnabled`) **and** it holds an Ed25519 public key to verify the download
@@ -46,21 +49,34 @@ When auto-install is active, `CheckAndUpdate` runs a fixed sequence and aborts
 download never reaches the live binary path:
 
 1. **Check.** `CheckUpdate`; return early if nothing is available.
-2. **Download** the new binary to a `.tmp` sibling of the current executable
-   over the pinned transport.
+2. **Download** the artifact to a sibling temp file of the current executable
+   over the pinned transport. On macOS the artifact is a whole-bundle `.pkg`
+   (`*.update.pkg`); on other platforms it is the bare daemon binary (`*.tmp`).
 3. **SHA-256 (mandatory).** Reject if the server omitted the hash or the
    computed hash disagrees.
 4. **Ed25519 (mandatory).** Reject if the server omitted the signature or no
    public key is configured; otherwise verify the signature over the file hash
    against the configured public key.
-5. **Atomic swap.** Rename the current binary to a `.rollback` sibling, then
-   rename the verified `.tmp` into place. If the second rename fails, the
-   `.rollback` copy is renamed back, so the agent is never left without a working
-   binary.
+5. **Apply** (`applyUpdate`, dispatched by OS):
+   - **macOS — whole-bundle `.pkg` install.** Run `/usr/sbin/installer -pkg
+     … -target /` **detached** (new session). The pkg replaces the entire app
+     bundle — app + daemon + NE extension + the embedded SMAppService launchd
+     plist — atomically. The installer's preinstall boots out the running daemon
+     (this very process), which is why the install is detached so it survives;
+     the postinstall re-opens the app, which re-registers SMAppService and
+     re-activates the NE (with the existing reboot-pending surface when macOS
+     defers the system-extension swap). The daemon comes back up on the new
+     binary via SMAppService. The whole-bundle install is why a macOS update no
+     longer leaves the daemon and the extension on mismatched versions.
+   - **Other platforms — in-place binary swap.** Rename the current binary to a
+     `.rollback` sibling, then rename the verified `.tmp` into place; on failure
+     the `.rollback` is renamed back, so the agent is never left without a
+     working binary.
 
-After a successful swap the running process keeps executing the old in-memory
+After a non-macOS swap the running process keeps executing the old in-memory
 code and stops further update checks; the new binary takes effect on the next
-restart, when the service manager respawns the process.
+restart, when the service manager respawns the process. On macOS the detached
+installer restarts the daemon as part of the bundle install.
 
 ## Crash-loop rollback
 

@@ -105,9 +105,11 @@ conservative:
   this is safe — the request simply goes upstream without that rewrite.
 
 The outcome of `NormalizeUpstream` is a `Result` with strip counts, injected-marker
-count, a dry-run flag, and byte-level `TransformSpan` records. Those spans flow onto
-`traffic_event_normalized.request_redaction_spans` alongside hook-emitted spans, so
-rewrites and redactions share one audit channel.
+count, a dry-run flag, and byte-level `TransformSpan` records. Those spans are
+consumed in-process (cache-key derivation and strip metrics); they are not
+persisted to a database column. Masking provenance that survives to the audit
+trail rides on the parent `traffic_event` (`compliance_tags`) and the redacted
+markers inside the normalized payload.
 
 ## References
 

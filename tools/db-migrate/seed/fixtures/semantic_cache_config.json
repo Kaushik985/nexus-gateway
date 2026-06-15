@@ -1,0 +1,332 @@
+[
+  {
+    "id": "singleton",
+    "embedding_provider_id": null,
+    "embedding_model_id": null,
+    "embedding_dimension": null,
+    "embedding_fingerprint": "",
+    "redis_index_name": "nexus:semantic-cache:v1",
+    "enabled": false,
+    "threshold": 0.96,
+    "vary_by": "vk",
+    "embed_strategy": "system_plus_last_user",
+    "allow_cross_model": false,
+    "updated_at": "2026-06-13T06:35:32.84+00:00",
+    "updated_by": null,
+    "time_sensitive_overrides": {
+      "rules": [
+        {
+          "id": "time-current",
+          "enabled": true,
+          "keywords": [
+            "now",
+            "today",
+            "latest",
+            "current",
+            "this week",
+            "this month",
+            "现在",
+            "今天",
+            "最新",
+            "当前",
+            "本周",
+            "本月",
+            "目前"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "stock-price",
+          "enabled": true,
+          "keywords": [
+            "stock price",
+            "share price",
+            "market cap",
+            "stock quote",
+            "股价",
+            "市值",
+            "股票价格",
+            "当前价格"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "exchange-rate",
+          "enabled": true,
+          "keywords": [
+            "exchange rate",
+            "conversion rate",
+            "forex",
+            "fx rate",
+            "汇率",
+            "兑换率",
+            "外汇汇率"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "weather",
+          "enabled": true,
+          "keywords": [
+            "weather",
+            "temperature",
+            "forecast",
+            "humidity",
+            "wind speed",
+            "天气",
+            "温度",
+            "天气预报",
+            "气温",
+            "湿度",
+            "风速"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "news",
+          "enabled": true,
+          "keywords": [
+            "news",
+            "headline",
+            "breaking",
+            "latest news",
+            "today's news",
+            "新闻",
+            "头条",
+            "最新新闻",
+            "突发",
+            "今日头条"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "score",
+          "enabled": true,
+          "keywords": [
+            "score",
+            "current score",
+            "game result",
+            "match result",
+            "live score",
+            "比分",
+            "当前比分",
+            "比赛结果",
+            "实时比分",
+            "赛果"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "crypto-price",
+          "enabled": true,
+          "keywords": [
+            "crypto price",
+            "bitcoin price",
+            "ethereum price",
+            "coin price",
+            "加密货币价格",
+            "比特币价格",
+            "以太坊价格",
+            "币价"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "oil-price",
+          "enabled": true,
+          "keywords": [
+            "oil price",
+            "crude price",
+            "brent crude",
+            "wti crude",
+            "油价",
+            "原油价格",
+            "布伦特原油",
+            "原油"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "interest-rate",
+          "enabled": true,
+          "keywords": [
+            "interest rate",
+            "federal reserve rate",
+            "repo rate",
+            "bond yield",
+            "利率",
+            "美联储利率",
+            "基准利率",
+            "债券收益率",
+            "存款利率"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "inflation",
+          "enabled": true,
+          "keywords": [
+            "inflation rate",
+            "cpi",
+            "consumer price index",
+            "inflation today",
+            "通货膨胀",
+            "通胀率",
+            "CPI",
+            "消费者价格指数"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "population",
+          "enabled": true,
+          "keywords": [
+            "population",
+            "current population",
+            "how many people",
+            "人口",
+            "当前人口",
+            "多少人口",
+            "人口数量"
+          ],
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "gold-price",
+          "enabled": true,
+          "keywords": [
+            "gold price",
+            "gold rate",
+            "spot gold",
+            "silver price",
+            "precious metal price"
+          ],
+          "languages": [
+            "en"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "gas-price",
+          "enabled": true,
+          "keywords": [
+            "gas price",
+            "fuel price",
+            "petrol price",
+            "diesel price",
+            "price at the pump"
+          ],
+          "languages": [
+            "en"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "flight-status",
+          "enabled": true,
+          "keywords": [
+            "flight status",
+            "flight delay",
+            "is my flight on time",
+            "flight on time",
+            "gate number"
+          ],
+          "languages": [
+            "en"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "traffic-conditions",
+          "enabled": true,
+          "keywords": [
+            "traffic conditions",
+            "traffic now",
+            "current traffic",
+            "how is the traffic",
+            "commute time"
+          ],
+          "languages": [
+            "en"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        },
+        {
+          "id": "trending-now",
+          "enabled": true,
+          "keywords": [
+            "trending now",
+            "what's trending",
+            "trending today",
+            "viral right now",
+            "top trending"
+          ],
+          "languages": [
+            "en"
+          ],
+          "requireEntity": false,
+          "requireQuestionMark": false
+        }
+      ]
+    }
+  }
+]

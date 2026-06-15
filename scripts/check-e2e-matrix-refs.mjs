@@ -20,7 +20,7 @@
  *     We zero-pad shorter digit captures defensively, though the current convention is 3 digits.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const REPO_ROOT = process.cwd();
@@ -61,7 +61,18 @@ function extractScenarioFns(dir) {
 }
 
 function main() {
-  const matrixText = readFileSync(join(REPO_ROOT, MATRIX_DOC), 'utf-8');
+  // MATRIX_DOC lives in docs/developers/specs/ which is excluded from the
+  // published (open-source) repo.  When this script runs post-publish or
+  // in a repo clone that lacks the internal specs tree, skip gracefully
+  // rather than hard-erroring.
+  const matrixPath = join(REPO_ROOT, MATRIX_DOC);
+  if (!existsSync(matrixPath)) {
+    console.log(
+      `[check:e2e-matrix] SKIP — ${MATRIX_DOC} not present (publish-excluded tree absent); check skipped.`,
+    );
+    process.exit(0);
+  }
+  const matrixText = readFileSync(matrixPath, 'utf-8');
   const matrixIds = extractMatrixIds(matrixText);
   const scenarioFns = extractScenarioFns(join(REPO_ROOT, SCENARIOS_DIR));
 

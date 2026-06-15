@@ -1,0 +1,10 @@
+[
+  {
+    "id": "6aaf9dfe-efc7-436f-afae-3a783899754d",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-super-admin",
+    "policyId": "39397464-ea15-4041-8029-482f7ad2b7f3",
+    "createdAt": "2026-01-01T00:00:00.000+00:00",
+    "expires_at": null
+  }
+]

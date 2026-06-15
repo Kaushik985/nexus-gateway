@@ -15,7 +15,7 @@ Scope: alerting lives entirely inside `nexus-hub` (the Hub is the single produce
 
 ## 2. Anchor packages
 
-- `tools/db-migrate/schema.prisma` — `AlertRule`, `Alert`, `AlertChannel`, `AlertDispatch` models; `AlertSeverity` and `AlertState` enums.
+- `tools/db-migrate/schema/observability.prisma` — `AlertRule`, `Alert`, `AlertChannel`, `AlertDispatch` models; `AlertSeverity` and `AlertState` enums.
 - `packages/nexus-hub/internal/alerts/engine/` — domain types, the `Raiser` that owns the FIRING-state dedup invariant, the `Store` for persistence, the `DispatcherImpl` for channel fan-out, and the 14 admin HTTP handlers.
 - `packages/nexus-hub/internal/alerts/engine/rules/builtin.go` — the Go-side source of truth for built-in rule definitions, consumed at Hub startup by `rules.NewRegistry`.
 - `packages/nexus-hub/internal/alerts/engine/senders/` — one file per channel type: `webhook.go`, `slack.go`, `email.go`, `pagerduty.go`.
@@ -99,7 +99,7 @@ A scheduler job (`alerteval-engine`, default tick 5 s, configurable via `Schedul
 - `nexus.event.agent` — Agent-forwarded traffic.
 - `nexus.event.admin-audit` — admin-audit events (e.g. login failure flood, invalid key burst).
 
-The consumer group is independent of `hub-db-writer` (which feeds the `TrafficEvent` table) and `hub-siem` (the SIEM bridge); JetStream fan-out delivers each message to all three groups.
+The consumer group is independent of `hub-db-writer` (which feeds the `TrafficEvent` table); JetStream fan-out delivers each message to both groups. The SIEM bridge is not on the MQ path — it polls the persisted tables on a schedule (see `siem-bridge-architecture.md`).
 
 The engine registers 19 `Aggregator` implementations at boot. Each aggregator owns:
 
@@ -137,7 +137,14 @@ The single entry point is `Raiser.Raise(ctx, RaiseInput{RuleID, TargetKey, Targe
 5. Otherwise, INSERT a fresh `Alert` row with `state=FIRING, duplicateCount=1`.
 6. After COMMIT, if a fresh row was inserted, hand it to `Dispatcher.Dispatch` in a detached goroutine. A slow or failing channel never blocks persistence.
 
-`Raiser.Resolve(ctx, ruleID, targetKey, reason)` transitions all `FIRING` and `ACKNOWLEDGED` rows for the `(rule, target)` pair to `RESOLVED` via `Store.ResolveByRuleTarget`, which hardcodes `resolvedBy = "system"` and writes the supplied reason. Manual operator-driven resolves go through the admin endpoint (§7) and call `Store.ResolveAlert`, a separate path that stamps the actor identity from the admin session.
+`Raiser.Resolve(ctx, ruleID, targetKey, reason)` is the automatic "condition cleared" path. The set of rows it resolves depends on the rule's `requiresAck` flag:
+
+- `requiresAck = false` (default): all `FIRING` and `ACKNOWLEDGED` rows for the `(rule, target)` pair transition to `RESOLVED` via `Store.ResolveByRuleTarget`.
+- `requiresAck = true`: only `ACKNOWLEDGED` rows are resolved (via `Store.ResolveByRuleTargetIfAcknowledged`); any `FIRING` row is left open. The rule contract says a human must acknowledge before the alert can clear, so an automatic signal must not silently resolve a `FIRING` alert nobody has triaged. The Raiser counts the skipped `FIRING` rows (`Store.CountFiringByRuleTarget`) and logs `resolvedAcknowledged` / `skippedFiring` so the deferred-resolution decision is visible.
+
+If the rule cannot be loaded (unknown id), `Resolve` falls back to the `requiresAck = false` behaviour (resolve both states) — the safe default for an auto-resolve signal.
+
+Both paths hardcode `resolvedBy = "system"` and write the supplied reason. Manual operator-driven resolves go through the admin endpoint (§7) and call `Store.ResolveAlert`, a separate path that stamps the actor identity from the admin session and always resolves the targeted single row regardless of `requiresAck`.
 
 ## 6. Notification channels
 
@@ -148,13 +155,13 @@ The single entry point is `Raiser.Raise(ctx, RaiseInput{RuleID, TargetKey, Targe
 - `enabled` — kill switch.
 - `severities` — string array of severity names. Empty array means "match all". The dispatcher compares case-insensitively so a row saved as `"Critical"` still matches an alert with severity `"critical"`.
 - `sourceTypes` — string array of `AlertRule.sourceType` values. Empty array means "match all".
-- `config` — type-specific JSON; secret fields are masked on read by `maskChannelConfig` and round-tripped through `mergeMaskedSecrets` so the UI can PATCH a partial update without re-entering secrets.
+- `config` — type-specific JSON. Secret fields (SMTP password, Slack bot token, PagerDuty routing key, sensitive webhook headers) are **encrypted at rest** in the JSONB column: the store encrypts them on insert/update and decrypts them on read, reusing the shared credential-encryption mechanism (AES-256-GCM keyed by `CREDENTIAL_ENCRYPTION_KEY`; values carry an `enc:v1:` envelope). On the admin read path the decrypted secrets are then masked by `maskChannelConfig` and round-tripped through `mergeMaskedSecrets` so the UI can PATCH a partial update without re-entering secrets. `CREDENTIAL_ENCRYPTION_KEY` is **required**: `InitAlerts` fails the hub closed at boot when the key is unset or malformed, so alert-channel secrets are never silently persisted as cleartext (this matches the `[MUST MATCH]` contract the key already carries for control-plane / ai-gateway provider-credential encryption).
 
 Sender config shapes:
 
 - **Webhook** — `{url, headers?}`. POSTs the JSON-serialised `Alert` body. Any HTTP status ≥ 300 is treated as failure.
 - **Slack** — `{webhookUrl?, botToken?, channel?}`. The incoming-webhook path is preferred when `webhookUrl` is set (no bot token required); otherwise the dispatcher falls back to `chat.postMessage` with `botToken + channel`.
-- **Email** — `{host, port, from, to, username?, password?}`. `to` accepts a comma-separated list. Uses `net/smtp` with optional PLAIN auth.
+- **Email** — `{smtpHost, smtpPort, smtpFrom, smtpTo, smtpUsername?, smtpPassword?}` (one canonical key set shared by the admin UI, the at-rest encryption, and the sender). `smtpTo` accepts a comma-separated list. Uses `net/smtp` with optional PLAIN auth; `smtpPassword` is encrypted at rest.
 - **PagerDuty** — `{routingKey}`. POSTs to the Events API v2 with `event_action: trigger` and `dedup_key = ruleID|targetKey`, so PagerDuty itself collapses repeated firings into a single incident.
 
 `DispatcherImpl.Dispatch(ctx, alert)` walks every enabled channel, applies the severity + sourceType filter, resolves the channel type to its registered `Sender`, and calls `Send`. Each attempt writes one `AlertDispatch` row (success or failure, with HTTP status code and error message), so the admin UI can surface delivery problems. A missing sender registration also writes a failure row rather than silently dropping.
@@ -186,7 +193,7 @@ The parametric `/:id` routes are registered after the static `/rules` and `/chan
 
 Hub's `ListAlerts` accepts the multi-value categorical filter set (`state`, `severity`, `sourceType`, `ruleId`) as repeated query parameters; within a dimension values are OR'd, across dimensions they are AND'd. Time bounds are `since` / `until` (RFC 3339), pagination is `offset` / `limit`. The CP forwarder passes the query string verbatim. `GetAlert` returns the flat `Alert` shape plus a `dispatches[]` array of every delivery attempt.
 
-`UpdateRule` accepts `displayName`, `defaultSeverity`, `requiresAck`, `enabled`, `params`, `cooldownSec` (and optionally `paramsSchema` for advanced operators) and validates `params` against the rule's stored `paramsSchema` before writing. `UpdateChannel` is a partial patch — nil fields preserve the existing value, sensible for the list page's one-click enable/disable toggle.
+`UpdateRule` accepts `displayName`, `defaultSeverity`, `requiresAck`, `enabled`, `params`, `cooldownSec` (and optionally `paramsSchema` for advanced operators) and validates `params` against the rule's stored `paramsSchema` before writing. The response embeds the updated rule plus a `warnings` array (always present, never null) of non-fatal operational notices about the resulting state. The only warning today is `no_delivery_channel_configured`, returned when the rule is now `enabled` but `Store.CountChannels` finds zero `AlertChannel` rows — i.e. the rule will fire alerts that go nowhere. A disabled rule never warns. `UpdateChannel` is a partial patch — nil fields preserve the existing value, sensible for the list page's one-click enable/disable toggle.
 
 `ResetRule` restores code-owned defaults from `rules.BuiltinRules` via the in-process `RuleRegistry.Lookup`. Rules absent from `BuiltinRules` return 404 from this endpoint (see §10).
 
@@ -224,8 +231,8 @@ The typed client (`api/services/alerts/alerts.ts`) is the only place CP-UI code 
 
 ## References
 
-- `tools/db-migrate/schema.prisma`
-- `tools/db-migrate/seed/data/seed-baseline.sql`
+- `tools/db-migrate/schema/observability.prisma` — Alert / AlertRule / AlertChannel / AlertDispatch models
+- `tools/db-migrate/seed/fixtures/AlertRule.json` — seeded default alert rules
 - `packages/nexus-hub/internal/alerts/engine/types.go`
 - `packages/nexus-hub/internal/alerts/engine/raiser.go`
 - `packages/nexus-hub/internal/alerts/engine/dispatcher.go`

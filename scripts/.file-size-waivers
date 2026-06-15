@@ -1,0 +1,22 @@
+# File-size ratchet waivers — files allowed past the ratchet cap.
+#
+# Binding rule: docs/developers/workflow/conventions.md → Cross-cutting
+# bindings → "File-size ratchet" (checked by scripts/check-file-size-ratchet.sh).
+#
+# Format:
+#   <path> <cap-in-lines> <one-line reason>
+#   - lines beginning with # are comments; blank lines ignored.
+#   - the cap is an absolute line count that replaces the computed cap.
+#
+# Policy: additions require explicit user approval in chat — same governance
+# as scripts/.coverage-allowlist. A waiver pins a hard ceiling for one file;
+# prefer decomposing the file over waiving it. The long-term goal is an
+# empty waiver file.
+
+# Presentational data tables — icon-name → SVG-path glyph maps. Like locale
+# JSON / api/types.ts, these are declaration data, not logic; decomposing by
+# line count is churn without design gain. Evaluated a domain split and
+# rejected it: the 59 glyphs are generic, seam-less UI icons in flat order
+# with no domain to group by, so a split would be pure churn. Coverage-
+# excluded by the file's own header.
+packages/control-plane-ui/src/components/ui/Sidebar/Sidebar.icons.tsx 800

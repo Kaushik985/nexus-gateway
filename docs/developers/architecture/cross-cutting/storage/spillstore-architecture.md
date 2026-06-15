@@ -112,16 +112,30 @@ and upload:
    agent's mTLS thing identity. The agent sends the event id, direction, size,
    content type, and the body's SHA-256. The Hub validates the request (including
    the per-object cap, which rejects oversize bodies with 413), derives the storage
-   key, and signs a one-shot HMAC upload token. It then returns either an S3
-   presigned URL (when the backend is S3) or an in-Hub blob URL carrying the token
-   (when the backend is localfs).
+   key, and signs a one-shot HMAC upload token. **The key is namespaced by the
+   authenticated node identity** — `<nodeId>/<day>/<eventId>-<direction>.bin` for a
+   device caller — and the `nodeId` plus the exact key are bound into the signed
+   token (SEC-M5-01). It then returns either an S3 presigned URL (when the backend
+   is S3) or an in-Hub blob URL carrying the token (when the backend is localfs).
 2. **Upload** — for S3 the agent `PUT`s the bytes straight to the presigned URL.
    For localfs the agent `PUT`s to `/api/internal/spill/blob/:token`, a Hub sink
    that authorizes on the HMAC token alone (the mTLS identity was already verified
    at mint), requires the `Content-Length` to match the token's size, enforces
    one-shot use with a Redis dedup key (a replayed token gets 409), streams the
-   body into the store while recomputing the SHA-256, and rejects (and deletes) a
-   body whose hash does not match the token.
+   body into **the exact node-namespaced key the token signed** (the localfs store
+   honours `PutOptions.Key` rather than re-deriving a shared key — SEC-M5-01) while
+   recomputing the SHA-256, and rejects (and deletes) a body whose hash does not
+   match the token.
+
+**Cross-node tamper resistance (SEC-M5-01).** Because the storage key is
+node-namespaced and HMAC-bound, one node can never address — let alone overwrite —
+another node's spill object: node A minting for node B's `eventId` produces a key
+under `A/…`, which is orphaned (B's `traffic_event` references B's key). Direct
+in-process spillers (ai-gateway / compliance-proxy, holding the high-trust service
+token) keep the flat key. **On read**, the Control Plane's `resolveSpillBody`
+recomputes the SHA-256 of the fetched bytes and refuses to serve a body whose hash
+does not match the `sha256` recorded on the `traffic_event`, so even a tampered
+at-rest blob can never be presented as the genuine captured request/response.
 
 The Hub never decides *whether* to spill — that is the data plane's call. The
 upload API is pure infrastructure: token minting and a token-gated sink.

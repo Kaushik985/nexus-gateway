@@ -21,7 +21,7 @@ session boundary, not for narrating routine work.
 
 ## Where it lives
 
-Handoffs live under `docs/handoffs/`:
+Handoffs live under `docs/handoffs/` (internal tree, not published):
 
 - A multi-document program uses a directory: `docs/handoffs/<program-area>/HANDOFF.md`,
   with any plan or tracking files (`PLAN.md`, `TRACKING.md`) alongside it.
@@ -84,4 +84,4 @@ fidelity rather than relying on a compacted summary of the current one.
 ## References
 
 - `CLAUDE.md` — the "Handoff at context-full" rule (triggers, required content, location)
-- `docs/handoffs/` — where handoff and plan/tracking files live
+- `docs/handoffs/` — where handoff and plan/tracking files live (internal tree, not published)

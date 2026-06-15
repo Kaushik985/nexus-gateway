@@ -1,0 +1,42 @@
+[
+  {
+    "id": "34f93bac-06fa-4a46-860e-2bb18c5d5c8e",
+    "name": "nexus/tool-call-safety",
+    "version": "v1.0.0",
+    "maintainer": "nexus",
+    "description": "Tool-call safety patterns for agent / function-calling traffic. Day-1 rules cover shell destructive ops, filesystem sensitive paths, SSRF (cloud metadata + RFC1918 + k8s service names), SQL injection heuristics, code-evaluation primitives, dangerous deserialization, destructive DB DDL, Kubernetes destructive verbs, and credential env-var exfiltration. All rules emit `detector:tool-call-safety` plus a finer `risk:` label so downstream policies can filter by risk class.",
+    "createdAt": "2026-05-08T14:46:20.432+00:00"
+  },
+  {
+    "id": "4c1db5f1-cb03-4150-ac50-e4be221f6005",
+    "name": "nexus/jailbreak",
+    "version": "v1.0.0",
+    "maintainer": "nexus",
+    "description": "Known jailbreak families — DAN variants, developer-mode, grandma/research pretexts. Shares pattern substrings with nexus/prompt-injection but is shipped as a distinct pack so admins can enable/disable independently.",
+    "createdAt": "2026-05-08T14:46:13.841+00:00"
+  },
+  {
+    "id": "75cf6ec8-0035-4a44-9109-6d89b1dab920",
+    "name": "nexus/content-safety",
+    "version": "v1.0.0",
+    "maintainer": "nexus",
+    "description": "Content-safety patterns across 5 restricted categories: violence, hate_speech, self_harm, sexual, illegal. Each rule emits `detector:content-safety`, `category:<name>`, and `severity:restricted` labels. Patterns are intentionally contextual (verb + target / how-to framing) to keep idiomatic business text — \"kill the process\", \"attack the problem\", \"human trafficking survivor\", \"the book covers the Holocaust\" — out of the match set. Severity defaults to `soft`; the P-E content-safety hook escalates via AI Guard when configured.",
+    "createdAt": "2026-05-08T14:46:10.705+00:00"
+  },
+  {
+    "id": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "name": "nexus/secret-leak",
+    "version": "v1.0.0",
+    "maintainer": "nexus",
+    "description": "API key and credential patterns for common providers. Day-1 list covers AWS / GCP / Azure / OpenAI / Anthropic / GitHub / Stripe / Slack / SSH / JWT + an optional entropy-gated generic bearer pattern. All rules emit severity:restricted so the pipeline-level severity picker escalates.",
+    "createdAt": "2026-05-08T14:46:17.793+00:00"
+  },
+  {
+    "id": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "name": "nexus/prompt-injection",
+    "version": "v1.0.0",
+    "maintainer": "nexus",
+    "description": "Nexus-curated prompt-injection patterns. Covers instruction override, role-play escapes, system-prompt leakage, delimiter confusion, and encoded-payload variants. Day-1 scope is conservative; tune FP after production telemetry.",
+    "createdAt": "2026-05-08T14:46:16.212+00:00"
+  }
+]

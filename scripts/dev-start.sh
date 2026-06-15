@@ -83,11 +83,16 @@ ok "Node.js $(node -v) | npm $(npm -v) | Go $(go version | awk '{print $3}') | D
 # placeholders with safe dev defaults so a fresh clone can `go run` every
 # service without hand-editing secrets. Values chosen to match the
 # corresponding dev fallbacks elsewhere in the repo:
-#   ADMIN_KEY_HMAC_SECRET  → matches hmacDevFallback in
-#                            packages/control-plane/internal/identity/authn/apikey.go
-#                            and tools/db-migrate/seed/lib.ts so VK lookups work.
+#   ADMIN_KEY_HMAC_SECRET  → a per-developer random value (SEC-M9-01: the CP
+#                            fails closed on an empty secret and has NO committed
+#                            fallback). Both the CP and the AI Gateway read the
+#                            same env value, so VK lookups match.
 #   INTERNAL_SERVICE_TOKEN → matches tests/.env.local.example NEXUS_HUB_SERVICE_TOKEN
 #                            so the test harness and the services agree.
+#   HUB_CONFIG_TOKEN       → the CP→Hub config-write / admin-alerts bearer
+#                            (SEC-W2-02). A fixed dev value, [MUST MATCH] CP & Hub;
+#                            distinct from INTERNAL_SERVICE_TOKEN so the dev stack
+#                            exercises the split authority.
 #   CREDENTIAL_ENCRYPTION_KEY → random 32-byte hex (openssl) or a fixed
 #                               dev key if openssl is missing. Stable across
 #                               restarts because it's persisted to .env.
@@ -104,23 +109,37 @@ else
 
   if command -v openssl >/dev/null 2>&1; then
     DEV_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+    # SEC-M9-01: the HMAC secret must be a real per-developer random value, not a
+    # committed constant — the CP now fails closed on an empty/missing secret
+    # (ValidateHMACSecret), and a fixed string would let anyone recompute every
+    # stored key_hash.
+    DEV_HMAC_SECRET="$(openssl rand -hex 32)"
   else
-    # Fixed fallback so the substitution still produces a 64-hex key. This is
-    # ONLY safe in local dev — production injects the value via systemd
-    # EnvironmentFile / K8s Secret per .env.example.
-    DEV_ENCRYPTION_KEY="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-    warn "openssl missing — falling back to a fixed dev encryption key in .env (do NOT use in production)"
+    # openssl missing — derive real entropy from /dev/urandom (universally
+    # present on macOS + Linux) rather than a committed constant. SEC-M2-02:
+    # the credential vault now rejects degenerate keys (<16 distinct bytes) at
+    # boot, so a fixed example like 0123…cdef would fail the service closed.
+    DEV_ENCRYPTION_KEY="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    DEV_HMAC_SECRET="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    warn "openssl missing — derived dev secrets from /dev/urandom (do NOT use in production)"
   fi
 
   # Single-pass sed (BSD + GNU compatible — no -i used; we write to a temp file
   # and atomically move it into place).
   sed \
     -e "s|^INTERNAL_SERVICE_TOKEN=.*|INTERNAL_SERVICE_TOKEN=dev-service-token|" \
-    -e "s|^ADMIN_KEY_HMAC_SECRET=.*|ADMIN_KEY_HMAC_SECRET=nexus-gateway-default-hmac-secret|" \
+    -e "s|^HUB_CONFIG_TOKEN=.*|HUB_CONFIG_TOKEN=dev-hub-config-token|" \
+    -e "s|^ADMIN_KEY_HMAC_SECRET=.*|ADMIN_KEY_HMAC_SECRET=${DEV_HMAC_SECRET}|" \
     -e "s|^CREDENTIAL_ENCRYPTION_KEY=.*|CREDENTIAL_ENCRYPTION_KEY=${DEV_ENCRYPTION_KEY}|" \
     -e "s|^COMPLIANCE_PROXY_API_TOKEN=.*|COMPLIANCE_PROXY_API_TOKEN=dev-compliance-proxy-token|" \
     -e "s|^AI_GATEWAY_API_TOKEN=.*|AI_GATEWAY_API_TOKEN=dev-ai-gateway-token|" \
+    -e "s|^NEXUS_ASSISTANT_SYSTEM_VK=.*|NEXUS_ASSISTANT_SYSTEM_VK=nvk_local_b0075000|" \
     .env.example > .env.tmp && mv .env.tmp .env
+  # Wire the web assistant ("Chat with Nexus") to the seeded bootstrap
+  # system-assistant virtual key so /assistant/chat works out of the box
+  # (otherwise it returns 503). It routes via the enabled smart-auto-routing rule
+  # once a provider key is set. The plaintext is the deterministic local default
+  # from seed/bootstrap (assistantVkKey); the appliance mints a random one.
   ok "Created repo-root .env from .env.example with dev-default secrets"
 
   # Hard-fail if any CHANGE_ME_ placeholder survived on a real KEY=VALUE line
@@ -219,24 +238,27 @@ if [[ ! -f .env ]]; then
   fi
 fi
 
-# Mirror CREDENTIAL_ENCRYPTION_KEY from repo-root .env into this directory's
-# .env. The seed script (tools/db-migrate/seed/seed.ts) requires a 64-hex
-# AES-256 key to re-encrypt Credential ciphertext with the local dev key;
-# without this, `prisma db seed` aborts with
-# "CREDENTIAL_ENCRYPTION_KEY must be a 64-char hex string".
+# Mirror the seed's required secrets from the repo-root .env into this
+# directory's .env. The two-tier seed (tools/db-migrate/seed/seed.ts) re-stamps
+# the demo tenant's credentials under the local dev keys:
+#   CREDENTIAL_ENCRYPTION_KEY — AES-256 key to re-encrypt demo Credential ciphertext.
+#   ADMIN_KEY_HMAC_SECRET     — HMAC secret to hash demo virtual-key / admin-key values.
+# Both MUST match the running services' values. seed.ts runs from this dir via
+# tsx and only reads tools/db-migrate/.env, so the repo-root .env is not visible
+# without this step; without them the demo tier (Tier B) aborts fast.
 ROOT_ENV="$ROOT_DIR/.env"
 if [[ -f "$ROOT_ENV" ]]; then
-  ROOT_KEY=$(grep -E '^CREDENTIAL_ENCRYPTION_KEY=' "$ROOT_ENV" | head -1 | cut -d= -f2-)
-  if [[ -n "$ROOT_KEY" ]]; then
-    if grep -q '^CREDENTIAL_ENCRYPTION_KEY=' .env; then
-      # Replace any existing (likely commented or empty) line.
-      sed -e "s|^CREDENTIAL_ENCRYPTION_KEY=.*|CREDENTIAL_ENCRYPTION_KEY=${ROOT_KEY}|" \
-          .env > .env.tmp && mv .env.tmp .env
-    else
-      printf 'CREDENTIAL_ENCRYPTION_KEY=%s\n' "$ROOT_KEY" >> .env
+  for KEY_NAME in CREDENTIAL_ENCRYPTION_KEY ADMIN_KEY_HMAC_SECRET; do
+    ROOT_VAL=$(grep -E "^${KEY_NAME}=" "$ROOT_ENV" | head -1 | cut -d= -f2-)
+    if [[ -n "$ROOT_VAL" ]]; then
+      if grep -q "^${KEY_NAME}=" .env; then
+        sed -e "s|^${KEY_NAME}=.*|${KEY_NAME}=${ROOT_VAL}|" .env > .env.tmp && mv .env.tmp .env
+      else
+        printf '%s=%s\n' "$KEY_NAME" "$ROOT_VAL" >> .env
+      fi
+      ok "Propagated ${KEY_NAME} from repo-root .env into tools/db-migrate/.env"
     fi
-    ok "Propagated CREDENTIAL_ENCRYPTION_KEY from repo-root .env into tools/db-migrate/.env"
-  fi
+  done
 fi
 
 if $FORCE_RESET; then
@@ -250,25 +272,23 @@ else
   ok "Database schema pushed (data preserved — use --force-reset to wipe)"
 fi
 
-# ─── 4a-bis. Apply raw-SQL migrations `prisma db push` cannot express ─────────
+# ─── 4a-bis. Apply post-push schema extras `prisma db push` cannot express ────
 # db push is declarative: it reconciles the DB to schema.prisma's model graph.
-# PostgreSQL-native features (RANGE partitioning, partial/expression indexes)
-# have no Prisma representation and live only in hand-written SQL under
-# tools/db-migrate/migrations/, which db push ignores entirely. Without
-# re-applying them, metric_ops_raw stays a plain table and the Hub
-# `ops-raw-partition` job fails every cycle with
-# "metric_ops_raw is not partitioned (SQLSTATE 42P17)". The migration is
-# re-runnable (DROP IF EXISTS + CREATE … IF NOT EXISTS) and dev telemetry is
+# PostgreSQL-native features (RANGE partitioning) have no Prisma representation
+# and live in hand-written SQL at tools/db-migrate/schema-extras.sql, which db
+# push ignores. Without re-applying it, metric_ops_raw stays a plain table and
+# the Hub `ops-raw-partition` job fails every cycle with "metric_ops_raw is not
+# partitioned (SQLSTATE 42P17)". The file is re-runnable and dev telemetry is
 # disposable (dev-phase policy), so apply it unconditionally after every push.
-PARTITION_SQL="$ROOT_DIR/tools/db-migrate/migrations/20260613000002_partition_metric_ops_raw/migration.sql"
-if [[ -f "$PARTITION_SQL" ]]; then
-  if docker exec -i nexus-postgres psql -U postgres -d nexus_gateway -q -v ON_ERROR_STOP=1 < "$PARTITION_SQL" >/dev/null 2>&1; then
-    ok "Applied raw-SQL partition migration (metric_ops_raw → RANGE-partitioned)"
+EXTRAS_SQL="$ROOT_DIR/tools/db-migrate/schema-extras.sql"
+if [[ -f "$EXTRAS_SQL" ]]; then
+  if docker exec -i nexus-postgres psql -U postgres -d nexus_gateway -q -v ON_ERROR_STOP=1 < "$EXTRAS_SQL" >/dev/null 2>&1; then
+    ok "Applied schema-extras.sql (metric_ops_raw → RANGE-partitioned)"
   else
-    warn "Could not apply metric_ops_raw partition migration — Hub ops-raw-partition job will error until fixed"
+    warn "Could not apply schema-extras.sql — Hub ops-raw-partition job will error until fixed"
   fi
 else
-  warn "Partition migration SQL not found at $PARTITION_SQL — Hub ops-raw-partition job may error"
+  warn "schema-extras.sql not found at $EXTRAS_SQL — Hub ops-raw-partition job may error"
 fi
 
 # ─── 4b. Seed database ─────────────────────────────────────────────────────
@@ -290,8 +310,11 @@ if [[ -f dev-certs/ca.crt && -f dev-certs/ca.key ]]; then
 elif command -v openssl >/dev/null 2>&1; then
   mkdir -p dev-certs
   openssl ecparam -name prime256v1 -genkey -noout -out dev-certs/ca.key 2>/dev/null
+  # pathlen:0 — the proxy CA only ever signs leaf certs; the constraint stops
+  # a stolen CA key from minting an intermediate CA that devices would trust.
   openssl req -new -x509 -key dev-certs/ca.key -out dev-certs/ca.crt -days 365 \
-    -subj "/O=Nexus Dev/CN=Nexus Compliance Proxy Dev CA" 2>/dev/null
+    -subj "/O=Nexus Dev/CN=Nexus Compliance Proxy Dev CA" \
+    -addext "basicConstraints=critical,CA:TRUE,pathlen:0" 2>/dev/null
   ok "Generated Compliance Proxy dev CA (packages/compliance-proxy/dev-certs/{ca.crt,ca.key})"
 else
   warn "openssl missing — skipping Compliance Proxy dev CA. Run 'make dev-certs' in packages/compliance-proxy/ before starting the proxy."
@@ -317,11 +340,26 @@ echo ""
 echo -e "  ${CYAN}AI Gateway${NC} (port 3050):"
 echo -e "    cd packages/ai-gateway && go run ./cmd/ai-gateway/ -config ai-gateway.dev.yaml"
 echo ""
-echo -e "  ${CYAN}Compliance Proxy${NC} (port 3040):"
+echo -e "  ${CYAN}Compliance Proxy${NC} (proxy :3128, runtime API :3040):"
 echo -e "    cd packages/compliance-proxy && go run ./cmd/compliance-proxy/ -config compliance-proxy.dev.yaml"
 echo ""
 echo -e "  ${YELLOW}Tip:${NC} the default config flag is the prod-shape yaml; without"
 echo -e "       ${YELLOW}-config <svc>.dev.yaml${NC} the binary fails fast on required dev fields."
+echo ""
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}  Once the services are up — try it (seeded demo):${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════════${NC}"
+echo -e "  ${CYAN}Console:${NC} http://localhost:3000  —  log in: ${CYAN}admin@nexus.ai${NC} / ${CYAN}nexus-demo${NC}"
+echo -e "  ${CYAN}First request:${NC} see examples/01-hello-world (demo VK ${CYAN}nvk_demo_0c101489${NC})."
+echo ""
+echo -e "  ${YELLOW}Add a provider API key${NC} before any request will succeed: the seed"
+echo -e "       ships placeholder credentials, so calls return ${YELLOW}no available provider${NC}"
+echo -e "       until you set a real key in the console — ${CYAN}Settings → Providers → <provider> → Add credential${NC}."
+echo ""
+echo -e "  ${YELLOW}Chat with Nexus${NC} (the in-console web assistant) is pre-wired to the"
+echo -e "       system-assistant VK (NEXUS_ASSISTANT_SYSTEM_VK in .env); once a provider key is set it"
+echo -e "       answers via smart-auto-routing. Production deployments must also set"
+echo -e "       ${CYAN}NEXUS_ASSISTANT_PROD=1${NC} (hardened posture) — it is intentionally off in dev."
 echo ""
 echo -e "  ${YELLOW}Stop Docker:${NC} docker compose down"
 echo ""

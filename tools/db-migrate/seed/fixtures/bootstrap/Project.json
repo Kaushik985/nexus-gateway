@@ -1,0 +1,14 @@
+[
+  {
+    "id": "b0075000-0000-4000-8000-0000000000a1",
+    "name": "Default Project",
+    "code": "DEFAULT",
+    "organizationId": "b0075000-0000-4000-8000-0000000000a0",
+    "description": "Default project provisioned on first boot.",
+    "contactName": null,
+    "contactEmail": null,
+    "status": "active",
+    "createdAt": "2026-01-01T00:00:00.000+00:00",
+    "updatedAt": "2026-01-01T00:00:00.000+00:00"
+  }
+]

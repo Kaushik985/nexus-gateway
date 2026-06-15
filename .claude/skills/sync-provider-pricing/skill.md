@@ -1,9 +1,9 @@
 # sync-provider-pricing
 
 Scrape each provider's **official** model + pricing page and reconcile our model
-catalog — `provider-templates/*.json` (UI preset), `seed-baseline.sql` (fresh-seed
-dataset), `seed.ts` cache multipliers, and the **prod `Model` table** — so prices,
-model lists, and deprecation flags match the vendor's published page.
+catalog — `provider-templates/*.json` (UI preset), `seed/fixtures/Model.json` (seed
+fixture dataset), `seed.ts` cache multipliers, and the **prod `Model` table** — so
+prices, model lists, and deprecation flags match the vendor's published page.
 
 Use this skill when:
 - A provider ships/renames/retires a model or changes prices.
@@ -25,9 +25,9 @@ not edit that provider — it reports the gap.
 judgment and freshness — fetch the live page, read the table, map vendor columns to our
 fields, decide deprecations — and emits a normalized desired-state JSON. The deterministic
 `sync_pricing.py` does every mechanical step from that JSON (diff, edit template JSON, edit
-seed-baseline.sql, emit prod SQL) so the edits never drift. The script invents no facts; the
-LLM verifies every fact live. Neither shortcut is allowed: no applying without a live fetch,
-no hand-editing the JSON/SQL that the script should write.
+`seed/fixtures/Model.json`, emit prod SQL) so the edits never drift. The script invents no
+facts; the LLM verifies every fact live. Neither shortcut is allowed: no applying without a
+live fetch, no hand-editing the JSON that the script should write.
 
 The mutable URL knob is **`provider-sources.json`** (next to this file): `models_urls` (model
 catalog/spec page) + `pricing_urls` ($/MTok) per provider. Edit it freely as vendor URLs
@@ -45,9 +45,14 @@ drift; this procedure stays fixed.
    `provider-templates/index.json`. The build copies `public/` → `dist/`; after editing
    `public/`, either rebuild the UI (`npm run build -w packages/control-plane-ui`) or mirror
    the same edit into `dist/provider-templates/<name>.json` so a no-rebuild deploy is current.
-2. **`tools/db-migrate/seed/data/seed-baseline.sql`** — `INSERT INTO public."Model"` rows.
-   Carries `inputPricePerMillion` + `outputPricePerMillion` only — **NO cache columns**,
-   plus `status`, `deprecationDate`, `replacedBy`, `code`, `providerModelId`, `name`, etc.
+2. **`tools/db-migrate/seed/fixtures/Model.json`** — JSON array of `Model` rows (one object
+   per model, keys are camelCase column names). Carries all four price fields
+   (`inputPricePerMillion`, `outputPricePerMillion`, `cachedInputReadPricePerMillion`,
+   `cachedInputWritePricePerMillion`), plus `status`, `deprecationDate`, `replacedBy`,
+   `code`, `providerModelId`, `name`, etc. The fixture is the canonical data source for
+   fresh-seed runs; regenerate it from a source DB via
+   `tools/db-migrate/scripts/extract-reference-fixtures.ts`. For quick value fixes,
+   `sync_pricing.py apply` edits it in-place (matches rows by `code`).
 3. **`tools/db-migrate/seed/seed.ts`** — the cache-price backfill `VALUES (adapter, read, write)`
    block (search `cachePriceBackfill`). It fills `cachedInput{Read,Write}PricePerMillion`
    = `input × mult` **only when NULL** (COALESCE). It is a FALLBACK, not the truth — prefer
@@ -90,8 +95,7 @@ refetch. Capture the extracted table verbatim before editing anything.
 
 ### Step 2 — Read our current 3 surfaces
 - `cat packages/control-plane-ui/public/provider-templates/<name>.json`
-- `grep -n "INSERT INTO public.\"Model\"" tools/db-migrate/seed/data/seed-baseline.sql` then
-  the rows for this provider's `code`s.
+- `python3 -c "import json; [print(r['code'], r['inputPricePerMillion'], r['outputPricePerMillion'], r['status']) for r in json.load(open('tools/db-migrate/seed/fixtures/Model.json')) if '<provider-name>' in r.get('providerId','')]"` — or open `tools/db-migrate/seed/fixtures/Model.json` directly (JSON array; filter by `providerId` or search by `code`).
 - prod: `SELECT code,name,status,lifecycle,"inputPricePerMillion" in_p,
   "cachedInputWritePricePerMillion" cw,"cachedInputReadPricePerMillion" cr,
   "outputPricePerMillion" out_p,"deprecationDate","replacedBy" FROM "Model" m JOIN "Provider" p
@@ -151,26 +155,29 @@ Record the thinking + cache code-verification result (✓ / gap + file:line) in 
 
 ### Step 3.5 — Approval gate (BINDING — no change without it)
 **Every price and every model change requires explicit user approval before it is
-applied to ANY surface (template JSON, seed-baseline.sql, or prod).** Run
+applied to ANY surface (template JSON, seed fixture, or prod).** Run
 `sync_pricing.py diff <desired.json>` and present its output to the user as the approval
 request — it pairs each change with the **source URL + fetch date** at the top so the user
-can confirm against the live page. For each drifted model show: field, old→new value, and
-the reference link. Apply (Step 4) and prod-sql (Step 5) run ONLY after the user approves;
-if the user approves a subset, build a reduced `desired.json` with only the approved models
-and re-run. Never apply silently, never batch-approve across providers — one provider's diff,
-one approval.
+can confirm against the live page. For each drifted model show: field, old→new value
+(template and fixture columns separately), and the reference link. Apply (Step 4) and
+prod-sql (Step 5) run ONLY after the user approves; if the user approves a subset, build a
+reduced `desired.json` with only the approved models and re-run. Never apply silently, never
+batch-approve across providers — one provider's diff, one approval.
 
 ### Step 4 — Edit the repo surfaces (safe, reversible)
 - Template JSON: update each model's price fields; add/flag models per Step 3; keep field order.
   Bump `index.json` `modelCount`. Mirror into `dist/` or rebuild the UI.
-- `seed-baseline.sql`: update `inputPricePerMillion` / `outputPricePerMillion` and
-  `status`/`deprecationDate`/`replacedBy` in the matching `Model` INSERT rows. (Cache prices are
-  NOT in seed-baseline; they come from the seed.ts multiplier or an admin edit.)
+- `tools/db-migrate/seed/fixtures/Model.json`: update all four price fields
+  (`inputPricePerMillion`, `outputPricePerMillion`, `cachedInputReadPricePerMillion`,
+  `cachedInputWritePricePerMillion`) and `status`/`deprecationDate`/`replacedBy` for the
+  matching rows (matched by `code`). The fixture is a JSON array — `sync_pricing.py apply`
+  edits it in-place with 2-space indent + trailing newline (preserves fixture format). For
+  manual edits: update only the changed values; do not reformat the whole file.
 - `seed.ts`: only if the provider's whole-family read/write ratio changed.
 - English only. Decimal literals, not "$5 / MTok".
 
 ### Step 5 — prod is OUT OF SCOPE for this skill
-This skill updates ONLY the repo surfaces — the template JSON and seed-baseline.sql. It
+This skill updates ONLY the repo surfaces — the template JSON and seed fixture. It
 **never writes the prod `Model` table.** Changing prod prices is a SEPARATE operation that
 requires explicit, per-run user approval every time (there is no standing authority), done
 outside this skill under the prod-deploy backup discipline (pg_dump first, transactional
@@ -180,7 +187,7 @@ this skill's flow stops at the repo. Do not run anything against prod as part of
 this skill.
 
 ### Step 6 — Verify
-- Re-grep the edited template JSON + seed rows; confirm the numbers match the captured official table.
+- Re-read the edited template JSON + fixture rows; confirm the numbers match the captured official table.
 - Cost-estimation lockstep: a price change touches `cost-estimation-architecture.md`'s domain —
   if behavior/fields changed, update the doc (`scripts/check-doc-lockstep.mjs`). A pure value
   refresh usually needs no doc edit; note that in the summary.

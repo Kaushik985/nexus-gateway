@@ -1,0 +1,54 @@
+# Core traffic/queue-chain functions that MUST hold 100% statement
+# coverage — stricter than the repo-wide >=95% package gate, and NOT
+# waivable by the OS-bound coverage allowlist (these functions live in
+# allowlisted packages like agent/internal/platform/darwin, so the
+# package-level gate would never catch a regression here).
+#
+# Rationale: user directive 2026-06-10 — the four core chains (ai-gateway
+# traffic, desktop-agent traffic, compliance-proxy traffic, hub
+# consume+persist) are performance- and correctness-critical; a dropped
+# branch in their hot path is a billing/compliance/availability defect.
+# Concurrency correctness (no data race, no cross-flow bleed, fail-open)
+# is only trustworthy when every branch is exercised.
+#
+# Format: one entry per line — "<module-relative-package-dir> <FuncName>".
+# '#' comments and blank lines ignored. A receiver method is named by its
+# bare function name (e.g. "Enqueue", not "(*Writer).Enqueue").
+#
+# Adding or REMOVING an entry requires explicit user approval (same
+# discipline as scripts/.coverage-allowlist). Enforced by
+# scripts/check-core-path-coverage.sh (pre-commit + CI).
+#
+# OS-tagged packages (darwin/linux/windows) are only buildable on their
+# GOOS; the checker SKIPS (does not fail) a package that does not build on
+# the current platform, so darwin entries are enforced on macOS pre-commit
+# and OS-neutral entries everywhere.
+
+# --- desktop-agent traffic chain: macOS NE flow decision (lock-free concurrent) ---
+packages/agent/internal/platform/darwin handleNewFlow
+packages/agent/internal/platform/darwin decideFlow
+packages/agent/internal/platform/darwin handleFlowUpdateHost
+packages/agent/internal/platform/darwin handleFlowClosed
+packages/agent/internal/platform/darwin storeFlow
+packages/agent/internal/platform/darwin loadFlow
+packages/agent/internal/platform/darwin loadAndDeleteFlow
+packages/agent/internal/platform/darwin LookupFlowDestination
+packages/agent/internal/platform/darwin reply
+packages/agent/internal/platform/darwin passthroughFrame
+packages/agent/internal/platform/darwin decisionString
+
+# --- desktop-agent traffic chain: SQLite audit queue drain ---
+packages/agent/internal/observability/audit/queue drainOnce
+
+# --- desktop-agent traffic chain: process-metadata cache (darwin) ---
+packages/agent/internal/platform/darwin/proc ProcessInfoCached
+
+# --- desktop-agent traffic chain: shared PID-keyed process cache (linux/windows) ---
+packages/agent/internal/platform/pidcache Get
+packages/agent/internal/platform/pidcache New
+packages/agent/internal/platform/pidcache sweepExpiredLocked
+
+# --- ai-gateway traffic chain: traffic_event writer ---
+packages/ai-gateway/internal/platform/audit Enqueue
+packages/ai-gateway/internal/platform/audit flush
+packages/ai-gateway/internal/platform/audit publishRecord

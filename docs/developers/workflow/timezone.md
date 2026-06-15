@@ -8,7 +8,7 @@ without carrying a zone alongside it.
 
 ## 1. Database
 
-Every `DateTime` column in `tools/db-migrate/schema.prisma` carries
+Every `DateTime` column across `tools/db-migrate/schema/` carries
 `@db.Timestamptz(3)` — a millisecond-precision, timezone-aware PostgreSQL
 `timestamptz`. The two ubiquitous audit columns are stamped by the database
 itself rather than by application code:
@@ -86,14 +86,13 @@ build on either of two patterns:
    an allowlist (the deadline / sleep / duration-math APIs from §2), `_test.go`
    files are skipped, and a single line can opt out with a `// tz-skip` comment
    for a deliberate, reviewed exception.
-2. **A tz-less `DateTime` in `schema.prisma`.** Any `DateTime` field line that
-   lacks `@db.Timestamptz` fails the check. `schema.prisma` is the source of
-   truth — generated migrations inherit the attribute, so historical migration
-   SQL is intentionally not scanned.
+2. **A tz-less `DateTime` in `tools/db-migrate/schema/`.** Any `DateTime` field
+   line that lacks `@db.Timestamptz` fails the check. The `tools/db-migrate/schema/`
+   folder is the schema source of truth; the check scans that folder.
 
 ## References
 
-- `tools/db-migrate/schema.prisma` — `@db.Timestamptz(3)` on every `DateTime`
+- `tools/db-migrate/schema/` — `@db.Timestamptz(3)` on every `DateTime`
 - `packages/control-plane/internal/handler/helpers.go` — `parseRFC3339Flexible`
 - `packages/control-plane-ui/src/lib/format.ts` — the display-edge conversion layer
 - `scripts/check-timezone-correctness.sh` — the `check:tz` guard

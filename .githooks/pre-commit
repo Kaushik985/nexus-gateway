@@ -56,14 +56,21 @@ run_soft() {
 # HARD guards — failure blocks commit.
 # ──────────────────────────────────────────────────────────────────────
 
-# 1. Migration timestamp uniqueness (binding; 2026-05-14 16h audit-gap incident).
-if echo "$staged" | grep -qE '^tools/db-migrate/prisma/migrations/'; then
-  run_hard "migration timestamps unique" bash scripts/check-migration-timestamps.sh
-fi
-
-# 2. Arch-doc trigger-map lockstep (binding; every -architecture.md must be in the map).
+# 1. Arch-doc trigger-map lockstep (binding; every -architecture.md must be in the map).
 if echo "$staged" | grep -qE '^docs/developers/architecture/.*-architecture\.md|^docs/developers/architecture/README\.md|^docs/developers/architecture/cross-cutting/foundation/thing-model\.md|^docs/developers/architecture/cross-cutting/observability/admin-audit-log-coverage\.md'; then
   run_hard "arch-doc-triggers lockstep" node scripts/check-arch-doc-triggers.mjs
+fi
+
+# 2b. Platform-keystore seam (binding; NewPlatformStore only at the agent's
+# composition roots — anywhere else makes `go test` open the real Keychain).
+if echo "$staged" | grep -qE '\.go$'; then
+  run_hard "keystore seam" bash scripts/check-keystore-seam.sh
+fi
+
+# 2c. File-size ratchet (binding; no file grows past its recorded baseline,
+# new files cap at 500 — see conventions.md "File-size ratchet").
+if echo "$staged" | grep -qE '\.(go|ts|tsx|swift|py)$'; then
+  run_hard "file-size ratchet" bash scripts/check-file-size-ratchet.sh --staged
 fi
 
 # 3. IoT terminology guard (binding; product surfaces must not leak Thing/Shadow/etc.).
@@ -82,6 +89,21 @@ if echo "$staged" | grep -qE '\.(tsx|module\.css|css)$|^scripts/check-design-tok
     FAILED=1
   else
     echo "[pre-commit] design-token compliance ✓"
+  fi
+fi
+
+# 4b. Dev-asset-URL guard (binding; scoped to staged source files). Blocks
+# design-tool dev-server image URLs (localhost:38xx/assets, figma.com) that
+# render broken in production, hardcoded localhost hosts in shipped UI source,
+# and design-tool names baked into identifiers/classNames.
+if echo "$staged" | grep -qE '\.(tsx|ts|jsx|js|mjs|cjs|css|scss|less|html|vue|svelte)$|^scripts/check-no-dev-asset-urls\.mjs$'; then
+  echo "[pre-commit] dev-asset-url guard…"
+  if ! echo "$staged" | node scripts/check-no-dev-asset-urls.mjs --files=-; then
+    echo ""
+    echo "✗ dev-asset-url guard failed on STAGED files (see report above)."
+    FAILED=1
+  else
+    echo "[pre-commit] dev-asset-url guard ✓"
   fi
 fi
 
@@ -114,6 +136,17 @@ fi
 # scripts/.coverage-allowlist (entries require user approval + category).
 if echo "$staged" | grep -qE '\.go$'; then
   run_hard "go coverage ≥95%" bash scripts/check-go-coverage.sh --staged
+fi
+
+# 9a. Core traffic/queue-chain functions = 100% coverage (binding; user
+# directive 2026-06-10). Stricter than the ≥95% package gate and NOT
+# waivable by the OS-bound coverage allowlist. Manifest:
+# scripts/.core-path-100 (entries require user approval). Runs whenever a
+# Go file OR the manifest/checker is staged — a core-path function losing
+# a covered branch must block the commit, OS-tagged funcs checked on their
+# GOOS, OS-neutral funcs everywhere.
+if echo "$staged" | grep -qE '\.go$|^scripts/\.core-path-100$|^scripts/check-core-path-coverage\.sh$'; then
+  run_hard "core-path 100% coverage" bash scripts/check-core-path-coverage.sh
 fi
 
 # 9b. OpenAPI semantic gate (binding; design doc 2026-06-05 resource-catalog

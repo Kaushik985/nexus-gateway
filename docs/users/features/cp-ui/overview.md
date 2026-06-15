@@ -28,7 +28,7 @@ Four of the five pages — Dashboard, Analytics & Metrics, Quota Usage, and Cach
 
 **Purpose.** A live event-by-event log of every request handled by any of the three intercept paths, with per-event drill-down.
 
-**What you see.** A page header followed by **source tabs** — `All`, `VK`, `Proxy`, `Agent` — and below the active tab a filter panel, an active-filters chip bar, a paginated data table, and a slide-in event drawer triggered by row click. The selected source is mirrored in the URL via `?source=`.
+**What you see.** A page header followed by **source tabs** — `All`, `VK`, `Proxy`, `Agent` — and below the active tab a filter panel, an active-filters chip bar, a paginated data table, and a slide-in event drawer triggered by row click. The selected source is mirrored in the URL via `?source=`. Each active filter is its own removable chip (click the chip's × to drop just that filter) and a Clear All control resets them together; chip labels are localized.
 
 **Key data.** Each source has its own column set:
 
@@ -37,7 +37,11 @@ Four of the five pages — Dashboard, Analytics & Metrics, Quota Usage, and Cach
 - **Agent**: time, target host, path, device, user, source process, action, status, latency, hook decision, compliance tags.
 - **All**: time, source badge, target, method, path, status, latency, hook decision, entity, organization.
 
-**Key actions.** Switch source tab. Open the filter panel for time range and advanced filters; apply, clear, or refresh. Click any row to open the event drawer (full request and response payload, hook trace, downstream timings). Paginate. Deep-link to a single event via `?thingId=`.
+The **Provider** and **Model** filters — and the Analytics group-by axes — attribute by the model/provider that actually **served** the request (the routed target), so a filter on "Provider X" returns everything X handled regardless of what the client originally asked for. The **requested** provider/model is shown only as the separate "requested model" column and is blank when the client did not pin one (for example `model="auto"` or an OpenAI-style request).
+
+**Key actions.** Switch source tab. Open the filter panel for time range and advanced filters; apply, clear, or refresh. Click any row to open the event drawer (full request and response payload, hook trace, downstream timings). In the drawer's normalized payload view, content that a compliance hook redacted is marked inline as a badge over the replacement text, with a tooltip naming the rule, source, action, and reason. When the storage policy kept no readable copy at all, the payload view shows a notice instead of the content, and the notice distinguishes why: content dropped because the operator's policy says to drop it; or — when the policy was to redact but the redaction could not be safely applied to the stored copy — a separate notice explaining that the copy was dropped as the safe fallback, with the reason in plain words (the machine token shown alongside), the parts of the payload that could not be resolved, and the rules that matched. Events recorded before this distinction existed show a neutral "content not stored per the storage policy" notice that does not guess between the two. Paginate. Deep-link to a single event via `?thingId=`.
+
+**Normalized view.** The drawer's payload tab renders each direction as a typed, readable projection rather than raw bytes. A provenance badge says which decoder produced the view: **Tier 1** (exact protocol decoder, matched by key, host, or content sniff), **Tier 2** (pattern probe for consumer web surfaces) — both shown with a confidence score meaning the fraction of the input the decoder recognized — or the neutral **Structural** badge for rows where no AI protocol was identified and the body is shown as a typed projection of the raw HTTP content (JSON tree, text, form fields, binary digest, or an event-stream frame list). Structural rows deliberately carry no confidence numeral — the projection is faithful by construction, but it makes no claim about AI semantics. The normalized view is a derived projection: it is recomputed automatically when decoders improve, so a historical row's rendering (and its confidence) can get better over time — the raw bytes in the Raw tab are the immutable audit record and never change. An unrecognized event stream renders as a frame list — one row per frame with its event-name chip and the frame data pretty-printed when it is JSON — collapsed beyond the first 50 frames behind a "show all" control; very long streams note that the frame view is truncated while the full stream remains available in the Raw tab. Chat-style rows render role bubbles; a tool call's multi-line inputs (for example a shell command an agent ran) display with real line breaks, and the usage row includes reasoning tokens when the provider reported them.
 
 **Where the data comes from.** `systemApi.getTrafficStorage` (storage banner state, e.g. file-sink notice), `systemApi.listTrafficEvents` (the table query).
 
@@ -45,7 +49,7 @@ Four of the five pages — Dashboard, Analytics & Metrics, Quota Usage, and Cach
 
 **Purpose.** Time-bounded cost, usage, and latency breakdown across configurable group-by axes, with multi-tab depth for charts and rollups.
 
-**What you see.** A page header, a page-level filter card (time range, group-by axis, source button group of `All / VK / Proxy / Agent`), and an inner tab group: **Analytics**, **Latency**, **Metrics**.
+**What you see.** A page header and an inner tab group: **Analytics**, **Latency**, **Metrics**. Each tab carries its own filter bar (time range, source dropdown of `All Traffic / AI Gateway / Compliance Proxy / Agent`, plus a group-by axis on the Analytics tab); filters are independent per tab and do not carry across tabs. When a window has no data the page shows a plain-text empty state rather than an illustration.
 
 **Key data.** The **Analytics** tab shows KPI stat cards (total requests, total cost, total tokens, average latency, cache hit rate, cache net savings), a cost-by-axis pie (top-N plus "Other"), a token-usage stacked bar (prompt and completion), and a breakdown table with per-row search and CSV export (requests, tokens, cost, cache hit rate, cache savings). The **Latency** tab shows the `LatencyPhasesPanel` — own-overhead / TTFB / upstream-body split. The **Metrics** tab embeds the rollup explorer (`MetricsRollupsSection`) with KPI cards, a system-overview chart set, and per-provider grids including a latency-phase stacked area.
 
@@ -95,4 +99,4 @@ Four of the five pages — Dashboard, Analytics & Metrics, Quota Usage, and Cach
 - `packages/control-plane/internal/settings/store/metricsstore/metrics_rollup.go` — rollup-aware query that blends coarse buckets with the fresh 5-minute tail
 - `packages/control-plane/internal/traffic/analytics/handler/cache_roi.go` — Cache ROI direct-vs-rollup data-source fallback
 - `packages/shared/core/metrics/instruments/types.go` — bucket-size selection by query span
-- `tools/db-migrate/schema.prisma` — `MetricRollup5m` / `1h` / `1d` / `1mo`, per-node `ThingMetricRollup*`, and `RollupWatermark`
+- `tools/db-migrate/schema/observability.prisma` — `MetricRollup5m` / `1h` / `1d` / `1mo`, per-node `ThingMetricRollup*`, and `RollupWatermark`

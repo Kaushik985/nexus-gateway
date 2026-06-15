@@ -1,0 +1,301 @@
+model HookConfig {
+  id                String   @id @default(uuid())
+  name              String   @unique
+  type              String // builtin | webhook | script
+  /// Registered built-in / webhook implementation key (e.g. pii-detector, webhook.forward). Source of truth for dispatch.
+  implementationId  String   @default("noop")
+  stage             String   @default("request") // request | response
+  /// Optional UI/ops override; when null, category is derived from built-in implementation registry.
+  category          String?
+  endpoint          String? // URL for webhook type
+  script            String? // code for script type
+  config            Json? // additional hook configuration
+  priority          Int      @default(0)
+  timeoutMs         Int      @default(5000)
+  failBehavior      String   @default("fail-open") // fail-open | fail-closed
+  enabled           Boolean  @default(true)
+  applicableIngress String[] @default(["ALL"])
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// Built-in / third-party rule pack (e.g. OWASP LLM Top-10, CN PII regex set).
+/// Versioned unit installed into a hook instance via RulePackInstall.
+model RulePack {
+  id          String   @id @default(uuid())
+  name        String
+  version     String
+  maintainer  String
+  description String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  rules         Rule[]
+  installations RulePackInstall[]
+
+  @@unique([name, version])
+  @@map("rule_pack")
+}
+
+/// A single matching rule inside a RulePack (regex / pattern + category + severity).
+model Rule {
+  id          String   @id @default(uuid())
+  packId      String
+  pack        RulePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  ruleId      String
+  category    String
+  severity    String
+  pattern     String
+  flags       String?
+  description String?
+  labels      String[]
+
+  @@unique([packId, ruleId])
+  @@map("rule")
+}
+
+/// Binding of a specific RulePack version to a hook instance.
+/// A hook references its installed packs; overrides live in RuleOverride.
+model RulePackInstall {
+  id          String   @id @default(uuid())
+  packId      String
+  pack        RulePack @relation(fields: [packId], references: [id])
+  pinVersion  String
+  boundHookId String
+  enabled     Boolean  @default(true)
+  installedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  overrides RuleOverride[]
+
+  @@map("rule_pack_install")
+}
+
+/// Per-install override for individual rules (disable, severity bump/downgrade).
+model RuleOverride {
+  id               String          @id @default(uuid())
+  installId        String
+  install          RulePackInstall @relation(fields: [installId], references: [id], onDelete: Cascade)
+  ruleLocalId      String
+  disabled         Boolean         @default(false)
+  severityOverride String?
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([installId, ruleLocalId])
+  @@map("rule_override")
+}
+
+enum DSARRequestStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+enum DSARRequestType {
+  ACCESS
+  ERASURE
+}
+
+model DSARRequest {
+  id          String            @id @default(uuid())
+  /// Free-text identifier matching traffic_event.user_id or traffic_event.subject_id.
+  /// The BFF runs the query / update against traffic_event.
+  subjectId   String            @map("subject_id")
+  /// Optional human contact (email / ticket id) so the compliance officer can
+  /// reach back out — never used for matching, only for the audit trail.
+  contact     String?
+  type        DSARRequestType
+  status      DSARRequestStatus @default(PENDING)
+  /// Free-text reason / justification, recorded for the compliance trail.
+  notes       String?
+  /// Set when the request reaches a terminal status (COMPLETED or REJECTED).
+  completedAt DateTime?         @map("completed_at") @db.Timestamptz(3)
+  /// JSON snapshot of the fulfilment outcome — for ACCESS, the row count
+  /// returned; for ERASURE, the row count anonymised.
+  outcome     Json?
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  createdBy   String            @map("created_by")
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+  updatedBy   String?           @map("updated_by")
+
+  @@index([status, createdAt])
+  @@index([subjectId])
+  @@map("dsar_request")
+}
+
+enum ExemptionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ExemptionRequest {
+  id              String                 @id @default(uuid())
+  /// The transactionId from the reject page so the admin can correlate
+  /// with the matrix audit event that triggered the request.
+  transactionId   String                 @map("transaction_id")
+  sourceIp        String                 @map("source_ip")
+  targetHost      String                 @map("target_host")
+  reason          String
+  status          ExemptionRequestStatus @default(PENDING)
+  /// Duration in minutes the exemption should last if approved.
+  durationMinutes Int                    @default(240) @map("duration_minutes")
+  reviewedBy      String?                @map("reviewed_by")
+  reviewNote      String?                @map("review_note")
+  reviewedAt      DateTime?              @map("reviewed_at") @db.Timestamptz(3)
+  createdAt       DateTime               @default(now()) @db.Timestamptz(3)
+  requestedBy     String                 @map("requested_by")
+
+  grants ComplianceExemptionGrant[]
+
+  @@index([status, createdAt])
+  @@map("exemption_request")
+}
+
+/// Approved compliance-hook exemption (E27). Source of truth for history;
+/// Hub `active_exemptions` is a materialized projection of eligible rows.
+model ComplianceExemptionGrant {
+  id                 String    @id @default(uuid())
+  exemptionRequestId String?   @map("exemption_request_id")
+  sourceIp           String    @map("source_ip")
+  targetHost         String    @map("target_host")
+  reason             String
+  durationMinutes    Int       @map("duration_minutes")
+  effectiveFrom      DateTime  @map("effective_from") @db.Timestamptz(3)
+  expiresAt          DateTime  @map("expires_at") @db.Timestamptz(3)
+  requestedBy        String?   @map("requested_by")
+  approvedBy         String    @map("approved_by")
+  inactive           Boolean   @default(false)
+  /// Set once when the grant first becomes eligible for the live Hub snapshot.
+  activatedAt        DateTime? @map("activated_at") @db.Timestamptz(3)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  exemptionRequest ExemptionRequest? @relation(fields: [exemptionRequestId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([expiresAt(sort: Desc)])
+  @@index([effectiveFrom, expiresAt])
+  @@index([exemptionRequestId])
+  @@map("compliance_exemption_grant")
+}
+
+/// Singleton row (id = "singleton") holding the AI Guard backend
+/// configuration consumed by /v1/ai-guard/classify. In external_url mode the
+/// operator's own classifier authenticates via custom_headers only — there is
+/// deliberately no stored-Credential reference (SEC-M2-01): a Credential is
+/// always a real upstream provider key, so configured_provider mode is the
+/// only path that touches one, and there it reaches its own provider.
+model AIGuardConfig {
+  id                     String   @id @default("singleton")
+  backend_mode           String   @default("configured_provider") @map("backend_mode")
+  provider_id            String?  @map("provider_id")
+  model_id               String?  @map("model_id")
+  external_url           String?  @map("external_url")
+  custom_headers         Json?    @map("custom_headers")
+  prompt_template        String   @map("prompt_template") @db.Text
+  timeout_ms             Int      @default(30000) @map("timeout_ms")
+  cache_ttl_seconds      Int      @default(600) @map("cache_ttl_seconds")
+  backend_fingerprint    String   @default("") @map("backend_fingerprint")
+  /// E61-FR-4.4 — inputstaging strategy applied to the classify input
+  /// conversation before the prompt is rendered. One of the five
+  /// inputstaging.Strategy constants (last_user, system_plus_last_user,
+  /// recent_turns, head_plus_tail, full_truncated). Defaults to
+  /// "system_plus_last_user" which keeps all system messages + the last
+  /// user message — preserving any guard-system-prompt context.
+  input_strategy         String   @default("system_plus_last_user") @map("input_strategy")
+  /// model_context_limit is the judge model's context window in tokens.
+  /// Used together with input_strategy by inputstaging.Plan to decide
+  /// which messages to keep. 0 means "unknown / not configured"; when
+  /// zero the classify pipeline uses a conservative fallback of 8192.
+  model_context_limit    Int      @default(0) @map("model_context_limit")
+  updated_at             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("ai_guard_config")
+}
+
+enum HostMatchType {
+  EXACT
+  PREFIX
+  GLOB
+  REGEX
+}
+
+enum DefaultPathAction {
+  PROCESS
+  PASSTHROUGH
+  BLOCK
+}
+
+enum PathMatchType {
+  EXACT
+  PREFIX
+  GLOB
+  REGEX
+}
+
+enum PathAction {
+  PROCESS
+  PASSTHROUGH
+  BLOCK
+}
+
+enum FailureAction {
+  FAIL_OPEN
+  FAIL_CLOSED
+}
+
+enum NetworkZone {
+  PUBLIC
+  INTERNAL
+}
+
+model InterceptionDomain {
+  id                      String             @id @default(uuid())
+  name                    String             @unique
+  description             String?
+  hostPattern             String             @map("host_pattern")
+  hostMatchType           HostMatchType      @default(EXACT) @map("host_match_type")
+  adapterId               String             @map("adapter_id")
+  adapterConfig           Json?              @map("adapter_config")
+  enabled                 Boolean            @default(true)
+  priority                Int                @default(0)
+  defaultPathAction       DefaultPathAction  @default(PROCESS) @map("default_path_action")
+  onAdapterError          FailureAction      @default(FAIL_OPEN) @map("on_adapter_error")
+  networkZone             NetworkZone        @default(PUBLIC) @map("network_zone")
+  source                  String             @default("admin")
+  /// E33 per-host StreamingPolicy override columns (read by
+  /// compliance-proxy and agent). NULL on any column means "inherit
+  /// from system_metadata['streaming_compliance.config'] global default".
+  /// See packages/shared/streaming/policy.
+  streamingMode           String?            @map("streaming_mode")
+  streamingChunkBytes     Int?               @map("streaming_chunk_bytes")
+  streamingHookTimeoutMs  Int?               @map("streaming_hook_timeout_ms")
+  streamingMaxBufferBytes Int?               @map("streaming_max_buffer_bytes")
+  streamingFailBehavior   String?            @map("streaming_fail_behavior")
+  captureRequestBody      Boolean?           @map("capture_request_body")
+  captureResponseBody     Boolean?           @map("capture_response_body")
+  rawBodySpillEnabled     Boolean?           @map("raw_body_spill_enabled")
+  createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdBy               String?            @map("created_by")
+  paths                   InterceptionPath[]
+
+  @@index([enabled, priority])
+  @@map("interception_domain")
+}
+
+model InterceptionPath {
+  id          String             @id @default(uuid())
+  domainId    String             @map("domain_id")
+  domain      InterceptionDomain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  pathPattern String[]           @map("path_pattern")
+  matchType   PathMatchType      @default(PREFIX) @map("match_type")
+  action      PathAction
+  priority    Int                @default(0)
+  description String?
+  enabled     Boolean            @default(true)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([domainId, enabled, priority])
+  @@map("interception_path")
+}

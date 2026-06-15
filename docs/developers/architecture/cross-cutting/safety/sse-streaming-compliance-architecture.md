@@ -41,16 +41,27 @@ every hook the same canonical claim it gets on the non-stream path.
 
 **#115 update**: the admin policy is now resolved exclusively through
 `*streampolicy.Store` injected at boot via the shared
-`streampolicy.BootStore` helper (three-service alignment — agent,
-compliance-proxy, and ai-gateway all hold the Store the same way). The
-legacy YAML `streamingMode` field has been removed from
-compliance-proxy's `compliance-proxy.config.yaml`; the only source of
-truth is `system_metadata['streaming_compliance.config'].default_mode`
-loaded into the Store at startup and refreshed via the configdispatch
-`streaming_compliance` shadow handler that calls
-`Store.ApplyShadowState`. tlsbump's `WithStreamingPolicyGlobal(Policy)`
+`streampolicy.BootStore` helper. The legacy YAML `streamingMode` field
+has been removed from compliance-proxy's `compliance-proxy.config.yaml`;
+the only source of truth is
+`system_metadata['streaming_compliance.config'].default_mode` loaded
+into the Store at startup. tlsbump's `WithStreamingPolicyGlobal(Policy)`
 option was renamed to `WithStreamingPolicyStore(*Store)` so the SSE
 handler reads `Store.Get()` per-flow (always sees the latest snapshot).
+
+**Hub-push alignment (two-service, not three).** Agent and
+compliance-proxy register a `streaming_compliance` shadow handler in
+their configdispatch and are listed in
+`ValidByThingType["compliance-proxy"]` and
+`ValidByThingType["agent"]`; the Hub pushes the key to them and they
+call `Store.ApplyShadowState` on each push. **ai-gateway does not**
+receive Hub pushes for `streaming_compliance` — the key is absent from
+`ValidByThingType["ai-gateway"]` and ai-gateway has no configdispatch
+applier for it. ai-gateway's `streampolicy.Store` is boot-seeded from
+`system_metadata` and is not updated at runtime. This is a deliberate
+design boundary: ai-gateway's streaming mode is a boot-time service
+configuration, not a live admin-tunable, because live stream-mode
+changes on the ai-gateway path would be lossy for in-flight requests.
 
 The admin's `streamingMode` policy (`agent_settings.streamingMode` /
 per-domain override on `interception_domain`) resolves to one of
@@ -107,6 +118,18 @@ responsibilities:
 
 Returns `nil` when `Options.Registry == nil` — callers treat that as
 "no normalize layer wired; keep the flat-text fallback".
+
+### Registry is the only wire-format decode route in tlsbump
+
+tlsbump's audit/normalize path dispatches exclusively through
+`Registry.Normalize` (keyed Tier 1 → content-sniff Tier 1.5 → pattern
+Tier 2 → structural Tier 3). There is no per-adapter direct dispatch:
+when the Registry declines a body, tlsbump falls back to the adapter's
+`ExtractRequest`/`ExtractResponse` **segment extraction only** — a PII
+surface that yields the flat-text payload, not a structured decode.
+Every production consumer (agent bridge, compliance-proxy forwarder)
+wires the Registry, so the flat-text fallback is reachable only for
+bodies no tier claims.
 
 ### Panic-safety (#97)
 
@@ -345,6 +368,10 @@ Two compile-time consistency tests pin this surface:
   `Registry.Normalize` and `OnPayload` in `recover()`; a panic logs
   WARN and drops the pre-hook only, the stream continues.
 
+## Implementation notes
+
+**Text accumulation in LivePipeline and BufferPipeline:** The streaming accumulation loops in `live.go` (`pendingText`, `accumulatedAll`) and `buffer.go` (`fullText`) previously used `str += chunk` (O(n²) time). These were replaced with `strings.Builder` to keep hot-path allocations O(n). The change is behavior-neutral: output is identical; only the allocation profile differs. The `connectrpc.go` `all` accumulation was similarly updated.
+
 ## Code anchors
 
 - Canonical type:
@@ -360,6 +387,7 @@ Two compile-time consistency tests pin this surface:
   `packages/ai-gateway/internal/ingress/proxy/{proxy_cache.go,sse_prehook.go}`
   `packages/ai-gateway/internal/platform/streaming/{live.go,prehook_test.go}` (compliance: LivePipeline + LiveConfig + Hook types + PreHook integration)
   `packages/ai-gateway/internal/platform/streaming/format/{parser.go,writers.go,extract.go}` (#100 split: pure SSE wire primitives — Parser/Event/WriteEvent/WriteTypedEvent/WriteDone/WriteError/ExtractDeltaText/OpenAIStreamDeltaPayload; zero dependency on hookcore or streaming package, so the format surface can evolve independently of the hook executor)
+  `packages/ai-gateway/internal/platform/streaming/format/parser_error_paths_test.go` (write-failure + io.EOF error paths: asserts that a downstream write error surfaces cleanly rather than silently swallowing the fault, and that io.EOF from the parser terminates cleanly without a panic)
 - Codec registry: `packages/shared/transport/normalize/codecs/register.go`
 - Streaming policy: `packages/shared/transport/streaming/policy/`
 - Cross-service tests:

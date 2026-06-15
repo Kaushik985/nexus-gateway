@@ -20,6 +20,22 @@ full module path — Go has no relative imports.
 `errors.New("specific lowercase message")`; wrap with
 `fmt.Errorf("context: %w", err)`.
 
+**HTTP error envelope — known per-service inconsistency (F-0319).** Each service
+currently owns its own JSON error-envelope helper rather than sharing one
+package: Control Plane has `packages/control-plane/internal/platform/httperr`
+(`{"error":{"message","type","code"}}`); the AI Gateway emits a
+provider-shaped envelope from
+`packages/ai-gateway/internal/ingress/envelope/error_envelope.go` (OpenAI/Anthropic
+wire compatibility is the constraint there); Nexus Hub and the Compliance Proxy
+have their own small helpers. This duplication is a recognised inconsistency, not
+an endorsed pattern. Consolidating into a single shared `httperr` package is a
+deliberately deferred future-sprint task — it is V2-scope because it touches all
+four services at once AND the AI Gateway envelope is intentionally NOT the
+admin-API shape (it must mimic the upstream provider so SDK clients parse it), so
+any shared package has to model both shapes. Until that lands, a new admin
+endpoint should reuse its own service's existing helper (CP handlers use
+`httperr.ErrJSON`); do NOT hand-roll a fifth envelope shape.
+
 **Concurrency.** Use `sync.Mutex` / `sync.RWMutex` for shared state,
 `atomic.Pointer` for hot-swappable config snapshots, and `sync.Pool` for
 high-frequency allocations. A `context.Context` is the first parameter of any
@@ -89,6 +105,18 @@ Each of these is enforced by a guard in `check:all`:
   [local-dev-debugging.md](local-dev-debugging.md).
 - **Redis is cache-only (binding).** No Redis pub/sub — config invalidation flows
   through the Hub WebSocket (`scripts/check-no-redis-pubsub.mjs`).
+- **File-size ratchet (binding).** A production source file (`.go` / `.ts` / `.tsx` /
+  `.swift` / `.py` under `packages/` and `tools/`; test files and generated files
+  excluded) may not grow past `max(baseline, 300) + 10%` lines of its entry in
+  `scripts/.file-size-baseline`; a file not in the baseline is capped at 500 lines.
+  Shrinking is never penalized — the baseline only ratchets downward
+  (`--update-baseline`). Exceeding a cap means the file needs decomposing along its
+  responsibility seams, not a bigger cap; waivers (`scripts/.file-size-waivers`,
+  for genuinely irreducible files such as declaration tables) require explicit
+  user approval (`scripts/check-file-size-ratchet.sh`, `npm run check:file-size`).
+  Oversized test files are governed by the split-on-touch policy instead: any
+  session editing a >800-line test file relocates the touched test group into a
+  per-resource sibling file before adding new tests.
 
 ## Commit style
 
@@ -130,7 +158,7 @@ effect-token, timezone, terminology, JSON-dup-key, arch-doc-trigger,
 e2e-coverage-matrix, doc-lockstep, migration-timestamp, `useApi` query-key,
 no-Redis-pubsub, `ui-shared`-boundary,
 sidebar-icon-mapping, workspace-replace, jobs-catalogue, no-prod-TODO,
-no-yaml-secrets, and coverage guards.
+no-yaml-secrets, coverage, and file-size-ratchet guards.
 
 ## References
 

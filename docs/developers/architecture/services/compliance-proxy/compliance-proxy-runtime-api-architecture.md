@@ -53,7 +53,19 @@ malformed payload fails with `400` before anything is applied. The reported
 version is bumped to `max(desired, reported) + 1`, the change is recorded in an
 event log, and if Hub delivery fails the mutation is spooled to disk and
 reconciled on reconnect. Break-glass is scoped to the keys that support it
-(kill switch, active exemptions).
+(`killswitch`, `exemptions`).
+
+Delivery to Hub uses a **dedicated break-glass wire** (the report carries the
+per-key version map plus `reason` / `sourceIp` / `actorTokenId`): the WebSocket
+client sends a `shadow_report_break_glass` frame, and the HTTP fallback (plus the
+deferred `ReplayPending` retry) POSTs to
+`/api/internal/things/shadow/break-glass`. Hub mirrors the client's
+`{killswitch, exemptions}` allowlist server-side and validates each state against
+its canonical configtypes schema before adoption — a non-allowlisted key or a
+malformed shape is rejected, never silently adopted. `killswitch` is adopted into
+the fleet-wide template; `exemptions` is adopted as a per-Thing desired override
+on the reporting node only. See the kill-switch architecture doc §6 for the
+Hub-side authority gate and scope rules.
 
 ## 4. Temporary exemptions
 

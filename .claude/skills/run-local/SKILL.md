@@ -167,7 +167,11 @@ Vite prints a `VITE vN.M.K ready in <ms>` line on success; if the log instead ca
 
 ## Step 4 — Smoke the login surface (optional but high-value)
 
-The Control Plane uses OAuth + PKCE. The simplest sanity check is to load the UI's root path (already done above) and confirm the seeded super-admin credentials are mentioned by the seed.
+The Control Plane uses OAuth + PKCE. The simplest sanity check is to load the UI's root path (already done above) and confirm the seeded super-admin credentials are mentioned by the seed. Seeded demo login: `admin@nexus.ai` / `nexus-demo`; demo virtual key `nvk_demo_0c101489`.
+
+**Remind the user about two config steps before anything will actually answer:**
+1. **Provider API key.** The seed ships placeholder provider credentials, so gateway calls (and the assistant) return `no available provider` until a real key is set in the console (`Settings → Providers → <provider> → Add credential`).
+2. **Chat with Nexus.** The in-console web assistant is pre-wired to the demo VK via `NEXUS_ASSISTANT_SYSTEM_VK` (dev-start sets this; without it `/assistant/chat` returns 503 "inference not configured"). Once a provider key is set it answers via smart-auto-routing. Production deployments must additionally set `NEXUS_ASSISTANT_PROD=1` (hardened posture; intentionally off in dev).
 
 If you want a curl-level confirmation that the auth server is responsive:
 

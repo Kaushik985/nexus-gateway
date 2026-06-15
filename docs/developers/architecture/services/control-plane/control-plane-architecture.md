@@ -93,9 +93,21 @@ encryption scheme and the gateway-side decrypt path are in
 **Hub client.** `internal/platform/hub` is the Control Plane's connection to
 Nexus Hub; the Control Plane itself registers as a Thing. Admin writes reach the
 data-plane Things two ways: `NotifyConfigChange` pushes a specific config blob
-into a Thing's shadow and returns the Hub response, while `InvalidateConfig`
-fires a reload signal so the owning Things re-read the changed config from their
-own store on the next request. The same client reverse-proxies the Hub-owned
+into a Thing's shadow and returns the Hub response, while the invalidate signal
+tells the owning Things to re-read the changed config from their own store on the
+next request. The invalidate signal has two variants: `InvalidateConfig` is
+fire-and-forget (errors are logged) for non-security keys that self-heal on the
+next write or the reconcile loop, and `InvalidateConfigE` returns the push error
+so security-sensitive Type-B writes — credentials, virtual keys, routing rules,
+quota policies/overrides, providers, models — can return HTTP 502 with a
+`propagation_error` envelope rather than a false 2xx when the push to Hub fails.
+Every security-sensitive handler routes through one truthful propagation path:
+Category-A full-state pushes call `PushTypeA` and all failures render the single
+canonical 502 via `RespondPropagationFailure`, so cache, passthrough, kill switch,
+and every Type-B domain emit the identical envelope instead of the five divergent
+policies they grew by accretion. `InvalidateConfigE` additionally records the
+Category-B propagation ledger (see Config reconciliation below) so a missed push
+self-heals. The same client reverse-proxies the Hub-owned
 operations the Control Plane exposes under `/api/admin` — dead-letter-queue
 listing and retry, force-resync, enrollment-token creation, agent certificate
 rotation, and per-Thing runtime reads. The Control Plane consumes only two of
@@ -108,15 +120,24 @@ and
 [thing-config-sync-architecture.md](../../cross-cutting/foundation/thing-config-sync-architecture.md).
 
 **Config reconciliation.** `internal/platform/configreconcile` is a periodic
-drift watchdog. Each cycle it compares the Control Plane's source-of-truth value
-for a watched key against every online Thing's `thing.desired.<key>`; on
-divergence it logs a warning, increments `cp_config_drift_total`, and re-emits
-`NotifyConfigChange` to heal. The watch set covers the emergency-grade keys
-whose silent drift would be unsafe: the prompt-cache blob (AI Gateway), agent
-settings (Agent), the kill-switch (Compliance Proxy and Agent), and emergency
-passthrough (AI Gateway). It is the out-of-band repair path for divergence a
-fire-and-forget push or a mid-broadcast Hub reconnect could otherwise leave in
-place. See
+drift watchdog with two complementary arms. The **content-diff arm** compares the
+Control Plane's source-of-truth value for a watched Category-A key against every
+online Thing's `thing.desired.<key>`; on divergence it logs a warning, increments
+`cp_config_drift_total`, and re-emits `NotifyConfigChange` to heal. Its watch set
+covers the emergency-grade keys whose silent drift would be unsafe: the
+prompt-cache blob (AI Gateway), agent settings (Agent), the kill-switch
+(Compliance Proxy and Agent), and emergency passthrough (AI Gateway). The
+**Category-B pending arm** closes the same loop for keys that carry no state into
+`thing.desired` and so cannot be content-diffed (credentials, virtual keys,
+routing rules, quota, providers, models): the Hub client records an intended vs
+acknowledged version per `(thing type, config key)` in a durable ledger (the
+`system_metadata` table, one row per key under the `propagation_ledger:` prefix) —
+bumping the intended version before each `InvalidateConfigE` push and stamping the
+acknowledged version only on success. Each cycle `ReconcilePending` re-pushes any
+key whose last push was never confirmed, so a push lost to a Hub restart/blip
+during an admin save self-heals without an admin retry. Together the two arms are
+the out-of-band repair path for divergence a failed push or a mid-broadcast Hub
+reconnect could otherwise leave in place. See
 [kill-switch-architecture.md](../../cross-cutting/safety/kill-switch-architecture.md)
 and
 [emergency-passthrough-architecture.md](../../cross-cutting/safety/emergency-passthrough-architecture.md).

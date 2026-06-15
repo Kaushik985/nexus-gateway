@@ -1,0 +1,192 @@
+model Provider {
+  id                      String   @id @default(uuid())
+  name                    String   @unique
+  displayName             String?
+  description             String?
+  /// Canonical wire adapter for this provider — one of the providers.Format
+  /// values (see packages/ai-gateway/internal/providers/specs/ for the live
+  /// adapter set: openai, anthropic, gemini, glm, azure-openai, minimax,
+  /// bedrock, vertex, cohere, replicate, voyage, …). Required and mutable:
+  /// operators pick the adapter explicitly on create and may change it
+  /// later. Enum validation is enforced in the Control Plane handler
+  /// and the OpenAPI spec; no SQL CHECK so the value set can evolve
+  /// without a migration. Replaces the previous name-based
+  /// FormatOfProvider lookup in the AI Gateway.
+  adapterType             String   @map("adapter_type")
+  baseUrl                 String
+  pathPrefix              String   @unique
+  apiVersion              String?
+  /// Authoritative deployment region for this provider (e.g. "us-east-1",
+  /// "eu-west-1"). Consumed by the data-residency hook at request time
+  /// without relying on IP geolocation. Nullable: legacy providers keep
+  /// behaviour until an operator fills in a value.
+  region                  String?
+  enabled                 Boolean  @default(true)
+  headers                 Json?
+  /// E33 per-provider StreamingPolicy override columns. NULL on any
+  /// column means "inherit from system_metadata['streaming_compliance.config']
+  /// global default". The shared resolver merges these with the global
+  /// default at request time; see packages/shared/streaming/policy.
+  streamingMode           String?  @map("streaming_mode")
+  streamingChunkBytes     Int?     @map("streaming_chunk_bytes")
+  streamingHookTimeoutMs  Int?     @map("streaming_hook_timeout_ms")
+  streamingMaxBufferBytes Int?     @map("streaming_max_buffer_bytes")
+  streamingFailBehavior   String?  @map("streaming_fail_behavior")
+  captureRequestBody      Boolean? @map("capture_request_body")
+  captureResponseBody     Boolean? @map("capture_response_body")
+  rawBodySpillEnabled     Boolean? @map("raw_body_spill_enabled")
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+
+  credentials         Credential[]
+  models              Model[]
+  cacheProviderConfig CacheProviderConfig?
+  passthroughConfig   GatewayPassthroughConfigProvider?
+  // E61-S2: this provider may be the fleet-wide embedding provider for the
+  // semantic cache singleton. Modeled as a list back-relation (one-to-many on
+  // the schema side) because Prisma's one-to-one mode requires the FK column
+  // to be @unique. In practice the SemanticCacheConfig table has exactly one
+  // row (id='singleton'), so the list always has at most one element.
+  semanticCacheConfig SemanticCacheConfig[]             @relation("EmbeddingProviderOnSemanticCache")
+}
+
+model Credential {
+  id                    String    @id @default(uuid())
+  name                  String    @unique
+  providerId            String
+  provider              Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  encryptedKey          String
+  encryptionIv          String
+  encryptionTag         String
+  encryptionKeyId       String    @default("v1") @map("encryption_key_id")
+  enabled               Boolean   @default(true)
+  rotationState         String?   @default("none") // none | pending_rotation | validating | rotated | completed
+  lastRotatedAt         DateTime? @db.Timestamptz(3)
+  rotationStartedAt     DateTime? @db.Timestamptz(3)
+  lastUsedAt            DateTime? @db.Timestamptz(3)
+  lastSuccessAt         DateTime? @db.Timestamptz(3)
+  lastFailureAt         DateTime? @db.Timestamptz(3)
+  lastFailureReason     String?
+  totalUsageCount       Int       @default(0)
+  expiresAt             DateTime? @db.Timestamptz(3)
+  // Pool management fields (L1-L3)
+  selectionWeight       Int       @default(100) // 0 = excluded; higher = more traffic
+  status                String    @default("active") // active | retiring | retired
+  retireAt              DateTime? @db.Timestamptz(3) // auto-delete after this date (retired only)
+  // Circuit breaker durable state (E41). Live counters (auth_fails current value)
+  // stay in Redis cred:circuit:{id}; admin views merge live + durable.
+  // Flushed by Hub credential-circuit-flush job (default 30s) only on transitions.
+  circuitState          String    @default("closed") // closed | open | half_open
+  circuitReason         String? // auth_fail | rate_limit | null
+  circuitOpenedAt       DateTime? @db.Timestamptz(3)
+  circuitNextProbeAt    DateTime? @db.Timestamptz(3) // rate_limit cooldown end
+  // Health classification (E41 v2 — multi-window). Rolled up from traffic_event
+  // by Hub credential-health-rollup. Two windows: 5m drives the current
+  // classification, 1h feeds the trend (improving / stable / degrading).
+  // healthStatusChangedAt drives the credential.health_degraded_sustained alert.
+  healthStatus          String    @default("unknown") // healthy | degraded | unavailable | unknown | collecting
+  healthSuccessRate5m   Decimal?  @db.Decimal(5, 4)
+  healthSuccessRate1h   Decimal?  @db.Decimal(5, 4)
+  healthSamplesObserved Int       @default(0)
+  healthDominantError   String? // none | auth_fail | rate_limit | upstream_5xx | timeout | client_error | mixed
+  healthTrend           String? // improving | stable | degrading
+  healthStatusChangedAt DateTime? @db.Timestamptz(3)
+  healthCheckedAt       DateTime? @db.Timestamptz(3)
+  // Per-credential reliability threshold overrides (E41 v2). Optional JSONB:
+  // any subset of { authFailThreshold, rateLimitCooldownSeconds,
+  // healthyThresholdPct, degradedThresholdPct, healthMinSamples,
+  // healthWindowSeconds, healthSustainedDegradedSeconds }. Missing fields fall
+  // back to Hub-shadow globals then packages/shared/credstate.DefaultThresholds.
+  reliabilityOverrides  Json?     @db.JsonB
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([providerId])
+  @@index([expiresAt])
+  @@index([status])
+  @@index([circuitState])
+  @@index([healthStatus])
+}
+
+model Model {
+  /// UUID primary key; every internal FK reference (traffic_event.model_id,
+  /// AIGuardConfig.model_id, VirtualKey.allowedModels[].modelId) holds this.
+  id                              String    @id @default(uuid())
+  /// Customer-facing identifier. The string clients send in
+  /// `{"model": "..."}` requests resolves to a UUID via this column.
+  /// Stable across renames of `name` (the display label). Distinct
+  /// from `providerModelId`, which is the upstream vendor's identifier.
+  /// E.g. code="gpt-4o", providerModelId="gpt-4o" usually match but
+  /// don't have to. Unique across the catalog.
+  code                            String    @unique
+  name                            String // "Claude 3.5 Sonnet" (display)
+  description                     String? // "Best for complex reasoning"
+  providerId                      String
+  provider                        Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  providerModelId                 String // actual ID sent to provider API
+  type                            String // chat | embedding | image | audio
+  features                        String[] // vision, function_calling, streaming, json_mode, thinking
+  inputPricePerMillion            Decimal?
+  outputPricePerMillion           Decimal?
+  /// E58-S1: cached input token READ price (Anthropic cache_read_input_tokens
+  /// discount ~0.1×; OpenAI prompt_tokens_details.cached_tokens discount 0.5×;
+  /// Gemini cachedContentTokenCount discount 0.25×). NULL = no discount; cost
+  /// calculation falls back to inputPricePerMillion.
+  cachedInputReadPricePerMillion  Decimal?
+  /// E58-S1: cached input token WRITE surcharge (Anthropic cache_creation_input_tokens
+  /// ~1.25×). NULL = no surcharge; cost calculation falls back to inputPricePerMillion.
+  cachedInputWritePricePerMillion Decimal?
+  maxContextTokens                Int?
+  maxOutputTokens                 Int?
+  status                          String    @default("active") // active | deprecated | disabled
+  deprecationDate                 DateTime? @db.Timestamptz(3)
+  replacedBy                      String?
+  aliases                         String[]
+  enabled                         Boolean   @default(true)
+  /// E62: ordered list of input modalities this model accepts.
+  /// Default ["text"] covers all chat + embedding models that only accept text input.
+  /// Additional values: "image", "audio", "video". Array preserves declaration order.
+  inputModalities                 String[]  @default(["text"])
+  /// E62: ordered list of output modalities this model produces.
+  /// Embedding models set ["embedding"]; chat models default to ["text"].
+  /// Additional values: "image", "audio", "video".
+  outputModalities                String[]  @default(["text"])
+  /// E62: model lifecycle stage. ga | preview | deprecated.
+  /// Complements `status`; status=active + lifecycle=preview means the model is
+  /// callable but not yet generally available.
+  lifecycle                       String    @default("ga")
+  /// E62: provider-specific capability descriptor for non-chat endpoints.
+  /// For embedding models: {"embeddings":{"max_input_tokens":…,"supported_dimensions":…,…}}.
+  /// For chat models: null (capability implied by `features` array).
+  capabilityJson                  Json?
+  createdAt                       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt                       DateTime  @updatedAt @db.Timestamptz(3)
+
+  // E61-S2 back-relations: this Model row may be the embedding model for
+  // the fleet-wide semantic-cache singleton OR for individual traffic events.
+  // Modeled as a list because the SemanticCacheConfig FK column is nullable;
+  // Prisma's one-to-one mode requires the FK to be @unique. In practice the
+  // semantic-cache table has exactly one row.
+  semanticCacheConfig    SemanticCacheConfig[] @relation("EmbeddingModelOnSemanticCache")
+  embeddingTrafficEvents traffic_event[]       @relation("EmbeddingModelOnTraffic")
+
+  @@unique([providerId, providerModelId])
+  @@index([providerId])
+  @@index([type])
+  @@index([status])
+}
+
+model ProviderHealth {
+  id               String    @id @default(uuid())
+  providerId       String    @unique
+  provider         String
+  status           String    @default("healthy") // healthy | degraded | unavailable
+  rollingErrorRate Float     @default(0)
+  avgLatencyMs     Int       @default(0)
+  lastRequestAt    DateTime? @db.Timestamptz(3)
+  lastErrorAt      DateTime? @db.Timestamptz(3)
+  windowStart      DateTime  @default(now()) @db.Timestamptz(3)
+  sampleCount      Int       @default(0)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+}

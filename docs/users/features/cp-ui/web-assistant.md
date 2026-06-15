@@ -42,7 +42,8 @@ actions*).
 When a question is better answered by a page than by text, the assistant can take you
 there — for example to the Traffic, Analytics, or Infrastructure pages. It navigates
 only to known Control Plane pages; it can never send you to an arbitrary or external
-address. After it navigates, the chat popup collapses so the page is unobstructed.
+address. The chat popup stays open, floating over the new page, so the conversation
+is retained while you look at what it opened.
 
 ## Approving actions
 
@@ -100,13 +101,17 @@ they are no longer available.
 ## Where the data comes from
 
 The widget (`ChatWithNexus.tsx`) talks to the Control Plane assistant endpoints through
-`streamChat.ts`: `streamChat` (the streamed `POST /assistant/chat` turn), `confirmDecision`
-(`POST /assistant/confirm` for Allow/Deny and the production second confirm),
-`listSessions` / `getSession` / `deleteSession` (the conversation history,
-`GET`/`DELETE /assistant/sessions`), `downloadFile` (`GET /assistant/files/:id`), and
-`listModels` (`GET /assistant/models`). All endpoints require a signed-in admin session;
-no separate permission is added — each action the assistant runs is permission-checked
-at the admin API it calls, exactly as if you had performed it in the UI.
+`streamChat.ts`: `runChat` (start a turn with `POST /assistant/sessions/:id/chat`, then
+observe it over the `GET /assistant/sessions/:id/stream` SSE channel — a network blip
+reconnects and replays missed events), `interruptChat` (`POST …/interrupt`, the Stop
+button), `confirmDecision` (`POST /assistant/confirm` for Allow/Deny and the production
+second confirm), `listSessions` / `getSession` / `deleteSession` (the conversation
+history), `downloadFile` (`GET /assistant/files/:id`), and `listModels`
+(`GET /assistant/models`). All endpoints require a signed-in admin session **and** the
+dedicated assistant permission (`admin:assistant.read` for reads, `.write` for turns and
+mutations) — so a login alone cannot spend the assistant's shared inference key. Each
+action the assistant runs is additionally permission-checked at the admin API it calls,
+exactly as if you had performed it in the UI.
 
 ## Key concepts
 
@@ -124,4 +129,4 @@ at the admin API it calls, exactly as if you had performed it in the UI.
 
 ## References
 
-- Operator runbook: `docs/operators/ops/runbooks/e90-web-assistant.md`.
+- Operator runbook: `docs/operators/ops/runbooks/web-assistant.md`.

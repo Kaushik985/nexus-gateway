@@ -1,0 +1,1063 @@
+[
+  {
+    "id": "agent.cert_expiration_imminent",
+    "displayName": "Agent mTLS Cert Expiring",
+    "sourceType": "thing",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "warnDays": [
+        30,
+        14,
+        7,
+        1
+      ]
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "warnDays"
+      ],
+      "properties": {
+        "warnDays": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "cooldownSec": 86400,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:08.541+00:00",
+    "updatedAt": "2026-05-10T16:41:28.37+00:00"
+  },
+  {
+    "id": "auth.invalid_key_burst",
+    "displayName": "Invalid API Key Burst",
+    "sourceType": "auth",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "thresholdCount": 20
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:04.167+00:00",
+    "updatedAt": "2026-05-10T16:41:26.006+00:00"
+  },
+  {
+    "id": "auth.login_failure_rate",
+    "displayName": "Login Failure Flood",
+    "sourceType": "auth",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "groupBy": "ip",
+      "windowSec": 300,
+      "thresholdCount": 20
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec",
+        "groupBy"
+      ],
+      "properties": {
+        "groupBy": {
+          "enum": [
+            "ip",
+            "email",
+            "all"
+          ],
+          "type": "string"
+        },
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:02.841+00:00",
+    "updatedAt": "2026-05-10T16:41:24.941+00:00"
+  },
+  {
+    "id": "compliance.hook_execution_timeout_surge",
+    "displayName": "Hook Execution Timeout Surge",
+    "sourceType": "proxy",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "thresholdCount": 20
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:07.608+00:00",
+    "updatedAt": "2026-05-10T16:41:27.844+00:00"
+  },
+  {
+    "id": "compliance.payload_capture_failure_rate",
+    "displayName": "Payload Capture Truncation Rate",
+    "sourceType": "proxy",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 600,
+      "minSamples": 20,
+      "thresholdPct": 10
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:08.277+00:00",
+    "updatedAt": "2026-05-10T16:41:28.095+00:00"
+  },
+  {
+    "id": "credential.auth_failures_cascade",
+    "displayName": "Credential 401/403 Cascade",
+    "sourceType": "provider",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 600,
+      "minSamples": 10,
+      "thresholdPct": 20
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:05.584+00:00",
+    "updatedAt": "2026-05-10T16:41:27.035+00:00"
+  },
+  {
+    "id": "credential.circuit_open",
+    "displayName": "Credential Circuit Breaker Open",
+    "sourceType": "provider",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {},
+    "paramsSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-13T03:39:35.537+00:00",
+    "updatedAt": "2026-05-13T03:39:35.537+00:00"
+  },
+  {
+    "id": "credential.expiring",
+    "displayName": "Credential Expiring",
+    "sourceType": "provider",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "warnDays": [
+        14,
+        7,
+        1
+      ]
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "warnDays"
+      ],
+      "properties": {
+        "warnDays": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "cooldownSec": 86400,
+    "group_id_filter": null,
+    "createdAt": "2026-05-10T16:41:28.609+00:00",
+    "updatedAt": "2026-05-10T16:41:28.609+00:00"
+  },
+  {
+    "id": "credential.health_degraded_sustained",
+    "displayName": "Credential Degraded (sustained)",
+    "sourceType": "provider",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {},
+    "paramsSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "cooldownSec": 1800,
+    "group_id_filter": null,
+    "createdAt": "2026-05-13T03:39:35.537+00:00",
+    "updatedAt": "2026-05-13T03:39:35.537+00:00"
+  },
+  {
+    "id": "credential.health_unavailable",
+    "displayName": "Credential Unavailable",
+    "sourceType": "provider",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {},
+    "paramsSchema": {
+      "type": "object",
+      "properties": {}
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-13T03:39:35.537+00:00",
+    "updatedAt": "2026-05-13T03:39:35.537+00:00"
+  },
+  {
+    "id": "credential.stale_last_success",
+    "displayName": "Credential Idle (no recent success)",
+    "sourceType": "provider",
+    "defaultSeverity": "LOW",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "staleAfterDays": 7
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "staleAfterDays"
+      ],
+      "properties": {
+        "staleAfterDays": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 86400,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:09.033+00:00",
+    "updatedAt": "2026-05-10T16:41:28.894+00:00"
+  },
+  {
+    "id": "hook.reject_rate",
+    "displayName": "Hook Reject Rate",
+    "sourceType": "proxy",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "minSamples": 20,
+      "thresholdPct": 5
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:01.373+00:00",
+    "updatedAt": "2026-05-10T16:41:24.413+00:00"
+  },
+  {
+    "id": "model.rate_limited_responses",
+    "displayName": "Upstream 429 Throttle",
+    "sourceType": "provider",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "thresholdCount": 10
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:05.32+00:00",
+    "updatedAt": "2026-05-10T16:41:26.794+00:00"
+  },
+  {
+    "id": "provider.high_latency_percentile",
+    "displayName": "Provider Latency p95 Spike",
+    "sourceType": "provider",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "absFloorMs": 1000,
+      "minSamples": 50,
+      "multiplier": 2,
+      "percentile": 95,
+      "alertWindowSec": 300,
+      "baselineWindowSec": 3600
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "percentile",
+        "alertWindowSec",
+        "baselineWindowSec",
+        "multiplier",
+        "absFloorMs"
+      ],
+      "properties": {
+        "absFloorMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "multiplier": {
+          "type": "number",
+          "minimum": 1.1
+        },
+        "percentile": {
+          "type": "number",
+          "maximum": 99,
+          "minimum": 50
+        },
+        "alertWindowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "baselineWindowSec": {
+          "type": "integer",
+          "minimum": 300
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:04.703+00:00",
+    "updatedAt": "2026-05-10T16:41:26.505+00:00"
+  },
+  {
+    "id": "provider.unavailable",
+    "displayName": "Provider Unavailable",
+    "sourceType": "provider",
+    "defaultSeverity": "CRITICAL",
+    "requiresAck": true,
+    "enabled": true,
+    "params": {
+      "minDownSec": 120,
+      "recoverySec": 60
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "minDownSec",
+        "recoverySec"
+      ],
+      "properties": {
+        "minDownSec": {
+          "type": "integer",
+          "minimum": 30
+        },
+        "recoverySec": {
+          "type": "integer",
+          "minimum": 30
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:59.864+00:00",
+    "updatedAt": "2026-05-10T16:41:23.928+00:00"
+  },
+  {
+    "id": "provider.upstream_error",
+    "displayName": "Upstream Provider Error Rate",
+    "sourceType": "provider",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "minSamples": 20,
+      "thresholdPct": 10
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:04.439+00:00",
+    "updatedAt": "2026-05-10T16:41:26.266+00:00"
+  },
+  {
+    "id": "proxy.cost_spike",
+    "displayName": "Cost Spike",
+    "sourceType": "proxy",
+    "defaultSeverity": "CRITICAL",
+    "requiresAck": true,
+    "enabled": true,
+    "params": {
+      "windowSec": 3600,
+      "thresholdUsd": 100
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdUsd",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdUsd": {
+          "type": "number",
+          "minimum": 0.01
+        }
+      }
+    },
+    "cooldownSec": 3600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:59.338+00:00",
+    "updatedAt": "2026-05-10T16:41:23.447+00:00"
+  },
+  {
+    "id": "proxy.high_error_rate",
+    "displayName": "High 5xx Error Rate",
+    "sourceType": "proxy",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "minSamples": 10,
+      "thresholdPct": 10
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:58.855+00:00",
+    "updatedAt": "2026-05-10T16:41:23.14+00:00"
+  },
+  {
+    "id": "proxy.hook_failure_rate",
+    "displayName": "Proxy Hook Failure Rate",
+    "sourceType": "proxy",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "minSamples": 10,
+      "thresholdPct": 20
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:58.327+00:00",
+    "updatedAt": "2026-05-10T16:41:22.662+00:00"
+  },
+  {
+    "id": "proxy.hook_timeout_rate",
+    "displayName": "Proxy Hook Timeout Rate",
+    "sourceType": "proxy",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "minSamples": 10,
+      "thresholdPct": 10
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdPct",
+        "windowSec",
+        "minSamples"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "thresholdPct": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:58.591+00:00",
+    "updatedAt": "2026-05-10T16:41:22.901+00:00"
+  },
+  {
+    "id": "proxy.quota_runtime_exceeded",
+    "displayName": "Quota Runtime Exceeded",
+    "sourceType": "proxy",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 300,
+      "thresholdCount": 10
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:03.42+00:00",
+    "updatedAt": "2026-05-10T16:41:25.458+00:00"
+  },
+  {
+    "id": "proxy.rate_limit_exceeded",
+    "displayName": "Rate Limit Exceeded",
+    "sourceType": "proxy",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "groupBy": "vk",
+      "windowSec": 300,
+      "thresholdCount": 30
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec",
+        "groupBy"
+      ],
+      "properties": {
+        "groupBy": {
+          "enum": [
+            "vk",
+            "ip",
+            "all"
+          ],
+          "type": "string"
+        },
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:03.156+00:00",
+    "updatedAt": "2026-05-10T16:41:25.218+00:00"
+  },
+  {
+    "id": "proxy.routing_no_match",
+    "displayName": "Routing No-Match",
+    "sourceType": "proxy",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 600,
+      "thresholdCount": 20
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdCount",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:03.683+00:00",
+    "updatedAt": "2026-05-10T16:41:25.748+00:00"
+  },
+  {
+    "id": "quota.threshold",
+    "displayName": "Quota Threshold Crossed",
+    "sourceType": "quota",
+    "defaultSeverity": "HIGH",
+    "requiresAck": true,
+    "enabled": true,
+    "params": {
+      "thresholds": [
+        80,
+        95
+      ]
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholds"
+      ],
+      "properties": {
+        "thresholds": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "maximum": 100,
+            "minimum": 1
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:56.833+00:00",
+    "updatedAt": "2026-05-10T16:41:22.074+00:00"
+  },
+  {
+    "id": "quota.vk_expiring",
+    "displayName": "Virtual Key Expiring",
+    "sourceType": "quota",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "warnDays": [
+        30,
+        15,
+        7,
+        1
+      ]
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "warnDays"
+      ],
+      "properties": {
+        "warnDays": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "cooldownSec": 86400,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:57.824+00:00",
+    "updatedAt": "2026-05-10T16:41:22.423+00:00"
+  },
+  {
+    "id": "system.channel_test",
+    "displayName": "Channel Test (synthetic)",
+    "sourceType": "system",
+    "defaultSeverity": "INFO",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {},
+    "paramsSchema": {
+      "type": "object"
+    },
+    "cooldownSec": 0,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:01.111+00:00",
+    "updatedAt": "2026-05-10T16:41:24.173+00:00"
+  },
+  {
+    "id": "thing.offline",
+    "displayName": "Thing Offline",
+    "sourceType": "thing",
+    "defaultSeverity": "HIGH",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "excludeKinds": [],
+      "offlineAfterSec": 300
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "offlineAfterSec"
+      ],
+      "properties": {
+        "excludeKinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "offlineAfterSec": {
+          "type": "integer",
+          "minimum": 60
+        }
+      }
+    },
+    "cooldownSec": 300,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:45:59.601+00:00",
+    "updatedAt": "2026-05-10T16:41:23.684+00:00"
+  },
+  {
+    "id": "vk.latency_degradation",
+    "displayName": "VK Latency p95 Degradation",
+    "sourceType": "proxy",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "absFloorMs": 1000,
+      "minSamples": 30,
+      "multiplier": 2,
+      "percentile": 95,
+      "alertWindowSec": 300,
+      "baselineWindowSec": 3600
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "percentile",
+        "alertWindowSec",
+        "baselineWindowSec",
+        "multiplier",
+        "absFloorMs"
+      ],
+      "properties": {
+        "absFloorMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "minSamples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "multiplier": {
+          "type": "number",
+          "minimum": 1.1
+        },
+        "percentile": {
+          "type": "number",
+          "maximum": 99,
+          "minimum": 50
+        },
+        "alertWindowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "baselineWindowSec": {
+          "type": "integer",
+          "minimum": 300
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:06.3+00:00",
+    "updatedAt": "2026-05-10T16:41:27.315+00:00"
+  },
+  {
+    "id": "vk.token_usage_spike",
+    "displayName": "VK Token Usage Spike",
+    "sourceType": "proxy",
+    "defaultSeverity": "MEDIUM",
+    "requiresAck": false,
+    "enabled": true,
+    "params": {
+      "windowSec": 3600,
+      "thresholdTokens": 1000000
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "thresholdTokens",
+        "windowSec"
+      ],
+      "properties": {
+        "windowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "thresholdTokens": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:06.758+00:00",
+    "updatedAt": "2026-05-10T16:41:27.555+00:00"
+  },
+  {
+    "id": "vk.traffic_spike",
+    "displayName": "VK Traffic Spike",
+    "sourceType": "proxy",
+    "defaultSeverity": "CRITICAL",
+    "requiresAck": true,
+    "enabled": true,
+    "params": {
+      "absFloorReq": 50,
+      "alertWindowSec": 300,
+      "coldStartHours": 0,
+      "spikeMultiplier": 10,
+      "baselineWindowSec": 3600
+    },
+    "paramsSchema": {
+      "type": "object",
+      "required": [
+        "spikeMultiplier",
+        "baselineWindowSec",
+        "alertWindowSec",
+        "absFloorReq"
+      ],
+      "properties": {
+        "absFloorReq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "alertWindowSec": {
+          "type": "integer",
+          "minimum": 60
+        },
+        "coldStartHours": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "spikeMultiplier": {
+          "type": "number",
+          "minimum": 2
+        },
+        "baselineWindowSec": {
+          "type": "integer",
+          "minimum": 300
+        }
+      }
+    },
+    "cooldownSec": 600,
+    "group_id_filter": null,
+    "createdAt": "2026-05-08T14:46:02.25+00:00",
+    "updatedAt": "2026-05-10T16:41:24.703+00:00"
+  }
+]

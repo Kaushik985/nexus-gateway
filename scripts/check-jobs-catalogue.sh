@@ -37,11 +37,13 @@ fi
 failed=0
 
 # Step 1: every JobID const in a .go file must appear as a row in §5.
-for f in "$JOBS_DIR"/*.go; do
+# Recursive find — the jobs live under defs/<sub-domain>/, so a top-level
+# "$JOBS_DIR"/*.go glob matches nothing and silently skips every job.
+while IFS= read -r f; do
   case "$f" in
     *_test.go) continue ;;
   esac
-  # Extract first JobID const value (either inline const or inside const block).
+  # Extract JobID const values (either inline const or inside a const block).
   ids=$(grep -E '^\s*[a-zA-Z]+JobID\s*=' "$f" 2>/dev/null | sed 's/.*"\([^"]*\)".*/\1/' | sort -u || true)
   [ -z "$ids" ] && continue
   while IFS= read -r id; do
@@ -51,7 +53,7 @@ for f in "$JOBS_DIR"/*.go; do
       failed=$((failed + 1))
     fi
   done <<<"$ids"
-done
+done < <(find "$JOBS_DIR" -type f -name '*.go')
 
 # Step 2: catch the multi-cadence variants by name pattern. They are spelled in
 # the doc as `<base>-1h` / `<base>-1d` / `<base>-1mo` / `thing-merge-...`.

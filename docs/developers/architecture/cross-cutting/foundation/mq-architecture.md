@@ -5,7 +5,7 @@ The Nexus MQ layer is a thin **producer / consumer abstraction** over NATS JetSt
 Anchor packages:
 
 - `packages/shared/transport/mq/` — driver abstraction + NATS JetStream implementation + stream definitions
-- `packages/nexus-hub/internal/jobs/consumer/` — the three Hub-side consumer groups (`hub-db-writer`, `hub-siem`, `hub-alerting`)
+- `packages/nexus-hub/internal/jobs/consumer/` — the two Hub-side consumer groups (`hub-db-writer`, `hub-alerting`)
 - `packages/nexus-hub/internal/fleet/manager/`, `packages/nexus-hub/internal/ws/signal.go` — inter-Hub broadcast subject (`nexus.hub.signal`)
 - `packages/control-plane/internal/identity/authserver/revocation/` + `packages/control-plane/internal/identity/jwt/mqrevocation.go` — auth revocation publisher and consumer
 - `packages/{ai-gateway,compliance-proxy,control-plane}/cmd/*/wiring/` — per-service producer / consumer construction
@@ -18,13 +18,13 @@ Three properties only MQ gives us:
 
 1. **Short-term decoupling of bursty event paths from synchronous user requests.** AI Gateway serves an HTTP request, captures a traffic event (cost, tokens, normalized text, cache classification), and must return to the user *before* Hub finishes writing the event to PostgreSQL. The producer-side `Enqueue` returns in a millisecond regardless of `pgxpool` saturation, jobs-architecture rollup contention, or temporary Hub unavailability. With a synchronous HTTP write to Hub, every DB hiccup would surface as user-visible request latency.
 
-2. **Kafka-style fan-out from one producer to multiple independent consumer groups.** A single traffic event must reach the `hub-db-writer` (persistence), `hub-siem` (forwarder), and `hub-alerting` (real-time rule evaluation) groups, each at its own rate, with independent retry semantics. JetStream's `InterestPolicy` retention does exactly that: the message is retained until *all* defined consumers have acked. Adding a new consumer group is configuration, not a producer change.
+2. **Kafka-style fan-out from one producer to multiple independent consumer groups.** A single traffic event must reach the `hub-db-writer` (persistence) and `hub-alerting` (real-time rule evaluation) groups, each at its own rate, with independent retry semantics. JetStream's `InterestPolicy` retention does exactly that: the message is retained until *all* defined consumers have acked. Adding a new consumer group is configuration, not a producer change.
 
 3. **At-least-once durability across consumer restarts.** Hub deploys, restarts, pgxpool blips — the events queued during a multi-minute outage replay automatically on reconnect. JetStream file storage + `DiscardOld` cap means a wedged consumer cannot pin the stream forever, but a healthy consumer that briefly disconnects loses nothing.
 
 Why not the alternatives:
 
-- **Redis pub/sub** — chosen for Nexus's session/IAM/cache/quota layer (no `Subscribe` for control coordination). Pub/sub has no persistence, no consumer groups, no fan-out semantics, and no at-least-once delivery. Bursty traffic-event load would drop on the floor whenever Hub disconnects, and SIEM would lose forensic events. The "no Redis pub/sub" rule is CI-enforced in pre-commit (`no Redis pub/sub` gate).
+- **Redis pub/sub** — chosen for Nexus's session/IAM/cache/quota layer (no `Subscribe` for control coordination). Pub/sub has no persistence, no consumer groups, no fan-out semantics, and no at-least-once delivery. Bursty traffic-event load would drop on the floor whenever Hub disconnects, and forensic / billing events would be lost. The "no Redis pub/sub" rule is CI-enforced in pre-commit (`no Redis pub/sub` gate).
 - **HTTP push to Hub** — eliminates one network hop in the happy path but couples producer latency to Hub availability, and forces every producer to implement its own retry / spool / backpressure scheme. We do use HTTP for `metrics_sample` (§7) and alert envelopes (§7) because their delivery semantics are different and the volume is two orders of magnitude lower.
 - **Kafka** — viable but operationally heavier than NATS JetStream for a single-region deployment with sub-TB retention. The `Config.Driver` enum reserves `"kafka"` for future use (`packages/shared/transport/mq/config.go`); registry-driven swap-in costs one factory registration.
 
@@ -69,11 +69,11 @@ The capacity envelopes are calibrated to the production single-node deployment (
 
 ### Why `InterestPolicy` rather than `WorkQueuePolicy`
 
-`InterestPolicy` retains every message until *all defined consumers* have acked. `WorkQueuePolicy` deletes a message as soon as any consumer acks. The choice is what enables Kafka-style fan-out: `hub-db-writer`, `hub-siem`, and `hub-alerting` are three independent consumer groups that each must receive every traffic event. With `WorkQueuePolicy`, whichever group fetched first would delete the message for the others.
+`InterestPolicy` retains every message until *all defined consumers* have acked. `WorkQueuePolicy` deletes a message as soon as any consumer acks. The choice is what enables Kafka-style fan-out: `hub-db-writer` and `hub-alerting` are two independent consumer groups that each must receive every traffic event. With `WorkQueuePolicy`, whichever group fetched first would delete the message for the others.
 
 ### Why `DiscardOld` rather than `DiscardNew`
 
-A stalled consumer is a known failure mode (DB hung, SIEM endpoint timing out). `DiscardOld` means a stall trims the oldest messages from the stream and the producer keeps publishing — no `insufficient_resources` publish errors backing up onto user-facing request paths. The 6-hour `MaxAge` keeps the worst-case backlog bounded even if no consumer drains: events older than 6 h are already written to `traffic_event` / `admin_audit` by a healthy `hub-db-writer`, so the loss surface during a *truly* wedged consumer is the events written during the wedge itself.
+A stalled consumer is a known failure mode (DB hung, alert evaluator wedged). `DiscardOld` means a stall trims the oldest messages from the stream and the producer keeps publishing — no `insufficient_resources` publish errors backing up onto user-facing request paths. The 6-hour `MaxAge` keeps the worst-case backlog bounded even if no consumer drains: events older than 6 h are already written to `traffic_event` / `admin_audit` by a healthy `hub-db-writer`, so the loss surface during a *truly* wedged consumer is the events written during the wedge itself.
 
 ### `streamName` and the `NEXUS_DEFAULT` fallback
 
@@ -85,17 +85,17 @@ Seven active subjects. The first six are JetStream queues; `nexus.hub.signal` is
 
 | Subject | Stream | Producer | Consumer group(s) | Wire shape |
 |---|---|---|---|---|
-| `nexus.event.ai-traffic` | `NEXUS_EVENTS` | `packages/ai-gateway/internal/platform/audit/audit.go` (per-request) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.TrafficEventMessage` |
-| `nexus.event.compliance` | `NEXUS_EVENTS` | `packages/compliance-proxy/internal/audit/mq_writer.go` (per CONNECT) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.TrafficEventMessage` |
-| `nexus.event.agent` | `NEXUS_EVENTS` | Hub re-enqueue from agent HTTP upload (`packages/nexus-hub/internal/fleet/handler/hubapi/internal_things.go` `AuditUpload`) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.TrafficEventMessage` |
-| `nexus.event.admin-audit` | `NEXUS_EVENTS` | `packages/control-plane/internal/platform/audit/writer.go` (per admin mutation) | `hub-db-writer`, `hub-siem`, `hub-alerting` | `mq.AdminAuditMessage` |
+| `nexus.event.ai-traffic` | `NEXUS_EVENTS` | `packages/ai-gateway/internal/platform/audit/audit.go` (per-request) | `hub-db-writer`, `hub-alerting` | `mq.TrafficEventMessage` |
+| `nexus.event.compliance` | `NEXUS_EVENTS` | `packages/compliance-proxy/internal/audit/mq_writer.go` (per CONNECT) | `hub-db-writer`, `hub-alerting` | `mq.TrafficEventMessage` |
+| `nexus.event.agent` | `NEXUS_EVENTS` | Hub re-enqueue from agent HTTP upload (`packages/nexus-hub/internal/fleet/handler/hubapi/internal_things.go` `AuditUpload`) | `hub-db-writer`, `hub-alerting` | `mq.TrafficEventMessage` |
+| `nexus.event.admin-audit` | `NEXUS_EVENTS` | `packages/control-plane/internal/platform/audit/writer.go` (per admin mutation) | `hub-db-writer`, `hub-alerting` | `mq.AdminAuditMessage` |
 | `nexus.event.exemption` | `NEXUS_EVENTS` | Hub re-enqueue from agent HTTP upload (`internal_things.go` `ExemptionUpload`) | `hub-db-writer` only | `{kind, thingId, host, reason, expiresAt}` inline (`packages/nexus-hub/internal/observability/consumer/exemption.go`) |
 | `nexus.auth.revocation` | `NEXUS_AUTH` | `packages/control-plane/internal/identity/authserver/revocation/publisher.go` | per-instance (one group per CP / AI-gateway / proxy instance) | `revocation.Event` (`scope`, `targetJti` / `targetUserId` / `targetDeviceId` / `targetSessionId`, `reason`, `issuedAt`) |
 | `nexus.hub.signal` | (Core NATS — no JS) | Hub fleet manager (`packages/nexus-hub/internal/fleet/manager/config.go`, `drift.go`) | each Hub instance's WS bridge (`packages/nexus-hub/internal/ws/signal.go`) | `{action, sourceHub, thingType, configKey, state, version, thingId?, desired?, force?}` |
 
 ### Why agent traffic + exemption are *re-enqueued* by Hub, not produced by the agent
 
-Agents do not hold NATS credentials and do not have direct MQ network reach (see thing-model.md). Every byte of agent-emitted state arrives at Hub via authenticated HTTP — `POST /api/internal/things/audit` (handler `AuditUpload`) for traffic, `POST /api/internal/things/exemption` (handler `ExemptionUpload`) for TLS-bump auto-exemptions. The HTTP handler validates the upload (auth header, payload shape, CHECK-constraint hygiene like stripping empty-string `usageExtractionStatus` before downstream `traffic_event_*` CHECKs reject it) and then calls `MQProducer.Enqueue(...)`. From the consumer's perspective the wire shape on `nexus.event.agent` is identical to `nexus.event.ai-traffic` / `.compliance`, which is what lets the same `TrafficEventWriter` and `SIEMForwarder` code paths handle all three.
+Agents do not hold NATS credentials and do not have direct MQ network reach (see thing-model.md). Every byte of agent-emitted state arrives at Hub via authenticated HTTP — `POST /api/internal/things/audit` (handler `AuditUpload`) for traffic, `POST /api/internal/things/exemption` (handler `ExemptionUpload`) for TLS-bump auto-exemptions. The HTTP handler validates the upload (auth header, payload shape, CHECK-constraint hygiene like stripping empty-string `usageExtractionStatus` before downstream `traffic_event_*` CHECKs reject it) and then calls `MQProducer.Enqueue(...)`. From the consumer's perspective the wire shape on `nexus.event.agent` is identical to `nexus.event.ai-traffic` / `.compliance`, which is what lets the same `TrafficEventWriter` code path handle all three.
 
 ### The wire shapes are stable contracts
 
@@ -117,9 +117,9 @@ Why a shared group across different writers is safe here: each writer uses a dis
 
 Each group is a *role*; messages on a subject are delivered to one worker per group, but every group sees every message. This is what `InterestPolicy` retention exists for.
 
-**Live example: the three Hub roles on `nexus.event.{ai-traffic, compliance, agent, admin-audit}`** — `hub-db-writer` persists, `hub-siem` forwards to the SIEM bridge, `hub-alerting` evaluates real-time rules. Each role consumes every message exactly once, independently retried, with independent ack progress. Adding a fourth role (e.g. a streaming analytics processor) is one new consumer registration; no producer change.
+**Live example: the two Hub roles on `nexus.event.{ai-traffic, compliance, agent, admin-audit}`** — `hub-db-writer` persists, `hub-alerting` evaluates real-time rules. Each role consumes every message exactly once, independently retried, with independent ack progress. Adding a third role (e.g. a streaming analytics processor) is one new consumer registration; no producer change.
 
-`nexus.event.exemption` deliberately uses only `hub-db-writer` — there is no SIEM forwarding or alerting use case for individual exemption uploads (the admin review at `/compliance/exemptions` is the audit surface). Adding it later costs one more `Consume(ctx, "nexus.event.exemption", "hub-siem", ...)` call; nothing else changes.
+`nexus.event.exemption` deliberately uses only `hub-db-writer` — there is no alerting use case for individual exemption uploads (the admin review at `/compliance/exemptions` is the audit surface). Adding it later costs one more `Consume(ctx, "nexus.event.exemption", "hub-alerting", ...)` call; nothing else changes.
 
 ### Pattern C — per-instance broadcast: every instance is its own group
 
@@ -136,10 +136,10 @@ The group name embeds an instance identifier so each instance gets its own durab
 The JetStream consumer in `consumer.go` configures:
 
 - `AckPolicy: AckExplicitPolicy` — no auto-ack at the JS layer; the consumer code controls ack timing
-- `MaxDeliver: 5` — a message that fails to ack after 5 deliveries is dropped (with a NATS server-level log; no DLQ today)
+- `MaxDeliver: 5` — once 5 deliveries are exhausted JetStream removes the message for that consumer immediately (the `MaxAge`/`MaxBytes` retention window does **not** grant a grace period past exhaustion)
 - `AckWait: 30 * time.Second` — if the handler does not ack within 30 s, JS redelivers
 
-`MaxDeliver: 5` is the budget that prevents poison-pill loops from filling the stream. Five retries on a 30-second AckWait is ~2.5 min of total redelivery before drop; that is long enough for transient DB hiccups and short enough that a structurally-bad message (wrong JSON shape, CHECK-constraint violation that no retry can fix) does not loop forever. Today there is no dead-letter queue — the assumption is that a `MaxDeliver`-exhausted message has been seen multiple times in `hub-db-writer` ERROR logs, surfaced via the diag-event triage pipeline, and a human will pull it from logs if forensics are needed.
+`MaxDeliver: 5` is the budget that prevents poison-pill loops from filling the stream. A consumer that dead-letters on a redelivery cap MUST trip its own threshold **strictly below** `MaxDeliver` so the dead-letter write happens on a non-final delivery while budget remains — the Hub traffic writer does exactly this (`redeliveryThresholdAttempts = 3`; see `audit-pipeline-architecture.md` §10.1 for its DB-backed + on-disk DLQ). Consumers should also Nak with a delay rather than bare — the `Message.NakWithDelay(d)` hook (wired to JetStream's `NakWithDelay` for the queue path, a no-op on the fire-and-forget topic path) lets a consumer back off so a sustained downstream outage does not burn the whole budget in ~25-30s.
 
 ### Ack-after-DB-commit via `ErrDeferAck`
 
@@ -180,7 +180,7 @@ Hub startup calls `mq.Setup(ctx, natsURL)` from `packages/nexus-hub/cmd/nexus-hu
 
 `jetstreamDurableName(group, queue)` builds names like `hub-db-writer__nexus_event_admin-audit`. The format is `<group>__<sanitised-queue>` where `.` becomes `_` (JetStream durable names do not accept dots, slashes, colons, or spaces). The Control Plane's revocation group additionally pre-sanitises the embedded thing ID via `sanitizeForJetStreamDurable(thingID)` because `cpThingID` contains a hostname-derived suffix that may include characters JS rejects.
 
-The invariant: any new consumer group string must be safe to embed in a durable name *after* `jetstreamDurableName`'s `.` → `_` substitution. The compiled durable name appears in NATS server logs and `nats consumer info` output, so cryptic groups make on-call harder; `hub-db-writer` / `hub-siem` / `hub-alerting` / `cp-revocation-<thingID>` are the canonical names worth preserving.
+The invariant: any new consumer group string must be safe to embed in a durable name *after* `jetstreamDurableName`'s `.` → `_` substitution. The compiled durable name appears in NATS server logs and `nats consumer info` output, so cryptic groups make on-call harder; `hub-db-writer` / `hub-alerting` / `cp-revocation-<thingID>` are the canonical names worth preserving.
 
 ### Migration / capacity changes
 

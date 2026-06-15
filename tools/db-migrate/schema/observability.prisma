@@ -1,0 +1,372 @@
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum AlertState {
+  FIRING
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model AlertRule {
+  id              String        @id // e.g. "quota.threshold"
+  displayName     String
+  sourceType      String // quota | proxy | thing | provider | auth | system
+  defaultSeverity AlertSeverity
+  requiresAck     Boolean       @default(false)
+  enabled         Boolean       @default(true)
+  params          Json
+  paramsSchema    Json
+  cooldownSec     Int           @default(300)
+  /// E52-S12 optional per-group filter. When non-NULL the rule only
+  /// fires for events whose target (device) is a member of this
+  /// DeviceGroup. NULL = fleet-wide (today's behaviour).
+  group_id_filter String?       @map("group_id_filter")
+  groupFilter     DeviceGroup?  @relation("AlertRuleGroupFilter", fields: [group_id_filter], references: [id], onDelete: SetNull)
+  createdAt       DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
+  alerts Alert[]
+
+  @@index([sourceType, enabled])
+  @@index([group_id_filter], map: "alert_rule_group_filter_idx")
+}
+
+model Alert {
+  id             String        @id @default(uuid())
+  ruleId         String
+  rule           AlertRule     @relation(fields: [ruleId], references: [id])
+  sourceType     String
+  targetKey      String
+  targetLabel    String
+  severity       AlertSeverity
+  state          AlertState    @default(FIRING)
+  message        String
+  details        Json
+  firedAt        DateTime      @db.Timestamptz(3)
+  lastSeenAt     DateTime      @db.Timestamptz(3)
+  duplicateCount Int           @default(1)
+  acknowledgedBy String?
+  acknowledgedAt DateTime?     @db.Timestamptz(3)
+  resolvedAt     DateTime?     @db.Timestamptz(3)
+  resolvedBy     String?
+  resolvedReason String?
+
+  dispatches AlertDispatch[]
+
+  @@index([state, sourceType, firedAt])
+  @@index([ruleId, targetKey, state])
+  @@index([firedAt])
+}
+
+model AlertChannel {
+  id          String   @id @default(uuid())
+  name        String
+  type        String // webhook | slack | email | pagerduty
+  enabled     Boolean  @default(true)
+  severities  String[]
+  sourceTypes String[]
+  config      Json
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model AlertDispatch {
+  id          String   @id @default(uuid())
+  alertId     String
+  alert       Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  channelId   String
+  channelName String
+  success     Boolean
+  statusCode  Int?
+  errorMsg    String?
+  attemptedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([alertId])
+  @@index([attemptedAt])
+}
+
+/// 5-minute rollup bucket for pre-aggregated metrics.
+model MetricRollup5m {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, metricName, dimensionKey, subDimension])
+  @@index([metricName, bucketStart])
+  @@index([dimensionKey, bucketStart])
+  @@map("metric_rollup_5m")
+}
+
+/// 1-hour rollup bucket for pre-aggregated metrics.
+model MetricRollup1h {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, metricName, dimensionKey, subDimension])
+  @@index([metricName, bucketStart])
+  @@index([dimensionKey, bucketStart])
+  @@map("metric_rollup_1h")
+}
+
+/// 1-day rollup bucket for pre-aggregated metrics.
+model MetricRollup1d {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, metricName, dimensionKey, subDimension])
+  @@index([metricName, bucketStart])
+  @@index([dimensionKey, bucketStart])
+  @@map("metric_rollup_1d")
+}
+
+/// 1-month rollup bucket for pre-aggregated metrics.
+model MetricRollup1mo {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, metricName, dimensionKey, subDimension])
+  @@index([metricName, bucketStart])
+  @@index([dimensionKey, bucketStart])
+  @@map("metric_rollup_1mo")
+}
+
+/// 5-minute rollup bucket for per-Thing traffic metrics.
+///
+/// Sibling of MetricRollup5m, kept in a dedicated table so per-Thing access
+/// patterns (one Thing's dashboard) don't share row counts or indexes with
+/// fleet-wide queries. Populated only when the source traffic_event row has a
+/// non-null thing_id — i.e. data plane services (agent / compliance-proxy /
+/// ai-gateway). Fleet readers continue to use MetricRollup5m unchanged.
+model ThingMetricRollup5m {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  thingId      String   @map("thing_id")
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, thingId, metricName, dimensionKey, subDimension])
+  @@index([thingId, metricName, bucketStart])
+  @@index([thingId, bucketStart])
+  @@map("thing_metric_rollup_5m")
+}
+
+/// 1-hour per-Thing rollup. See ThingMetricRollup5m for semantics.
+model ThingMetricRollup1h {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  thingId      String   @map("thing_id")
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, thingId, metricName, dimensionKey, subDimension])
+  @@index([thingId, metricName, bucketStart])
+  @@index([thingId, bucketStart])
+  @@map("thing_metric_rollup_1h")
+}
+
+/// 1-day per-Thing rollup. See ThingMetricRollup5m for semantics.
+model ThingMetricRollup1d {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  thingId      String   @map("thing_id")
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, thingId, metricName, dimensionKey, subDimension])
+  @@index([thingId, metricName, bucketStart])
+  @@index([thingId, bucketStart])
+  @@map("thing_metric_rollup_1d")
+}
+
+/// 1-month per-Thing rollup. See ThingMetricRollup5m for semantics.
+model ThingMetricRollup1mo {
+  id           String   @id @default(uuid())
+  bucketStart  DateTime @db.Timestamptz(3)
+  thingId      String   @map("thing_id")
+  metricName   String
+  dimensionKey String   @default("")
+  subDimension String   @default("")
+  value        Decimal  @default(0) @db.Decimal(24, 6)
+  metadata     Json?
+  updatedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([bucketStart, thingId, metricName, dimensionKey, subDimension])
+  @@index([thingId, metricName, bucketStart])
+  @@index([thingId, bucketStart])
+  @@map("thing_metric_rollup_1mo")
+}
+
+/// Tracks high-water mark for each rollup job to ensure exactly-once computation.
+model RollupWatermark {
+  jobName   String   @id
+  watermark DateTime @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("rollup_watermark")
+}
+
+/// Real-time ops metric samples reported by every Thing (services + agents).
+/// `value` is nullable because histograms put their data in `metadata.buckets`.
+model MetricOpsRaw {
+  id           String   @default(uuid()) @db.Uuid
+  sampledAt    DateTime @map("sampled_at") @db.Timestamptz(6)
+  thingId      String   @map("thing_id")
+  thingType    String   @map("thing_type")
+  metricName   String   @map("metric_name")
+  metricKind   String   @map("metric_kind")
+  dimensionKey String   @default("") @map("dimension_key")
+  value        Float?   @db.DoublePrecision
+  metadata     Json?
+
+  thing Thing @relation(fields: [thingId], references: [id], onDelete: Cascade)
+
+  // metric_ops_raw is RANGE-partitioned by sampled_at at the DB level (see
+  // migration 20260613000002_partition_metric_ops_raw). A partitioned table's
+  // primary key must include the partition key, so id is paired with sampledAt.
+  @@id([sampledAt, id])
+  @@unique([sampledAt, thingId, metricName, dimensionKey])
+  @@index([thingId, sampledAt(sort: Desc)])
+  @@index([metricName, sampledAt(sort: Desc)])
+  @@index([thingType, sampledAt(sort: Desc)])
+  @@map("metric_ops_raw")
+}
+
+/// 5-minute rollup — the smallest persisted aggregation tier. metric_ops_raw is
+/// aggregated into this table by the ops-rollup-5m job; the 1h/1d/1mo tiers
+/// cascade from here. Same shape as MetricOpsRollup1h; real uniqueness via the
+/// `uq_ops_rollup_5m` partial-COALESCE UNIQUE INDEX added in raw SQL.
+model MetricOpsRollup5m {
+  id           String   @id @default(uuid()) @db.Uuid
+  bucketStart  DateTime @map("bucket_start") @db.Timestamptz(6)
+  thingId      String?  @map("thing_id")
+  thingType    String   @map("thing_type")
+  metricName   String   @map("metric_name")
+  metricKind   String   @map("metric_kind")
+  dimensionKey String   @default("") @map("dimension_key")
+  valueAvg     Float?   @map("value_avg") @db.DoublePrecision
+  valueSum     Float?   @map("value_sum") @db.DoublePrecision
+  valueMin     Float?   @map("value_min") @db.DoublePrecision
+  valueMax     Float?   @map("value_max") @db.DoublePrecision
+  sampleCount  Int      @map("sample_count")
+  metadata     Json?
+
+  @@index([metricName, bucketStart(sort: Desc)])
+  @@map("metric_ops_rollup_5m")
+}
+
+/// 1-hour rollup. `thingId` is nullable: NULL means the row is a fleet aggregate.
+/// `id` is a synthetic primary key required only because Prisma cannot express
+/// the natural composite key (COALESCE(thing_id, sentinel) with NOT NULL
+/// semantics). The real uniqueness constraint is enforced by the
+/// `uq_ops_rollup_1h` partial-COALESCE UNIQUE INDEX added in raw SQL.
+model MetricOpsRollup1h {
+  id           String   @id @default(uuid()) @db.Uuid
+  bucketStart  DateTime @map("bucket_start") @db.Timestamptz(6)
+  thingId      String?  @map("thing_id")
+  thingType    String   @map("thing_type")
+  metricName   String   @map("metric_name")
+  metricKind   String   @map("metric_kind")
+  dimensionKey String   @default("") @map("dimension_key")
+  valueAvg     Float?   @map("value_avg") @db.DoublePrecision
+  valueSum     Float?   @map("value_sum") @db.DoublePrecision
+  valueMin     Float?   @map("value_min") @db.DoublePrecision
+  valueMax     Float?   @map("value_max") @db.DoublePrecision
+  sampleCount  Int      @map("sample_count")
+  metadata     Json?
+
+  @@index([metricName, bucketStart(sort: Desc)])
+  @@map("metric_ops_rollup_1h")
+}
+
+/// 1-day rollup. Same columns as MetricOpsRollup1h.
+model MetricOpsRollup1d {
+  id           String   @id @default(uuid()) @db.Uuid
+  bucketStart  DateTime @map("bucket_start") @db.Timestamptz(6)
+  thingId      String?  @map("thing_id")
+  thingType    String   @map("thing_type")
+  metricName   String   @map("metric_name")
+  metricKind   String   @map("metric_kind")
+  dimensionKey String   @default("") @map("dimension_key")
+  valueAvg     Float?   @map("value_avg") @db.DoublePrecision
+  valueSum     Float?   @map("value_sum") @db.DoublePrecision
+  valueMin     Float?   @map("value_min") @db.DoublePrecision
+  valueMax     Float?   @map("value_max") @db.DoublePrecision
+  sampleCount  Int      @map("sample_count")
+  metadata     Json?
+
+  @@index([metricName, bucketStart(sort: Desc)])
+  @@map("metric_ops_rollup_1d")
+}
+
+/// 1-month rollup. Same columns as MetricOpsRollup1h.
+model MetricOpsRollup1mo {
+  id           String   @id @default(uuid()) @db.Uuid
+  bucketStart  DateTime @map("bucket_start") @db.Timestamptz(6)
+  thingId      String?  @map("thing_id")
+  thingType    String   @map("thing_type")
+  metricName   String   @map("metric_name")
+  metricKind   String   @map("metric_kind")
+  dimensionKey String   @default("") @map("dimension_key")
+  valueAvg     Float?   @map("value_avg") @db.DoublePrecision
+  valueSum     Float?   @map("value_sum") @db.DoublePrecision
+  valueMin     Float?   @map("value_min") @db.DoublePrecision
+  valueMax     Float?   @map("value_max") @db.DoublePrecision
+  sampleCount  Int      @map("sample_count")
+  metadata     Json?
+
+  @@index([metricName, bucketStart(sort: Desc)])
+  @@map("metric_ops_rollup_1mo")
+}
+
+/// Per-layer retention policy for ops metrics + diag events. Updated via the
+/// admin Control Plane API; consumed by the ops-retention scheduled job.
+model MetricOpsRetentionConfig {
+  layer         String   @id
+  retentionDays Int      @map("retention_days")
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  updatedBy     String?  @map("updated_by")
+
+  updatedByUser NexusUser? @relation("MetricOpsRetentionConfigUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("metric_ops_retention_config")
+}

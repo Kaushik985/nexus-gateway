@@ -58,13 +58,13 @@ fi
 # source of truth; new migrations are auto-generated from it and
 # will pick up the @db.Timestamptz(3) attribute correctly.
 
-# (2) `DateTime` in schema.prisma without @db.Timestamptz.
-echo "[tz-lint] scanning schema.prisma for tz-less DateTime fields…"
-schema_hits=$(grep -E '^\s+\w+\s+DateTime' tools/db-migrate/schema.prisma \
+# (2) `DateTime` in schema/ without @db.Timestamptz.
+echo "[tz-lint] scanning schema/ for tz-less DateTime fields…"
+schema_hits=$(grep -rE '^\s+\w+\s+DateTime' tools/db-migrate/schema/ \
   | grep -v '@db\.Timestamptz' \
   || true)
 if [ -n "$schema_hits" ]; then
-  echo "FAIL: DateTime field in schema.prisma without @db.Timestamptz(3)."
+  echo "FAIL: DateTime field in schema/ without @db.Timestamptz(3)."
   echo "$schema_hits"
   echo
   fail=1

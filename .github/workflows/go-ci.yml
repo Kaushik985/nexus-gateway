@@ -9,7 +9,11 @@ on:
       - 'packages/ai-gateway/**'
       - 'packages/control-plane/**'
       - 'packages/shared/**'
-      - 'tools/db-migrate/schema.prisma'
+      - 'packages/nexus-hub/**'
+      - 'packages/nexus-cli/**'
+      - 'packages/nexus-agent-core/**'
+      - 'tests/integration-go/**'
+      - 'tools/db-migrate/schema/**'
       - 'go.work'
       - '.github/workflows/go-ci.yml'
   pull_request:
@@ -20,7 +24,11 @@ on:
       - 'packages/ai-gateway/**'
       - 'packages/control-plane/**'
       - 'packages/shared/**'
-      - 'tools/db-migrate/schema.prisma'
+      - 'packages/nexus-hub/**'
+      - 'packages/nexus-cli/**'
+      - 'packages/nexus-agent-core/**'
+      - 'tests/integration-go/**'
+      - 'tools/db-migrate/schema/**'
       - 'go.work'
       - '.github/workflows/go-ci.yml'
 
@@ -37,6 +45,10 @@ jobs:
       # violations under only-new-issues=true (action's diff baseline
       # can drift across merge commits), so we cap lint to the diff.
       lint-modules: ${{ steps.detect.outputs.lint-modules }}
+      # agent/ui (macOS Wails desktop app) and tests/integration-go build
+      # in dedicated jobs, not the Linux matrix; gate them on their own path.
+      agent-ui: ${{ steps.detect.outputs.agent-ui }}
+      integration: ${{ steps.detect.outputs.integration }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -53,9 +65,16 @@ jobs:
           fi
 
           CHANGED=$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "")
-          ALL_MODULES='["shared","compliance-proxy","agent","ai-gateway","control-plane"]'
+          # Linux matrix modules (build + test). agent/ui and
+          # tests/integration-go run in dedicated jobs (see below), so they
+          # are NOT in this set. This matrix is the single source of Go
+          # build+test coverage — all eight modules, with race + GOWORK=off.
+          ALL_MODULES='["shared","compliance-proxy","agent","ai-gateway","control-plane","nexus-hub","nexus-cli","nexus-agent-core"]'
 
-          # Narrow set: only modules whose own packages/<m>/** changed.
+          # Lint set: narrow AND limited to modules with a cleared
+          # golangci-lint baseline (#82). nexus-cli / nexus-agent-core /
+          # nexus-hub have no cleared lint baseline yet, so they are
+          # build+test only.
           LINT_MODULES="[]"
           for m in compliance-proxy agent ai-gateway control-plane shared; do
             if echo "$CHANGED" | grep -q "^packages/$m/"; then
@@ -64,18 +83,42 @@ jobs:
           done
           echo "lint-modules=$LINT_MODULES" >> "$GITHUB_OUTPUT"
 
-          # Test scope: broad. If shared or go.work changed, run all modules.
+          # agent/ui (macOS Wails desktop app — cgo WebKit) builds on a
+          # macOS runner in its own job; gate on its own path or a
+          # workspace / workflow change.
+          AGENT_UI=false
+          if echo "$CHANGED" | grep -qE '^(packages/agent/ui/|go\.work$|\.github/workflows/go-ci\.yml$)'; then
+            AGENT_UI=true
+          fi
+          echo "agent-ui=$AGENT_UI" >> "$GITHUB_OUTPUT"
+
+          # tests/integration-go compiles in its own job (live run is the
+          # manual e2e gate, not CI); gate on its own path or a workspace /
+          # workflow change.
+          INTEGRATION=false
+          if echo "$CHANGED" | grep -qE '^(tests/integration-go/|go\.work$|\.github/workflows/go-ci\.yml$)'; then
+            INTEGRATION=true
+          fi
+          echo "integration=$INTEGRATION" >> "$GITHUB_OUTPUT"
+
+          # Test scope: broad. If shared or go.work changed, run all matrix modules.
           if echo "$CHANGED" | grep -qE '^(packages/shared/|go\.work$|\.github/workflows/go-ci\.yml$)'; then
             echo "modules=$ALL_MODULES" >> "$GITHUB_OUTPUT"
             echo "Shared-go or workspace changed — running test for all modules"
             exit 0
           fi
 
-          # Otherwise, test only the affected modules (same set as lint).
-          if [ "$LINT_MODULES" = "[]" ]; then
-            echo "No Go modules affected"
+          # Otherwise, test only the affected matrix modules.
+          TEST_MODULES="[]"
+          for m in compliance-proxy agent ai-gateway control-plane shared nexus-hub nexus-cli nexus-agent-core; do
+            if echo "$CHANGED" | grep -q "^packages/$m/"; then
+              TEST_MODULES=$(echo "$TEST_MODULES" | jq -c ". + [\"$m\"]")
+            fi
+          done
+          if [ "$TEST_MODULES" = "[]" ]; then
+            echo "No Go matrix modules affected"
           fi
-          echo "modules=$LINT_MODULES" >> "$GITHUB_OUTPUT"
+          echo "modules=$TEST_MODULES" >> "$GITHUB_OUTPUT"
 
   test:
     name: Test — ${{ matrix.module }}
@@ -97,6 +140,9 @@ jobs:
             packages/ai-gateway/go.sum
             packages/control-plane/go.sum
             packages/shared/go.sum
+            packages/nexus-hub/go.sum
+            packages/nexus-cli/go.sum
+            packages/nexus-agent-core/go.sum
 
       - name: Install SQLCipher (agent only)
         if: matrix.module == 'agent'
@@ -112,10 +158,34 @@ jobs:
         run: cd packages/${{ matrix.module }} && go test -race -count=1 -timeout 5m ./...
 
       - name: go build (standalone — GOWORK=off)
-        if: matrix.module == 'shared'
+        # Run for every matrix module: each module must resolve its
+        # sibling dependencies via the relative replace directives in
+        # go.mod without relying on the go.work overlay.  Formerly gated
+        # to shared only (F-0318 — the guard was too narrow).
         env:
           GOWORK: 'off'
         run: cd packages/${{ matrix.module }} && go build ./...
+
+  core-path-coverage:
+    name: Core-path 100% coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: |
+            packages/agent/go.sum
+            packages/ai-gateway/go.sum
+            packages/shared/go.sum
+      # The agent SQLite audit-queue package links SQLCipher; the
+      # ai-gateway audit package is pure Go. darwin-tagged agent funcs are
+      # SKIPPED on Linux by the script and enforced on the macOS
+      # pre-commit hook instead.
+      - name: Install SQLCipher
+        run: sudo apt-get update && sudo apt-get install -y libsqlcipher-dev
+      - name: Core-path 100% coverage gate
+        run: bash scripts/check-core-path-coverage.sh
 
   lint:
     name: Lint — ${{ matrix.module }}
@@ -145,7 +215,15 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # Pinned (was `latest`) for reproducibility — a floating `latest`
+          # silently changes the staticcheck ruleset between runs. skip-cache
+          # forces a FRESH analysis every run: the action's restored
+          # ~/.cache/golangci-lint went stale and replayed SA5011
+          # "possible nil pointer dereference" false positives on t.Fatal-guarded
+          # test derefs that the current v2.12.2 staticcheck does NOT flag
+          # (verified: fresh local v2.12.2 run reports zero such issues).
+          version: v2.12.2
+          skip-cache: true
           working-directory: packages/${{ matrix.module }}
           # Base violations cleared in #82 (pass 1: 170→44) + this
           # branch (44→0). only-new-issues stays off so the gate is
@@ -153,6 +231,58 @@ jobs:
           # Flip back to true only if a future toolchain bump exposes
           # a fresh batch too big to absorb in a single PR.
           only-new-issues: false
+
+  agent-ui:
+    name: Agent UI — Wails (macOS)
+    needs: detect-modules
+    if: needs.detect-modules.outputs.agent-ui == 'true'
+    # macOS runner: the Wails desktop shell binds the native WebKit WebView
+    # via cgo, the same toolchain Skill('build-agent') uses. Building it
+    # here (rather than fighting libwebkit2gtk-4.x + webkit2_41 build-tag
+    # drift on Linux) mirrors how the app actually ships. The committed
+    # frontend/dist placeholder lets `//go:embed all:frontend/dist` resolve
+    # without running Vite first.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: packages/agent/ui/go.sum
+
+      - name: go vet
+        run: cd packages/agent/ui && go vet ./...
+
+      - name: go build (workspace mode)
+        run: cd packages/agent/ui && go build ./...
+
+      - name: go test (workspace mode)
+        run: cd packages/agent/ui && go test -count=1 ./...
+
+  integration-build:
+    name: Integration tests — compile only
+    needs: detect-modules
+    if: needs.detect-modules.outputs.integration == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: tests/integration-go/go.sum
+
+      - name: go vet
+        run: cd tests/integration-go && go vet ./...
+
+      - name: go build
+        run: cd tests/integration-go && go build ./...
+
+      # Compile the test binaries without running them. The suite drives a
+      # live service stack + Postgres (setupOrSkip skips when NEXUS_TEST_VK
+      # is unset), so CI validates that the tests COMPILE; the live run is
+      # the manual e2e gate (tests/run-all.sh), not this workflow.
+      - name: go test (compile only — no run)
+        run: cd tests/integration-go && go test -run='^$' -count=1 ./...
 
   workspace-verify:
     name: Workspace integrity

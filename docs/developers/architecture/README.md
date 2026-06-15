@@ -27,13 +27,13 @@ If you are about to edit code in an area that is genuinely **not** covered by an
 | Top-level system, service boundaries, data flow, deployment topology | `docs/developers/architecture/overview.md` |
 | End-to-end flows across services (admin → CP → Hub → Thing → effect → audit) | `docs/developers/architecture/cross-cutting/foundation/service-call-framework.md` + `docs/developers/architecture/cross-cutting/foundation/multi-endpoint-coordination-architecture.md` |
 | Adding/changing an admin API endpoint, sidebar nav, or route path | CLAUDE.md "API / menu / route changes require IAM impact review" rule + `docs/developers/architecture/services/control-plane/iam-identity-architecture.md` |
-| Adding/changing a Prisma migration (any `tools/db-migrate/migrations/**`) | CLAUDE.md "Migration timestamp prefix must be unique" rule + `docs/developers/architecture/cross-cutting/storage/db-migration-mechanics-architecture.md` |
+| Changing the DB schema (`tools/db-migrate/schema/**`, `schema-extras.sql`) or seed (`tools/db-migrate/seed/**`) | `docs/developers/architecture/cross-cutting/storage/db-migration-mechanics-architecture.md` |
 
 ## Operator Toolkit (`packages/nexus-cli/`)
 
 | Editing area / file glob | Read FIRST |
 |---|---|
-| The `nexus` TUI / CLI / MCP binary as a whole; `packages/nexus-cli/internal/{core,cli,tui,mcp}/**` — auth, profiles, keychain, typed client, command tree, Bubble Tea console, MCP server | `docs/developers/architecture/nexus-operator-toolkit-architecture.md` |
+| The `nexus` TUI / CLI binary as a whole; the shared agent kernel `packages/nexus-agent-core/{core,agent,capabilities}/**` — core client, auth/PKCE, keychain, typed client, the agent loop + tools; and the binary surfaces `packages/nexus-cli/internal/{cli,tui}/**` — command tree, Bubble Tea console | `docs/developers/architecture/nexus-operator-toolkit-architecture.md` |
 
 ## AI Gateway (`packages/ai-gateway/`)
 
@@ -157,7 +157,7 @@ If you are about to edit code in an area that is genuinely **not** covered by an
 |---|---|
 | Any cache code (`packages/shared/storage/cacheconfig/**`, in-process LRU, Redis cache, IAM cache, cert cache, desired-state cache, response cache, quota counters) | `docs/developers/architecture/cross-cutting/storage/cache-multi-tier-architecture.md` |
 | `packages/shared/storage/spillstore/**`, S3 driver, presigned URL handlers, body overflow paths | `docs/developers/architecture/cross-cutting/storage/spillstore-architecture.md` |
-| `tools/db-migrate/schema.prisma`, manual scripts under `tools/db-migrate/manual-scripts/`, hand-maintained Go mirrors under `packages/shared/schemas/configtypes/**` | `docs/developers/architecture/cross-cutting/storage/db-migration-mechanics-architecture.md` |
+| `tools/db-migrate/schema/`, manual scripts under `tools/db-migrate/manual-scripts/`, hand-maintained Go mirrors under `packages/shared/schemas/configtypes/**` | `docs/developers/architecture/cross-cutting/storage/db-migration-mechanics-architecture.md` |
 | Retention config, per-table purge jobs, `dsar_request` rows, right-to-erasure flow | `docs/developers/architecture/cross-cutting/storage/data-retention-purge-architecture.md` |
 
 ## Cross-cutting — UI (Control Plane UI + Agent Dashboard)

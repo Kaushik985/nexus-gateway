@@ -22,8 +22,8 @@ See [kill-switch-architecture.md](./kill-switch-architecture.md) for the unscope
 | `packages/control-plane/internal/governance/passthrough/handler/` | Admin REST endpoints, write validators, Hub propagation |
 | `packages/control-plane/cmd/control-plane/wiring/reconcile.go` | CP-side config reconciler watch over `gateway_passthrough` |
 | `packages/nexus-hub/internal/jobs/defs/expiry/passthrough_expiry.go` | Hub job that auto-reverts expired rows |
-| `tools/db-migrate/migrations/20260517000000_e48_gateway_passthrough_config_3tier/migration.sql` | Three tier tables + `_effective` view + thing_config_template seed |
-| `tools/db-migrate/migrations/20260517000010_e48_traffic_event_passthrough_columns/migration.sql` | `traffic_event.passthrough_flags` + `passthrough_reason` columns + partial index |
+| `tools/db-migrate/schema/gateway.prisma` | Three tier tables (`GatewayPassthroughConfigGlobal` / `Adapter` / `Provider`); the global default + `thing_config_template` row are seeded from `seed/fixtures/` |
+| `tools/db-migrate/schema/traffic.prisma` + `tools/db-migrate/schema-extras.sql` | `traffic_event.passthrough_flags` + `passthrough_reason` columns (schema) and the `traffic_event_passthrough_active_idx` partial index (extras) |
 | `packages/control-plane-ui/src/pages/ai-gateway/passthrough/PassthroughPage.tsx` | Admin UI page |
 
 ## 3. The three tiers — scope of bypass
@@ -165,7 +165,6 @@ All endpoints mount under `/api/admin/` in the Control Plane:
 | `GET    /passthrough/provider/:provider_id` | `admin:passthrough.read` | |
 | `PUT    /passthrough/provider/:provider_id` | `admin:passthrough.emergency-enable` | Upserts by provider_id |
 | `DELETE /passthrough/provider/:provider_id` | `admin:passthrough.write` | Hard delete; FK CASCADE removes the row if the Provider is deleted upstream |
-| `GET    /passthrough/effective/:provider_id` | `admin:passthrough.read` | Reads `gateway_passthrough_config_effective` view for the resolved per-Provider merge |
 | `GET    /passthrough/snapshot` | `admin:passthrough.read` | Bulk read returning `{global, adapters, providers, providerNames}` for the UI |
 
 The three actions on the `passthrough` resource are deliberately split:
@@ -236,8 +235,7 @@ Bypass activity is observable through three artefacts already covered above; the
 - `packages/shared/identity/iam/catalog_data.go`
 - `packages/shared/schemas/configkey/configkey.go`
 - `packages/shared/schemas/configkey/validation.go`
-- `tools/db-migrate/schema.prisma`
-- `tools/db-migrate/migrations/20260517000000_e48_gateway_passthrough_config_3tier/migration.sql`
-- `tools/db-migrate/migrations/20260517000010_e48_traffic_event_passthrough_columns/migration.sql`
-- `tools/db-migrate/migrations/20260520000000_fix_e48_passthrough_fk/migration.sql`
+- `tools/db-migrate/schema/gateway.prisma` — the three passthrough tier tables
+- `tools/db-migrate/schema/traffic.prisma` — passthrough columns
+- `tools/db-migrate/schema-extras.sql` — the `traffic_event_passthrough_active_idx` partial index
 - [./kill-switch-architecture.md](./kill-switch-architecture.md)

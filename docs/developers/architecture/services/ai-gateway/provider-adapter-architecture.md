@@ -37,13 +37,21 @@ The codec-facing interfaces take `shape typology.WireShape` as the per-call disp
 type Transport interface {
     BuildURL(target CallTarget, shape typology.WireShape, stream bool) (string, error)
     ApplyAuth(r *http.Request, target CallTarget) error
-    Do(ctx context.Context, r *http.Request) (*http.Response, error)
+    Do(ctx context.Context, r *http.Request, target CallTarget) (*http.Response, error)
     Probe(ctx context.Context, target CallTarget) (*ProbeResult, error)
 }
 
 type SchemaCodec interface {
     EncodeRequest(shape typology.WireShape, canonicalBody []byte, target CallTarget) (EncodeResult, error)
-    DecodeResponse(shape typology.WireShape, nativeBody []byte, contentType string) (DecodeResult, error)
+    DecodeResponse(shape typology.WireShape, nativeBody []byte, contentType string, reqCtx DecodeContext) (DecodeResult, error)
+}
+
+// DecodeContext carries the originating request (resolved target + the wire
+// request body that was sent upstream) so a response codec can validate the
+// response against the request it answered.
+type DecodeContext struct {
+    Target      CallTarget
+    RequestBody []byte
 }
 
 type StreamDecoder interface {
@@ -56,6 +64,8 @@ type ErrorNormalizer interface {
 ```
 
 The `shape` parameter tells the codec which of its native wire shapes the call targets — the OpenAI codec dispatches `WireShapeOpenAIChat` to chat-completions encoding, `WireShapeOpenAIResponses` to responses-API encoding, `WireShapeOpenAIEmbeddings` to embeddings encoding. A codec rejects shapes it does not implement.
+
+`DecodeResponse` additionally receives a `DecodeContext` (the resolved target + the wire request body that was sent upstream) so a response codec can validate the response against the request it answered — every batch embedding codec asserts the provider returned exactly one vector per request input (a count mismatch fails the decode → 502 rather than serving position-misaligned vectors), and the Gemini embedding codec estimates prompt tokens from the request text when the wire response carries no usage. A zero `DecodeContext` (post-hoc decodes — cache replay, estimate compare, audit) disables those request-relative checks (fail-open). `Transport.Do` likewise receives the `CallTarget`: transports that must sign after the body is finalized (AWS SigV4 in the Bedrock transport) read their credentials straight from `target.Extras` instead of smuggling them through internal request headers.
 
 ## 3. The dispatch path
 
@@ -73,6 +83,7 @@ On an upstream error response the adapter's `ErrorNormalizer.Normalize` produces
 The caller's wire shape is preserved end-to-end: whatever ingress a client calls — `/v1/chat/completions`, `/v1/messages`, gemini `:generateContent`, `/v1/responses`, `/v1/embeddings`, plus the Azure and GLM native ingresses — receives a response in that same shape. The upstream target wire is an internal concern resolved at the call site, not the caller's:
 
 - **Request.** The ingress body is canonicalized once (`IngressChatToCanonical` for chat-kind, `IngressEmbeddingsToCanonical` for embeddings), then `TargetExecutor` sets the call-time `WireShape` from the *target* format — `ChatWireShapeForTarget` for chat-kind, `EmbeddingsWireShapeForTarget` for embeddings — so `Transport.BuildURL` and `SchemaCodec.EncodeRequest` target the correct wire for the primary target and every failover target. The per-request `Ingress.WireShape` is not mutated to the target shape; the `/v1/responses` → chat-completions downgrade is the one exception, because Responses canonicalizes to chat before dispatch.
+  - **Embeddings endpoint selection (single vs batch).** A codec may serve two upstream endpoints from one `WireShape`. Gemini's `WireShapeGeminiEmbedContent` covers both `:embedContent` (single string `input`) and `:batchEmbedContents` (array `input`); the choice is encoded only by the embeddings codec, which inspects the canonical `input` cardinality and returns an `EncodeResult.URLOverride` of `:embedContent` or `:batchEmbedContents`. Because embeddings always skip the gateway cache, the cross-format request is translated by `IngressEmbeddingsToWire`, which now **surfaces that override** alongside the wire body; `TargetExecutor` threads it into `Adapter.ExecuteWithBody`, where `applyURLOverride` swaps the action suffix on the `Transport.BuildURL` result. Dropping the override sends the batch body (`{"requests":[…]}`) to the single-embed URL and Gemini rejects it with `Unknown name "requests": Cannot find field` (regression guard: `TestIngressEmbeddingsToWire_GeminiEndpointSelection`, `TestExecute_EmbeddingsBridgeURLOverride_ReachesAdapter`). No Gemini-native embeddings *ingress* exists, so an embeddings request to a Gemini target is always cross-format and always flows through this path.
 - **Response.** The upstream wire body is decoded to canonical, then reshaped back to the caller's format with `ResponseCanonicalToIngress` (chat) / `ResponseCanonicalToIngressEmbeddings` (embeddings), keyed on the ingress read from the request context (not the mutable per-request copy). The reshape fires when the ingress format differs from the target and is an identity no-op for same-format native routes.
 
 The cross-format decision is driven by `typology.KindFromWireShape` (chat / embeddings) plus the responses-native rule rather than a hardcoded ingress list, so a new chat or embeddings ingress is covered without changing the dispatch gates.
@@ -121,6 +132,7 @@ Parameter renames, mandatory clamping, and HTTP-400 deprecations live in the ada
 | `claude-4.x` rejects `temperature` + `top_p` together | `specs/anthropic/codec/codec.go` (`anthropicModelRejectsTempTopPTogether`) |
 | gpt-5.x / o-series rename `max_tokens` → `max_completion_tokens` and strip sampling params | `specs/openai/rewrites` (`ApplyReasoningRewrites`, wired as the OpenAI `PassthroughRewrite`) |
 | kimi-k2.5 / k2.6 require `temperature = 1` | `specs/compat/moonshot/rewrites.go` (`ApplyRewrites`, wired as the Moonshot `PassthroughRewrite`) |
+| DeepSeek thinking models (`deepseek-reasoner*`, `deepseek-v4-pro*` — the two evidenced families) reject a forced `tool_choice` (`"required"` or a named function) with 400 "Thinking mode does not support this tool_choice" | `specs/compat/deepseek/rewrites.go` (`ApplyRewrites`, wired as the DeepSeek `PassthroughRewrite`; strips the field, silently downgrading the forcing to auto — default behavior still calls tools) |
 
 When a new family ships a wire deprecation, add the rule to the adapter that owns its wire. Cross-adapter shared helpers create the wrong dependency direction.
 
@@ -215,7 +227,7 @@ Adapters fall into three structural tiers:
 | Own wire, flat codec, no Nexus ingress | flat `codec.go` / `stream.go` / `errors.go` (+ `embed_*.go` for embeddings) | `bedrock`, `cohere`, `replicate`, `voyage` |
 | Own wire, codec subpackage | `spec.go` + `transport.go` + a `codec/` subpackage (no stream/errors) | `glm` |
 | Family reuse, own transport | `spec.go` + `transport.go`, borrowing the family codec | `azure` (OpenAI codec + `ApplyReasoningRewrites`), `vertex`, `minimax` |
-| Family reuse, borrowed transport | `spec.go` only — reuses `openai.NewTransport()` + `openai.IdentityCodec()` | the OpenAI-compatible `specs/compat/*` adapters (`deepseek`, `fireworks`, `groq`, `huggingface`, `mistral`, `perplexity`, `together`, `xai`); `moonshot` adds `rewrites.go` for its fixed-temperature quirk |
+| Family reuse, borrowed transport | `spec.go` only — reuses `openai.NewTransport()` + `openai.IdentityCodec()` | the OpenAI-compatible `specs/compat/*` adapters (`fireworks`, `groq`, `huggingface`, `mistral`, `perplexity`, `together`, `xai`); `moonshot` adds `rewrites.go` for its fixed-temperature quirk, `deepseek` for its thinking-mode `tool_choice` quirk |
 
 A family-reuse adapter exists because the provider speaks an existing wire and only differs in endpoint and auth — it either supplies its own `Transport` (and borrows the family codec) or reuses the family transport outright, rather than writing a codec of its own.
 

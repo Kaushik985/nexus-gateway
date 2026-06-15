@@ -1,0 +1,391 @@
+/// Tracks the history of user-device assignments (who owned a device and when).
+/// Used by the agent for identity attribution on heartbeat, login, and compliance events.
+model DeviceAssignment {
+  id          String    @id @default(uuid())
+  deviceId    String
+  userId      String?
+  assignedAt  DateTime  @default(now()) @db.Timestamptz(3)
+  releasedAt  DateTime? @db.Timestamptz(3)
+  source      String    @default("heartbeat") // heartbeat | manual | enrollment | login
+  /// Login method that created this assignment: local | oidc | saml | device_only
+  loginMethod String?   @map("login_method")
+  /// OAuth access token JTI linked to this assignment (for revocation tracing).
+  tokenJti    String?   @map("token_jti")
+  /// Client IP address at assignment time (used by compliance-proxy for attribution).
+  ipAddress   String?   @map("ip_address")
+
+  device Thing      @relation(fields: [deviceId], references: [id])
+  user   NexusUser? @relation(fields: [userId], references: [id])
+
+  @@index([deviceId, releasedAt])
+  @@index([userId])
+  @@index([ipAddress, assignedAt])
+}
+
+// E19: Device Groups (targeting only — no policy/config cascade).
+// E52-S2: `membership_query` flips a group to smart-mode (predicate-driven
+// membership materialized into device_group_membership_cache); NULL keeps
+// the group static (manual `DeviceGroupMembership` rows).
+// Groups exist purely to *select* a set of devices (bulk force-refresh /
+// rotate-cert, alert-rule scoping, exemption attachment). They do NOT
+// carry per-key config payloads — config flows are
+// `thing_config_template` (fleet default) + `thing_config_override`
+// (per-Thing).
+model DeviceGroup {
+  id               String   @id @default(uuid())
+  name             String   @unique
+  description      String?
+  /// E52-S2 smart-group predicate (JSON over closed attribute set;
+  /// reuses the routing-rule matchConditions matcher). NULL = static
+  /// group, manual membership rows. Non-NULL = smart group, members
+  /// computed from this predicate and materialized in
+  /// device_group_membership_cache.
+  membership_query Json?    @map("membership_query")
+  /// Group rank. Retained as a vestigial column for the membership-cache
+  /// dedupe path; not consulted by any policy/config cascade (none exists).
+  priority         Int      @default(100)
+  createdBy        String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  memberships DeviceGroupMembership[]
+  alertRules  AlertRule[]             @relation("AlertRuleGroupFilter")
+}
+
+/// E52-S2: materialized membership rows for smart groups. Recomputed on
+/// every device heartbeat that mutates relevant attributes plus a 60s
+/// Hub safety-net job. Read by GroupsOfDevice (IAM scope enforcement),
+/// ResolveConfig (S1 config cascade), and the device-list filter
+/// projection.
+model DeviceGroupMembershipCache {
+  group_id    String   @map("group_id")
+  device_id   String   @map("device_id")
+  computed_at DateTime @default(now()) @map("computed_at") @db.Timestamptz(3)
+
+  @@id([group_id, device_id])
+  @@index([device_id], map: "device_group_membership_cache_device_idx")
+  @@map("device_group_membership_cache")
+}
+
+model DeviceGroupMembership {
+  id         String    @id @default(uuid())
+  groupId    String
+  deviceId   String
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  /// E52-S14 optional membership expiry. NULL = permanent.
+  /// Non-NULL = filtered out by GroupsOfDevice / MembersOfGroup
+  /// once `expires_at <= NOW()`, and physically deleted on the next
+  /// SmartGroupRecompute tick via EvictExpiredMemberships.
+  expires_at DateTime? @map("expires_at") @db.Timestamptz(3)
+
+  group  DeviceGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  device Thing       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, deviceId])
+  @@index([deviceId])
+  @@index([expires_at], map: "device_group_membership_expires_idx")
+}
+
+/// Unified registry of all Hub-managed nodes. IoT-inspired core object with
+/// identity, lifecycle, shadow state, authentication, and connectivity.
+/// Type-specific fields live in extension tables (ThingService, ThingAgent).
+model Thing {
+  id                 String    @id // services: "{type}-{label}", agents: UUID
+  type               String // "ai-gateway" | "compliance-proxy" | "nexus-hub" | "control-plane" | "agent"
+  name               String? // human-readable label
+  version            String? // reported software binary version
+  address            String? // service: host:port (reachable); agent: last-known IP (informational)
+  enrolled_by        String?   @map("enrolled_by") // admin email | "self-register" | "system"
+  auth_type          String    @default("bearer") @map("auth_type") // "bearer" | "mtls" | "apikey"
+  conn_protocol      String    @default("http") @map("conn_protocol") // "http" | "websocket" | "mqtt"
+  status             String    @default("enrolled") // "enrolled" | "online" | "offline" | "drift" | "revoked"
+  enrolled_at        DateTime  @default(now()) @map("enrolled_at") @db.Timestamptz(3)
+  last_seen_at       DateTime? @map("last_seen_at") @db.Timestamptz(3)
+  updated_at         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Full desired config snapshot pushed by Hub to this Thing via WebSocket.
+  desired            Json      @default("{}")
+  /// Full config snapshot last reported by the Thing as applied, plus dynamic heartbeat data.
+  reported           Json      @default("{}")
+  /// Per-config-key outcome ledger reported by the Thing: { key: { appliedAt, appliedVersion, applyError } }.
+  /// Carries the result of the latest OnConfigChanged dispatch — operators see active errors and last-good
+  /// versions on the Nodes page without crawling logs. Reset to {} on Thing process restart and repopulated
+  /// by the next successful apply; correlate with process_started_at to detect "fresh-process / no-apply-yet".
+  reported_outcomes  Json      @default("{}") @map("reported_outcomes")
+  /// Monotonic version counter for the desired state (incremented on every Hub push).
+  desired_ver        BigInt    @default(0) @map("desired_ver")
+  /// Version the Thing last reported as applied.
+  reported_ver       BigInt    @default(0) @map("reported_ver")
+  /// Wall-clock time the Thing's process started, captured by Hub on the offline→online transition.
+  /// Used to derive uptime on the Nodes page and to interpret reported_outcomes correctly across restarts.
+  process_started_at DateTime? @map("process_started_at") @db.Timestamptz(3)
+  /// OS hostname (agents: macOS hostname; services: container/EC2 hostname).
+  /// Promoted from `metadata.staticInfo.hostname` to a first-class column so
+  /// list/detail UIs render identity without digging into jsonb. Heartbeat
+  /// handler best-effort overwrites this every tick.
+  hostname           String?   @map("hostname")
+  /// Last-reported primary IP. Promoted from `metadata.staticInfo.primaryIp`
+  /// + indexed via `thing_primary_ip_idx` for the "filter by subnet" use case.
+  primary_ip         String?   @map("primary_ip")
+  /// OS family — `darwin` | `linux` | `windows`. Promoted from
+  /// `metadata.staticInfo.os`.
+  os                 String?   @map("os")
+  /// OS version label (e.g. `26.3.1` on macOS). Promoted from
+  /// `metadata.staticInfo.osVersion`.
+  os_version         String?   @map("os_version")
+  /// E52-S9 free-form tags. Ad-hoc string labels (`contractor`,
+  /// `byod`, `executive`) that compose into smart-group predicates
+  /// (`tags / contains` op) and UI filter chips. Backed by a GIN
+  /// index for fast membership queries.
+  tags               String[]  @default([])
+  /// Flexible labels, tags, and unstructured data.
+  metadata           Json?
+  /// Stable natural key for this Thing — content varies by `type`:
+  ///   - agent:           hardware fingerprint (32-hex sha256 of
+  ///                      IOPlatformUUID + serial + MAC + cpu brand)
+  ///                      computed by `shared/opsmetrics`.
+  ///   - server services: yaml-configured `id` from the service config,
+  ///                      or auto-derived `{hostname}-{type}-{port}`
+  ///                      when yaml left it blank (which today happens
+  ///                      to be what their `thing.id` already is).
+  /// Promoted out of `metadata.staticInfo.deviceFingerprint` (where the
+  /// agent variant used to live, buried in JSON) so the DB can enforce
+  /// `UNIQUE(type, physical_id)` and stop duplicate `thing` rows from
+  /// accumulating across re-enrollments. The constraint is partial,
+  /// gated on type='agent' AND non-NULL because:
+  ///   - agents need uniqueness enforcement (random thing.id; same Mac
+  ///     re-enrolls produce different IDs without this);
+  ///   - services don't (thing.id is already deterministic by yaml-id
+  ///     or hostname+type+port, so adding the partial UNIQUE here would
+  ///     be redundant with the PK and pointlessly constrain non-agent
+  ///     types that may legitimately leave it NULL).
+  /// Nullable because legacy / sandboxed agents that can't compute a
+  /// fingerprint still need a thing row.
+  physical_id        String?   @map("physical_id")
+  /// Expiry of the device bearer token whose SHA-256 hash lives in
+  /// `metadata.deviceTokenHash`. Issued with a fixed TTL
+  /// (`agentca.DeviceTokenTTL`) at enrollment and re-stamped on every
+  /// token rotation via POST /api/internal/things/renew-token.
+  /// `ValidateDeviceToken` fails closed: a row whose
+  /// `device_token_expires_at` is NULL or in the past is never returned,
+  /// so an expired or never-issued token is rejected without a separate
+  /// expiry check in Go. Nullable so a Thing that has not (yet) been
+  /// issued a device token — e.g. a service authenticated by the internal
+  /// service token — simply has no expiry and no device-token auth path.
+  device_token_expires_at DateTime? @map("device_token_expires_at") @db.Timestamptz(3)
+
+  service           ThingService?
+  agent             ThingAgent?
+  enrollmentTokens  EnrollmentToken[]
+  groupMemberships  DeviceGroupMembership[]
+  deviceAssignments DeviceAssignment[]
+  metricOpsRaw      MetricOpsRaw[]
+  diagEvents        ThingDiagEvent[]
+  diagModeWindows   ThingDiagModeWindow[]
+  overrides         ThingConfigOverride[]
+
+  // Partial unique constraint `WHERE type='agent' AND physical_id IS NOT NULL`
+  // lives in migration 20260521000000_thing_physical_id_column (Prisma's
+  // @@unique can't express the WHERE clause). Server-side things use yaml-
+  // configured ids, NOT this column, so applying the constraint to them
+  // would force them to either NULL the column or collide.
+  // Partial index on primary_ip lives in migration 20260522000000_thing_identity_columns.
+  @@index([type, status])
+  @@index([status, last_seen_at])
+  @@map("thing")
+}
+
+/// Service-specific extension (1:1 with Thing). For ai-gateway, compliance-proxy,
+/// control-plane, nexus-hub Things.
+model ThingService {
+  thing_id       String  @id @map("thing_id")
+  role           String? @default("default") // api | scheduler | canary | worker
+  metrics_url    String? @map("metrics_url") // Prometheus scrape endpoint
+  management_url String? @map("management_url") // Management HTTP base URL (e.g. http://host:port)
+
+  thing Thing @relation(fields: [thing_id], references: [id], onDelete: Cascade)
+
+  @@map("thing_service")
+}
+
+/// Agent-specific extension (1:1 with Thing). For desktop agent Things.
+/// hostname / os / os_version live on the parent Thing table (promoted in Phase 1
+/// of the thing-identity refactor) so non-agent Things can also carry them.
+model ThingAgent {
+  thing_id              String    @id @map("thing_id")
+  cert_serial           String?   @unique @map("cert_serial")
+  cert_expires_at       DateTime? @map("cert_expires_at") @db.Timestamptz(3)
+  previous_cert_serial  String?   @map("previous_cert_serial")
+  cert_renewed_at       DateTime? @map("cert_renewed_at") @db.Timestamptz(3)
+  sysinfo               Json?
+  /// Trust level: 0=unknown, 1=enrolled, 2=identified (user linked), 3=compliant (cert valid + user linked)
+  trust_level           Int       @default(0) @map("trust_level")
+  /// Active DeviceAssignment.id for this agent (null when no user is assigned).
+  current_assignment_id String?   @map("current_assignment_id")
+
+  thing Thing @relation(fields: [thing_id], references: [id], onDelete: Cascade)
+
+  @@index([cert_expires_at])
+  @@map("thing_agent")
+}
+
+/// Hub-owned enrollment credentials. Each token is 1:1 with a Thing after enrollment.
+/// Replaces PendingEnrollment.
+model EnrollmentToken {
+  id         String    @id @default(uuid())
+  token_hash String    @unique @map("token_hash") // SHA-256 of raw token
+  thing_type String    @map("thing_type")
+  thing_id   String?   @map("thing_id")
+  label      String    @default("")
+  status     String    @default("pending") // "pending" | "used" | "expired" | "revoked"
+  expires_at DateTime  @map("expires_at") @db.Timestamptz(3)
+  used_at    DateTime? @map("used_at") @db.Timestamptz(3)
+  metadata   Json?
+  created_by String?   @map("created_by")
+  created_at DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  thing Thing? @relation(fields: [thing_id], references: [id], onDelete: SetNull)
+
+  @@map("enrollment_token")
+}
+
+/// Per-(type, config_key) desired state template used to initialize new Things
+/// and to record the canonical desired config for a given Thing type + key.
+model ThingConfigTemplate {
+  type       String // "ai-gateway" | "compliance-proxy" | etc.
+  config_key String   @map("config_key") // e.g. "killswitch", "hook_config", "quota"
+  /// Full desired state for this (type, config_key). Written by admin actions.
+  state      Json     @default("{}")
+  /// Monotonic version counter, incremented on every admin write.
+  version    BigInt   @default(1)
+  updated_at DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updated_by String?  @map("updated_by")
+
+  @@id([type, config_key])
+  @@index([type])
+  @@map("thing_config_template")
+}
+
+/// Per-Thing config override (whole-key JSON replacement). Sits above
+/// ThingConfigTemplate in the cascade: thing.desired = override[k] if
+/// present else template[type, k]. Source of truth for the override layer;
+/// thing.desired is the merged wire-format cache recomputed on every
+/// override write/clear. Blacklist (credentials, virtual_keys) enforced in
+/// CP admin handler via packages/shared/configtypes/override_policy.go.
+model ThingConfigOverride {
+  thing_id            String    @map("thing_id")
+  config_key          String    @map("config_key")
+  /// Full desired state for this Thing's (config_key) — replaces template.state for this Thing.
+  state               Json
+  /// thing_config_template.version snapshotted at override creation; staleness =
+  /// current template.version > template_ver_at_set.
+  template_ver_at_set BigInt    @map("template_ver_at_set")
+  /// Actor identifier (user id / email / "system:override-expiry-job").
+  set_by              String    @map("set_by")
+  set_at              DateTime  @default(now()) @map("set_at") @db.Timestamptz(3)
+  /// Human-readable rationale, max 500 chars (DB-level CHECK + handler-level validation).
+  reason              String?   @db.VarChar(500)
+  /// NULL = permanent. Non-NULL must satisfy expires_at > set_at (CHECK).
+  expires_at          DateTime? @map("expires_at") @db.Timestamptz(3)
+  /// True for break-glass writes (configKey == "killswitch" or reason starts with "break-glass:").
+  emergency_override  Boolean   @default(false) @map("emergency_override")
+
+  thing Thing @relation(fields: [thing_id], references: [id], onDelete: Cascade)
+
+  @@id([thing_id, config_key])
+  @@index([thing_id])
+  @@index([set_at(sort: Desc)])
+  @@map("thing_config_override")
+}
+
+/// Insert-only audit trail of admin-initiated config changes flowing through Hub.
+/// Written by Hub's config update handler when it receives a change from Control Plane.
+model ConfigChangeEvent {
+  id                 String   @id @default(uuid())
+  timestamp          DateTime @default(now()) @db.Timestamptz(3)
+  thing_type         String   @map("thing_type") // "ai-gateway" | "compliance-proxy" | etc.
+  config_key         String   @map("config_key") // e.g. "killswitch"
+  action             String // "enable" | "disable" | "update" | "force_close" | etc.
+  actor_id           String   @map("actor_id") // NexusUser id or admin API key id
+  actor_name         String   @map("actor_name")
+  new_state          Json     @map("new_state") // snapshot of the new desired state
+  new_version        BigInt   @map("new_version")
+  source_ip          String?  @map("source_ip")
+  /// True when the change bypassed the normal Control Plane path (local
+  /// break-glass on the data-plane service). Flags rows for audit review.
+  emergency_override Boolean  @default(false) @map("emergency_override")
+
+  @@index([thing_type, timestamp])
+  @@index([config_key, timestamp])
+  @@index([actor_id, timestamp])
+  @@map("config_change_event")
+}
+
+/// Agent / service diagnostic events (warn / error / fatal / crash). Used for
+/// crash-cohort analysis and on-demand troubleshooting via diag-mode windows.
+model ThingDiagEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  thingId      String   @map("thing_id")
+  thingType    String   @map("thing_type")
+  occurredAt   DateTime @map("occurred_at") @db.Timestamptz(6)
+  receivedAt   DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  level        String
+  eventType    String   @map("event_type")
+  source       String
+  message      String
+  messageHash  String   @map("message_hash")
+  /// Cross-service correlation id (X-Nexus-Request-Id). Populated by the
+  /// SlogSink auto-extract path on every new diag emit; NULL for legacy
+  /// rows written before the column existed.
+  traceId      String?  @map("trace_id")
+  attrs        Json?
+  stackTrace   String?  @map("stack_trace")
+  repeatCount  Int      @default(1) @map("repeat_count")
+  agentVersion String?  @map("agent_version")
+  osInfo       Json?    @map("os_info")
+
+  thing Thing @relation(fields: [thingId], references: [id], onDelete: Cascade)
+
+  @@index([thingId, occurredAt(sort: Desc)])
+  @@index([level, occurredAt(sort: Desc)])
+  @@index([eventType, occurredAt(sort: Desc)])
+  @@index([messageHash, occurredAt(sort: Desc)])
+  @@index([thingId, traceId, occurredAt(sort: Desc)])
+  @@map("thing_diag_event")
+}
+
+/// Diagnostic-mode time window for a Thing. Within the window the Thing emits
+/// at full diagnostic verbosity. The diag-mode-expiry job closes expired rows.
+model ThingDiagModeWindow {
+  id        String   @id @default(uuid()) @db.Uuid
+  thingId   String   @map("thing_id")
+  startedAt DateTime @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime @map("ended_at") @db.Timestamptz(6)
+  setBy     String?  @map("set_by")
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  thing     Thing      @relation(fields: [thingId], references: [id], onDelete: Cascade)
+  setByUser NexusUser? @relation("ThingDiagModeWindowSetBy", fields: [setBy], references: [id], onDelete: SetNull)
+
+  @@index([thingId, startedAt(sort: Desc)])
+  @@index([endedAt])
+  @@map("thing_diag_mode_window")
+}
+
+/// E49 — Silence registry for diag-event noise. A row matches a
+/// `(messageHash, level)` pair so the /infrastructure/errors page can
+/// collapse known-noise issues and keep triage focused on what's new.
+/// `expiresAt` NULL = permanent silence; otherwise auto-clears past
+/// the timestamp via the partial index.
+model DiagSilence {
+  id          String    @id @default(uuid()) @db.Uuid
+  messageHash String    @map("message_hash")
+  level       String
+  silencedBy  String    @map("silenced_by")
+  silencedAt  DateTime  @default(now()) @map("silenced_at") @db.Timestamptz(3)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3)
+  reason      String?
+
+  @@index([messageHash, level], map: "diag_silence_lookup_idx")
+  @@map("diag_silence")
+}

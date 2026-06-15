@@ -10,7 +10,7 @@ This document covers the network-interception part of the COMPLIANCE sidebar sec
 
 **Create and detail.** The create form collects name, description, host pattern, host match type, adapter id (from the traffic-adapter catalog), an adapter config (JSON), the enabled flag, priority, a default path action, an on-adapter-error behavior, and a network zone. The detail page shows a summary card plus a nested Paths sub-table with add, edit, and delete. A path rule collects a path pattern (one per line), a match type, an action, a priority, a description, and an enabled flag; path rules are evaluated in priority order and fall back to the domain's default path action.
 
-**Key concepts.** A host or path match type is `EXACT`, `PREFIX`, `GLOB`, or `REGEX`. The action — both the domain default and each path rule — is `PROCESS` (run the traffic through the compliance pipeline), `PASSTHROUGH` (tunnel it through uninspected), or `BLOCK` (reject it). The on-adapter-error behavior is `FAIL_OPEN` or `FAIL_CLOSED`. The network zone is `PUBLIC` or `INTERNAL`.
+**Key concepts.** A host or path match type is `EXACT`, `PREFIX`, `GLOB`, or `REGEX`. The action — both the domain default and each path rule — is `PROCESS` (run the traffic through the compliance pipeline), `PASSTHROUGH` (tunnel it through uninspected), or `BLOCK` (reject it). The on-adapter-error behavior is `FAIL_OPEN` (the default — on an inspection/bump failure the flow is tunneled through uninspected so connectivity is preserved) or `FAIL_CLOSED` (the flow is refused on an inspection/bump failure rather than passing uninspected — use it for sensitive hosts where uninspected egress is unacceptable). The network zone is `PUBLIC` or `INTERNAL`.
 
 **Where the data comes from.** `interceptionDomainApi` — `list`, `get`, `create`, `update`, `delete`, `createPath`, `updatePath`, `deletePath`, `listTrafficAdaptersCatalog`.
 
@@ -20,7 +20,7 @@ This document covers the network-interception part of the COMPLIANCE sidebar sec
 
 **What you see.** One configuration form with a dry-run panel mounted below it.
 
-**Controls.** The form selects a backend mode. In configured-provider mode it picks a provider and model. In external-url mode it collects an external URL, an external credential, a model id, and custom header rows, and shows a warning that data leaves the platform. Both modes set a judge prompt template (resettable to the default), a timeout (1000 to 30000 ms), and a cache TTL (0 disables caching). The form also shows the read-only compliance webhook URL with a copy action. The dry-run panel picks a detector type, takes pasted content, runs it against the backend, and shows the decision, the judge latency, the cache hit or miss, and the request and response JSON.
+**Controls.** The form selects a backend mode. In configured-provider mode it picks a provider and model. In external-url mode it collects an https external URL, a model id, and custom header rows (the only way to authenticate to the external classifier — for example an `Authorization` header), and shows a warning that data leaves the platform. The external classifier never reuses a stored provider credential. Both modes set a judge prompt template (resettable to the default), a timeout (1000 to 30000 ms), and a cache TTL (0 disables caching). The form also shows the read-only compliance webhook URL with a copy action. The dry-run panel picks a detector type, takes pasted content, runs it against the backend, and shows the decision, the judge latency, the cache hit or miss, and the request and response JSON.
 
 **Key concepts.** The backend mode is `configured_provider` or `external_url`. Detector types are `prompt_injection`, `jailbreak`, `toxicity`, `secret_leak`, `tool_call_safety`, `hallucination`, `data_exfiltration`, and `custom`. A classifier decision is `approve`, `reject_hard`, `block_soft`, or `modify`.
 
@@ -60,4 +60,4 @@ This document covers the network-interception part of the COMPLIANCE sidebar sec
 - `packages/control-plane-ui/src/pages/compliance/payload-capture/SettingsPayloadCaptureTab.tsx` — Payload Capture settings
 - `packages/shared/storage/spillstore/` — spill storage for bodies above the inline threshold
 - `packages/control-plane-ui/src/api/` — `interceptionDomainApi`, `aiGuardApi`, `systemApi`
-- `tools/db-migrate/schema.prisma` — `InterceptionDomain`, `InterceptionPath`, `AIGuardConfig` models
+- `tools/db-migrate/schema/compliance.prisma` — `InterceptionDomain`, `InterceptionPath`, `AIGuardConfig` models

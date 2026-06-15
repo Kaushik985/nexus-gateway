@@ -1,0 +1,18 @@
+# M7 — OAuth / PKCE authserver
+
+> Phase 1 module audit (wave 2). Confirmed findings only (≥2/3 adversarial Opus verifiers). Base = post-arch-audit + SEC-M2-01 fix.
+
+
+## SEC-M7-01 — IAM evaluation hardcodes nexus:CurrentTime to empty string — time-windowed Deny conditions fail-open — **MEDIUM** (3/3)
+> **STATUS: FIXED** (2026-06-09) — `Engine.EvaluateMulti` now backfills `nexus:CurrentTime` centrally with `time.Now().UTC()` (fill-if-empty) so Date-conditioned Deny statements evaluate against the real wall clock for EVERY caller; removed the explicit empty `nexus:CurrentTime` sets at the 3 fail-open sites (sso-enroll + iamauth x2). Regression: `TestEngineEvaluate_BackfillsCurrentTime`.
+
+- **Persona:** A5 low-priv-insider / A2 holding a time-scoped grant; benefits anyone the admin tried to fence with a Date condition
+- **Invariant:** A policy Deny guarded by a DateLessThan/DateGreaterThan condition on nexus:CurrentTime must evaluate against the real wall-clock time at enrollment, so a time-fenced enrollment Deny actually denies during its window.
+
+**Preconditions.** (1) An IAM policy attached to a device-enrollment-capable principal carries a Deny statement conditioned on nexus:CurrentTime via DateLessThan/DateGreaterThan (e.g. 'Deny enrollment outside the maintenance window' / 'this temporary enroll grant expires at T'). (2) The principal reaches POST /api/agent/sso-enroll with a valid code+verifier.
+
+**Attack steps.** 1. SSOEnroll builds the IAM ConditionContext with a literal empty current time: condCtx := iam.ConditionContext{'nexus:SourceIp': c.RealIP(), 'nexus:CurrentTime': ''} (sso.go:243-246), then calls h.IAM.Evaluate (:247). 2. The condition evaluator parses the actual value with time.Parse(time.RFC3339, actual) (conditions.go:62-69); actual='' makes errA!=nil so DateLessThan/DateGreaterThan returns false. 3. A Deny statement only takes effect when its condition is TRUE; a false condition means the Deny does NOT match, so the time-fenced Deny is skipped and the underlying Allow (e.g. device-enrollment.enroll from a broad admin role) wins. 4. The engine never backfills CurrentTime — grep confirms no time.Now()/RFC3339 population in iam/engine.go, and the middleware comment 'filled at eval time if needed' (iamauth.go:55) is not honored. Result: every time-windowed enrollment Deny is unconditionally bypassed; a grant the admin believed expired at T or was restricted to a maintenance window remains usable around the clock.
+
+- **Affected:** packages/control-plane/internal/identity/sso/handler/sso.go:245 (hardcoded "nexus:CurrentTime": ""); evaluation at packages/control-plane/internal/identity/iam/conditions.go:62-69 (empty actual -> time.Parse error -> condition false); same empty pattern in packages/control-plane/internal/platform/middleware/iamauth.go:55,170 (broader than sso-enroll).
+- **Re-check probe.** rg -n 'nexus:CurrentTime"\s*:\s*""' packages/control-plane ; every hit is a fail-open site (expect zero after fix — the value must be time.Now().UTC().Format(time.RFC3339)). Behavioral test: attach a Deny on device-enrollment.enroll with Condition DateGreaterThan nexus:CurrentTime = <past timestamp> and assert SSOEnroll returns 403 iam_denied; today it returns 200 with a JWT.
+- **Remediation.** Populate nexus:CurrentTime with time.Now().UTC().Format(time.RFC3339) at the call site (or have the IAM engine inject it centrally before evaluating Date conditions) so time-bounded Deny statements evaluate correctly. Fix the shared pattern in iamauth.go:55,170 in the same change so the whole IAM surface stops fail-opening on time conditions.

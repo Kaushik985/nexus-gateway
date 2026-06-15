@@ -1,0 +1,874 @@
+[
+  {
+    "id": "4b0cec72-dca1-49d8-82fa-8f84259d9b90",
+    "name": "NexusAdminFullAccess",
+    "description": "Full platform administration — wildcard on every action and resource",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "platform-wildcard",
+          "Action": [
+            "admin:*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:52.726+00:00",
+    "updatedAt": "2026-05-10T16:41:52.726+00:00"
+  },
+  {
+    "id": "ea6be045-ad4b-473d-8b0d-4e732fa09825",
+    "name": "NexusAgentAccess",
+    "description": "Standard employee — role-identity marker for Agent-client traffic interception",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "ai-guard-invocation",
+          "Action": [
+            "ai-guard:invoke"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "*"
+          ]
+        },
+        {
+          "Sid": "device-heartbeat",
+          "Action": [
+            "device:heartbeat"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:54.085+00:00",
+    "updatedAt": "2026-05-10T16:41:54.085+00:00"
+  },
+  {
+    "id": "a5515700-1111-4222-8333-000000000001",
+    "name": "NexusAssistantUser",
+    "description": "Chat with Nexus user — grants use of the web assistant surface (admin:assistant.read/write). Attach to any principal who should operate the assistant; inference on the shared system VK is gated on these actions, so login alone cannot burn its budget.",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "assistant-use",
+          "Action": [
+            "admin:assistant.read",
+            "admin:assistant.write"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:assistant/*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-06-10T00:00:00+00:00",
+    "updatedAt": "2026-06-10T00:00:00+00:00"
+  },
+  {
+    "id": "56cc0c4a-1eb3-47c7-b9a8-a340c85292e6",
+    "name": "NexusGatewayInvokeAll",
+    "description": "Internal developer — role-identity marker for VK-authenticated AI Gateway invocation",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "gateway-model-invocation",
+          "Action": [
+            "gateway:invoke:*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:53.845+00:00",
+    "updatedAt": "2026-05-10T16:41:53.845+00:00"
+  },
+  {
+    "id": "2f7d4d48-3e7c-4e48-8c48-7a48d3e48e48",
+    "name": "NexusIncidentResponse",
+    "description": "On-call incident response — operate E48 emergency passthrough kill-switch, force-resync nodes, read traffic & metrics during active incidents",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-13",
+      "Statement": [
+        {
+          "Sid": "passthrough-emergency-enable",
+          "Action": [
+            "admin:passthrough.emergency-enable"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:passthrough/*"
+          ]
+        },
+        {
+          "Sid": "passthrough-read-write",
+          "Action": [
+            "admin:passthrough.read",
+            "admin:passthrough.write"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:passthrough/*"
+          ]
+        },
+        {
+          "Sid": "observability-incident-response",
+          "Action": [
+            "admin:observability.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:observability/*"
+          ]
+        },
+        {
+          "Sid": "alerts-acknowledge",
+          "Action": [
+            "admin:alert.read",
+            "admin:alert.acknowledge"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:alert/*"
+          ]
+        },
+        {
+          "Sid": "traffic-logs-forensic-read",
+          "Action": [
+            "admin:traffic-log.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:traffic-log/*"
+          ]
+        },
+        {
+          "Sid": "audit-logs-read",
+          "Action": [
+            "admin:audit-log.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:audit-log/*"
+          ]
+        },
+        {
+          "Sid": "nodes-incident-resync",
+          "Action": [
+            "admin:node.read",
+            "admin:node.force-resync"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:node/*"
+          ]
+        },
+        {
+          "Sid": "kill-switch-toggle",
+          "Action": [
+            "admin:kill-switch.toggle"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:kill-switch/*"
+          ]
+        },
+        {
+          "Sid": "settings-read-for-nav",
+          "Action": [
+            "admin:settings.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:settings/*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-13T16:09:24.221+00:00",
+    "updatedAt": "2026-05-13T16:09:24.221+00:00"
+  },
+  {
+    "id": "d808273b-8816-4795-a9ce-4f63e5a07543",
+    "name": "NexusProviderAdminAccess",
+    "description": "AI Gateway operators — own providers, models, credentials, virtual keys, routing, quotas",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "providers-admin",
+          "Action": [
+            "admin:provider.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:provider/*"
+          ]
+        },
+        {
+          "Sid": "models-admin",
+          "Action": [
+            "admin:model.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:model/*"
+          ]
+        },
+        {
+          "Sid": "model-pricing-admin",
+          "Action": [
+            "admin:model-pricing.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:model-pricing/*"
+          ]
+        },
+        {
+          "Sid": "credentials-admin",
+          "Action": [
+            "admin:credential.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:credential/*"
+          ]
+        },
+        {
+          "Sid": "virtual-keys-admin",
+          "Action": [
+            "admin:virtual-key.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:virtual-key/*"
+          ]
+        },
+        {
+          "Sid": "routing-rules-admin",
+          "Action": [
+            "admin:routing-rule.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:routing-rule/*"
+          ]
+        },
+        {
+          "Sid": "quota-policies-admin",
+          "Action": [
+            "admin:quota-policy.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:quota-policy/*"
+          ]
+        },
+        {
+          "Sid": "quota-overrides-admin",
+          "Action": [
+            "admin:quota-override.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:quota-override/*"
+          ]
+        },
+        {
+          "Sid": "quota-analytics-read",
+          "Action": [
+            "admin:quota-analytics.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:quota-analytics/*"
+          ]
+        },
+        {
+          "Sid": "analytics-read",
+          "Action": [
+            "admin:analytics.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:analytics/*"
+          ]
+        },
+        {
+          "Sid": "traffic-logs-read",
+          "Action": [
+            "admin:traffic-log.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:traffic-log/*"
+          ]
+        },
+        {
+          "Sid": "prompt-cache-admin",
+          "Action": [
+            "admin:prompt-cache.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:prompt-cache/*"
+          ]
+        },
+        {
+          "Sid": "hooks-admin",
+          "Action": [
+            "admin:hook.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:hook/*"
+          ]
+        },
+        {
+          "Sid": "rule-packs-admin",
+          "Action": [
+            "admin:rule-pack.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:rule-pack/*"
+          ]
+        },
+        {
+          "Sid": "orgs-manage-no-delete",
+          "Action": [
+            "admin:organization.read",
+            "admin:organization.create",
+            "admin:organization.update"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:organization/*"
+          ]
+        },
+        {
+          "Sid": "projects-manage-no-delete",
+          "Action": [
+            "admin:project.read",
+            "admin:project.create",
+            "admin:project.update"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:project/*"
+          ]
+        },
+        {
+          "Sid": "alerts-read",
+          "Action": [
+            "admin:alert.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:alert/*"
+          ]
+        },
+        {
+          "Sid": "audit-logs-read-and-export",
+          "Action": [
+            "admin:audit-log.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:audit-log/*"
+          ]
+        },
+        {
+          "Sid": "revocations-read",
+          "Action": [
+            "admin:revocation.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:revocation/*"
+          ]
+        },
+        {
+          "Sid": "nodes-ai-gateway-ops",
+          "Action": [
+            "admin:node.read",
+            "admin:node.write-override",
+            "admin:node.force-resync"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:node/*"
+          ]
+        },
+        {
+          "Sid": "api-keys-read",
+          "Action": [
+            "admin:api-key.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:api-key/*"
+          ]
+        },
+        {
+          "Sid": "device-enrollment-enroll",
+          "Action": [
+            "admin:device-enrollment.enroll"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam::iam:device-enrollment"
+          ]
+        },
+        {
+          "Sid": "passthrough-read",
+          "Action": [
+            "admin:passthrough.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:passthrough/*"
+          ]
+        },
+        {
+          "Sid": "passthrough-write",
+          "Action": [
+            "admin:passthrough.write"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:passthrough/*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:53.251+00:00",
+    "updatedAt": "2026-05-13T16:09:24.221+00:00"
+  },
+  {
+    "id": "15a8355b-8818-4114-bf97-8a699a74f6e3",
+    "name": "NexusSecurityAdminAccess",
+    "description": "Security & compliance team — owns compliance pipeline, audit, alerts, incident response",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "hooks-admin",
+          "Action": [
+            "admin:hook.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:hook/*"
+          ]
+        },
+        {
+          "Sid": "rule-packs-admin",
+          "Action": [
+            "admin:rule-pack.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:rule-pack/*"
+          ]
+        },
+        {
+          "Sid": "compliance-exemptions-manage",
+          "Action": [
+            "admin:compliance-exemption.read",
+            "admin:compliance-exemption.update",
+            "admin:compliance-exemption.delete",
+            "admin:compliance-exemption.reject"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:compliance-exemption/*"
+          ]
+        },
+        {
+          "Sid": "interception-domains-admin",
+          "Action": [
+            "admin:interception-domain.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:interception-domain/*"
+          ]
+        },
+        {
+          "Sid": "dsar-lifecycle",
+          "Action": [
+            "admin:dsar.read",
+            "admin:dsar.create",
+            "admin:dsar.update",
+            "admin:dsar.fulfill"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:dsar/*"
+          ]
+        },
+        {
+          "Sid": "compliance-reports-read",
+          "Action": [
+            "admin:compliance-report.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:compliance-report/*"
+          ]
+        },
+        {
+          "Sid": "payload-capture-admin",
+          "Action": [
+            "admin:payload-capture.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:payload-capture/*"
+          ]
+        },
+        {
+          "Sid": "alerts-admin",
+          "Action": [
+            "admin:alert.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:alert/*"
+          ]
+        },
+        {
+          "Sid": "audit-logs-read-and-export",
+          "Action": [
+            "admin:audit-log.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:audit-log/*"
+          ]
+        },
+        {
+          "Sid": "revocations-read",
+          "Action": [
+            "admin:revocation.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:revocation/*"
+          ]
+        },
+        {
+          "Sid": "kill-switch-admin",
+          "Action": [
+            "admin:kill-switch.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:kill-switch/*"
+          ]
+        },
+        {
+          "Sid": "ai-guard-config-admin",
+          "Action": [
+            "admin:ai-guard-config.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:compliance:*:ai-guard-config/*"
+          ]
+        },
+        {
+          "Sid": "observability-incident-response",
+          "Action": [
+            "admin:observability.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:observability/*"
+          ]
+        },
+        {
+          "Sid": "nodes-incident-response",
+          "Action": [
+            "admin:node.read",
+            "admin:node.force-resync"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:node/*"
+          ]
+        },
+        {
+          "Sid": "users-read-for-audit",
+          "Action": [
+            "admin:user.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:user/*"
+          ]
+        },
+        {
+          "Sid": "iam-policies-read-for-audit",
+          "Action": [
+            "admin:iam-policy.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:iam-policy/*"
+          ]
+        },
+        {
+          "Sid": "iam-groups-read-for-audit",
+          "Action": [
+            "admin:iam-group.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:iam-group/*"
+          ]
+        },
+        {
+          "Sid": "orgs-read-for-audit",
+          "Action": [
+            "admin:organization.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:organization/*"
+          ]
+        },
+        {
+          "Sid": "projects-read-for-audit",
+          "Action": [
+            "admin:project.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:project/*"
+          ]
+        },
+        {
+          "Sid": "api-keys-read",
+          "Action": [
+            "admin:api-key.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:api-key/*"
+          ]
+        },
+        {
+          "Sid": "settings-read-for-nav",
+          "Action": [
+            "admin:settings.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:platform:*:settings/*"
+          ]
+        },
+        {
+          "Sid": "identity-provider-read-for-audit",
+          "Action": [
+            "admin:identity-provider.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:iam:*:identity-provider/*"
+          ]
+        },
+        {
+          "Sid": "traffic-logs-forensic-read",
+          "Action": [
+            "admin:traffic-log.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:traffic-log/*"
+          ]
+        },
+        {
+          "Sid": "analytics-forensic-read",
+          "Action": [
+            "admin:analytics.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:analytics/*"
+          ]
+        },
+        {
+          "Sid": "quota-analytics-forensic-read",
+          "Action": [
+            "admin:quota-analytics.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:quota-analytics/*"
+          ]
+        },
+        {
+          "Sid": "agent-devices-forensic-read",
+          "Action": [
+            "admin:agent-device.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:agent:*:agent-device/*"
+          ]
+        },
+        {
+          "Sid": "device-groups-admin",
+          "Action": [
+            "admin:device-group.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:agent:*:device-group/*"
+          ]
+        },
+        {
+          "Sid": "device-defaults-admin",
+          "Action": [
+            "admin:device-defaults.*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:agent:*:device-defaults/*"
+          ]
+        },
+        {
+          "Sid": "routing-rules-simulate-only",
+          "Action": [
+            "admin:routing-rule.simulate"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:routing-rule/*"
+          ]
+        },
+        {
+          "Sid": "passthrough-read",
+          "Action": [
+            "admin:passthrough.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:passthrough/*"
+          ]
+        },
+        {
+          "Sid": "passthrough-write",
+          "Action": [
+            "admin:passthrough.write"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:passthrough/*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:53.014+00:00",
+    "updatedAt": "2026-05-13T16:09:24.221+00:00"
+  },
+  {
+    "id": "39397464-ea15-4041-8029-482f7ad2b7f3",
+    "name": "NexusSuperAdmin",
+    "description": "Full access to all Nexus Gateway resources and actions",
+    "type": "managed",
+    "document": {
+      "Version": "2026-04-20",
+      "Statement": [
+        {
+          "Sid": "FullAccess",
+          "Action": [
+            "*"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:*:*:*/*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-08T14:46:24.533+00:00",
+    "updatedAt": "2026-05-10T16:41:38.855+00:00"
+  },
+  {
+    "id": "a677c0bb-dc15-450f-ad19-ff1ab363318f",
+    "name": "NexusViewerAccess",
+    "description": "Read-only auditor — every read across the platform plus routing simulation",
+    "type": "managed",
+    "document": {
+      "Version": "2026-05-12",
+      "Statement": [
+        {
+          "Sid": "global-read",
+          "Action": [
+            "admin:*.read"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "*"
+          ]
+        },
+        {
+          "Sid": "routing-rules-simulate-only",
+          "Action": [
+            "admin:routing-rule.simulate"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+            "nrn:nexus:gateway:*:routing-rule/*"
+          ]
+        }
+      ]
+    },
+    "enabled": true,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:53.532+00:00",
+    "updatedAt": "2026-05-10T16:41:53.532+00:00"
+  }
+]

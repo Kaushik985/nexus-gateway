@@ -6,11 +6,11 @@ Documentation hub. The text below tells you which subtree to open by what you're
 
 | Goal | Open |
 |---|---|
+| See the product without deploying it | [`users/product/tour.md`](./users/product/tour.md) — screenshot tour |
 | Use the gateway as an admin / integrator / end-user | [`users/`](./users/) |
 | Understand how a subsystem works before editing code | [`developers/architecture/`](./developers/architecture/) — per-area architecture docs (the trigger map indexes every doc by editing area) |
 | Build a feature (SDD pipeline, conventions, handoff) | [`developers/workflow/`](./developers/workflow/) |
 | Read formal specs (requirements + SDD per epic) | [`developers/specs/`](./developers/specs/) |
-| See what's in flight or queued | [`developers/roadmap.md`](./developers/roadmap.md) |
 | Run the gateway in production | [`operators/`](./operators/) |
 
 ## Layout
@@ -20,7 +20,7 @@ docs/
 ├── README.md             ← you are here
 ├── users/                ← admin / integrator / end-user surface
 │   ├── README.md
-│   ├── product/          ← overview, features, deployment models, competitive landscape
+│   ├── product/          ← overview, features, deployment models
 │   └── features/         ← per-UI-section docs (cp-ui, agent-ui) and cross-service flows
 ├── developers/           ← contributor surface
 │   ├── README.md
@@ -28,8 +28,7 @@ docs/
 │   │   ├── services/        ← per-service: agent, ai-gateway, compliance-proxy, control-plane, hub
 │   │   └── cross-cutting/   ← foundation, observability, safety, shared, storage, ui
 │   ├── workflow/         ← SDD pipeline, conventions, local-dev debugging, testing
-│   ├── specs/            ← per-epic requirements + SDD bundles
-│   └── roadmap.md
+│   └── specs/            ← per-epic requirements + SDD bundles
 └── operators/            ← SRE / production surface
     └── ops/
         └── runbooks/

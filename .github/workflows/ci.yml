@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Terminology guard self-test (detector canary)
+        run: ./scripts/check-terminology.sh --selftest
       - name: Terminology check
         run: ./scripts/check-terminology.sh
 
@@ -40,10 +42,6 @@ jobs:
       # --nightly, the L5 scenarios) are deliberately NOT wired here. The e2e
       # gate is run MANUALLY, post-release, under human control — not as an
       # automatic CI/CD gate. Invoke it on demand via tests/run-all.sh.
-
-      # Migration timestamp uniqueness (2026-05-14 audit-gap scar).
-      - name: Migration timestamp uniqueness
-        run: bash scripts/check-migration-timestamps.sh
 
       # i18n key parity across en/zh/es bundles.
       - name: i18n parity
@@ -78,8 +76,11 @@ jobs:
       - name: No inline secrets in yaml (strict)
         run: node scripts/check-no-yaml-secrets.mjs --strict
 
-  control-plane-ui:
-    name: Control Plane UI - Type Check, Test, Build
+      - name: File-size ratchet (full sweep)
+        run: bash scripts/check-file-size-ratchet.sh
+
+  frontend:
+    name: Frontend - Type Check, Test, Build (control-plane-ui + ui-shared)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -94,28 +95,43 @@ jobs:
         run: node scripts/check-json-dupkeys.mjs
       - name: Design-token compliance (theme/mode safety)
         run: node scripts/check-design-tokens.mjs
+      # ui-shared is consumed by control-plane-ui (and the agent UI); gate its
+      # own type-check + unit tests, not just the boundary lint in governance.
+      - name: ui-shared — type check + test
+        run: cd packages/ui-shared && npm run typecheck && npm test
       - run: cd packages/control-plane-ui && npx tsc --noEmit
       - run: cd packages/control-plane-ui && npx vitest run
       - run: cd packages/control-plane-ui && npx vite build
 
-  go-services:
-    name: Go Services - Build & Test
+  # Go build+test lives entirely in the `Go CI` workflow (go-ci.yml): a
+  # path-filtered, per-module matrix that builds + `go test -race` + `GOWORK=off`
+  # builds ALL eight modules (and tests every module on a shared/ or go.work
+  # change), plus lint, core-path coverage, the Wails agent UI, and workspace
+  # integrity. A partial always-on duplicate here only re-ran a subset and gave
+  # a misleading "Go - Build & Test" signal, so it was removed.
+
+  db-migrate:
+    name: DB Migrate - Seed Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-node@v6
         with:
-          go-version: stable
-      - name: Build all Go packages
-        run: go build ./packages/shared/... ./packages/nexus-hub/... ./packages/control-plane/... ./packages/ai-gateway/... ./packages/compliance-proxy/...
-      - name: Test shared
-        run: go test -race -count=1 ./packages/shared/...
-      - name: Test nexus-hub
-        run: go test -race -count=1 ./packages/nexus-hub/...
-      - name: Test control-plane
-        run: go test -race -count=1 ./packages/control-plane/...
-      - name: Test ai-gateway
-        run: go test -race -count=1 ./packages/ai-gateway/...
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # The seed modules import @prisma/client; generate it from the schema/
+      # folder. Codegen does not connect, but prisma.config.ts eagerly resolves
+      # DATABASE_URL, so a placeholder is supplied for this step only.
+      - name: Prisma generate (schema/ folder)
+        run: cd tools/db-migrate && npx prisma generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?sslmode=disable
+      # Reference/bootstrap/demo re-stamp unit tests run here. DATABASE_URL is
+      # intentionally NOT set so the *.integration arms self-skip (DB-backed,
+      # covered by live runs); setting it would make them try to connect.
+      - name: Seed unit tests
+        run: cd tools/db-migrate && npm test
 
   security-scan:
     name: Security Scanning

@@ -79,10 +79,18 @@ envelope carries a matching `adapter_type`. It is described in
 A per-host package that implements **both** interfaces is registered as a
 Tier-1 normalizer (a per-host confirmed parse with higher confidence). A
 package that implements only `traffic.Adapter` still works at runtime; at audit
-time it falls through to the Tier-2 pattern probe wired by `extract.WireTier2`.
-Promoting an adapter from Tier 2 to Tier 1 is a one-method change — add
-`Normalize` — and `RegisterTier1AdapterNormalizers` picks it up automatically by
-type assertion.
+time the registry decodes its traffic by wire-format key, content sniff, or
+the Tier-2 probe. The standard-API vendor adapters (`adapters/api/*`)
+intentionally carry no `Normalize` method — the shared codecs own those wire
+keys. Consumer/IDE adapters whose wire IS a standard API implement `Normalize`
+as a thin delegation to the shared codec singletons (`codecs.SharedOpenAIChat()`
+/ `SharedAnthropicMessages()` / `SharedGeminiGenerate()`), re-stamping
+`DetectedSpec` with the adapter ID so audit rows keep per-host provenance while
+the decode fidelity stays codec-grade. Only true consumer-web wire shapes
+(chatgpt-web, claude-web requests, character.ai flat prompts) go through the
+`extract.NormalizeForAdapter` pattern probe. Promoting an adapter to Tier 1 is
+a one-method change — add `Normalize` — and `RegisterTier1AdapterNormalizers`
+picks it up automatically by type assertion.
 
 ### What an adapter extracts
 
@@ -186,21 +194,23 @@ in [normalization-architecture.md](../ai-gateway/normalization-architecture.md) 
 
 ## 7. Sharp edge: keep the Tier-1 registration lock-step
 
-The per-host adapters and the dedicated AI normalizers
-(`RegisterDefaultAIBuiltins` in `normalize/codecs/register.go`) register
-overlapping wire keys. `RegisterTier1AdapterNormalizers` skips every ID listed
-in `alreadyCoveredByAIBuiltins` (`builtins.go`) precisely because the dedicated
-normalizer parses that wire more precisely. Any alias added to the
-OpenAI-compatible / Anthropic / Gemini blocks in `codecs/register.go` must also
-be added to `alreadyCoveredByAIBuiltins`, or the frozen registry rejects a
-duplicate registration at startup. A registration test guards the invariant.
+The dedicated AI normalizers (`RegisterDefaultAIBuiltins` in
+`normalize/codecs/register.go`) own the wire-format keys (`anthropic`,
+`openai-compat`, `gemini`, every OpenAI-compatible alias).
+`RegisterTier1AdapterNormalizers` registers only the per-host adapters that
+implement `Normalize` — consumer/IDE surfaces whose IDs are disjoint from the
+codec key set. Adding a `Normalize` method to a standard-API vendor adapter
+whose ID a codec already owns makes the registry panic with a duplicate
+registration at startup — that panic is the lock-step guard, mechanized by
+`TestTier1AdapterNormalizers_DisjointFromCodecKeys`
+(`adapters/register_builtins_test.go`).
 
 ## References
 
 - `packages/shared/traffic/adapter.go` — `traffic.Adapter` interface, `AdapterFactory`, `AdapterRegistry`
 - `packages/shared/traffic/types.go` — `NormalizedContent`, `ErrRewriteUnsupported`
 - `packages/shared/traffic/detect.go` — `RequestMeta`, `UsageMeta`, `UsageStatus`
-- `packages/shared/traffic/adapters/builtins.go` — built-in catalog, `RegisterBuiltins`, `RegisterTier1AdapterNormalizers`, `alreadyCoveredByAIBuiltins`
+- `packages/shared/traffic/adapters/builtins.go` — built-in catalog, `RegisterBuiltins`, `RegisterTier1AdapterNormalizers`
 - `packages/shared/traffic/adapters/api/`, `web/`, `ide/`, `generic/` — per-surface adapter packages
 - `packages/shared/traffic/adapters/web/chatgptweb/` — single-file consumer-surface adapter template
 - `packages/shared/transport/normalize/extract/detector.go` — Tier-2 `NonJSONDetector` framework

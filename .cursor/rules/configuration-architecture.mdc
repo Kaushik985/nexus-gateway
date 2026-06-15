@@ -5,7 +5,7 @@ globs:
   - "**/*.yml"
   - "packages/shared/schemas/configkey/**"
   - "packages/**/config/**"
-  - "tools/db-migrate/schema.prisma"
+  - "tools/db-migrate/schema/**"
   - "tools/db-migrate/seed/**"
 ---
 
@@ -31,7 +31,7 @@ Any PR that adds / removes / renames a YAML field, env variable, `thing_config_t
 
 ### Removing a configKey
 
-Hard-delete it (pre-GA policy — see `no-backward-compatibility.mdc`). No `@deprecated`, no parallel paths.
+Hard-delete it when it is internal-only / unshipped; if the config key has shipped to agents, migrate it with a deprecation window (see `release-compat-policy.mdc`). No `@deprecated` kept alive, no parallel paths.
 
 ## What you MUST NOT do
 

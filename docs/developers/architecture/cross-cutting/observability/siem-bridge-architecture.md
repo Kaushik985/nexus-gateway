@@ -49,12 +49,19 @@ Each `Poll` cycle:
    collapses the active sink to nil, and the cycle becomes a no-op. This is what
    lets an admin enable or reconfigure SIEM and have it take effect within one poll
    interval, with no restart and no shadow plumbing.
-2. **Load checkpoints.** Two independent checkpoints live in `system_metadata`:
-   one for traffic events, one for admin events. A missing checkpoint defaults to
-   24 hours ago. The two cursors advance independently so a burst in one table does
+2. **Load checkpoints.** Two independent keyset checkpoints live in
+   `system_metadata`: one for traffic events, one for admin events. Each
+   checkpoint is a `(timestamp, id)` cursor stored as a JSON object
+   (`{"ts":…,"id":…}`); a missing checkpoint defaults to 24 hours ago with an
+   empty id. The two cursors advance independently so a burst in one table does
    not stall the other.
-3. **Query new rows.** Each table is queried for rows with `timestamp` after its
-   checkpoint, ordered ascending, limited to the batch size.
+3. **Query new rows.** Each table is queried for rows *after* its keyset cursor —
+   `WHERE timestamp > ts OR (timestamp = ts AND id > id)` — ordered by
+   `(timestamp, id)` ascending, limited to the batch size. The `id` tiebreaker is
+   load-bearing: `timestamp` has millisecond resolution, so a timestamp-only
+   cursor would permanently skip rows that share the boundary millisecond beyond
+   the batch limit. Pairing the timestamp with the row id makes the cursor total,
+   so no boundary row is ever lost.
 4. **Classify** each row into an `eventType` (see [§4](#4-classification)).
 5. **Filter** the merged batch by the configured `eventTypes` whitelist (an empty
    whitelist forwards everything).
@@ -91,15 +98,49 @@ retried on the next cycle. The single HTTP sink is vendor-agnostic — Splunk HE
 Datadog, Elastic, and generic webhooks are all HTTP endpoints distinguished only by
 URL and headers.
 
+**Egress SSRF guard.** The webhook URL is operator-supplied, so the sink client
+installs a dial-time SSRF guard (`nexushttp.BlockPrivateDialControl`) that refuses
+to connect to a loopback / RFC-1918 private / link-local (incl. cloud-metadata
+169.254.169.254) / ULA address. The check runs on the concrete resolved address,
+so it also defeats DNS-rebinding at delivery time. Without it, a principal who can
+reconfigure the URL could exfiltrate the org-wide audit stream to an internal host
+or pivot into the Hub's network. The guard is scoped to the sink client only — the
+Hub still dials its own private dependencies normally — and shares one
+implementation with the OIDC discovery fetcher (single source of truth in
+`packages/shared/transport/http/ssrf.go`).
+
 The payload shape is chosen by a `Formatter`
 (`packages/nexus-hub/internal/observability/siem/formatter.go`). Three formats are
 available, selected by the `format` config field:
 
 - `json` (default) — the batch as a JSON array.
 - `cef` — one ArcSight Common Event Format line per event, with a severity derived
-  from the event type.
+  from the event type (see below).
 - `syslog` — one RFC 5424 syslog line per event, facility `local0`, with a severity
-  derived from the event type.
+  derived from the event type (see below).
+
+CEF/syslog severity is derived from the **canonical event taxonomy** the classifier
+actually emits, not from string prefixes
+(`packages/nexus-hub/internal/observability/siem/severity.go`). The resource half
+of the `eventType` (the part before the first `.`) is looked up in the canonical
+IAM catalog and mapped by service: IAM and platform resources (identity, policy,
+node, settings) and the secret-management `credential` resource score elevated;
+kill-switch and emergency-passthrough toggles score critical; authentication
+failure scores high; compliance config and blocked traffic score moderate; gateway
+data-plane events and rate/budget signals score low; everything else defaults to
+informational. Keying on the catalog means a new resource inherits a sensible
+severity automatically and a privilege-grade mutation can never be exported as
+low-severity noise.
+
+The line-oriented `cef` and `syslog` formats are hardened against log injection: every
+event field is passed through the format-specific escaper and then a control-character
+sanitiser before it is written. Carriage return and line feed are rendered as the literal
+two-character sequences `\r` and `\n`, and all other control bytes are dropped, so an
+attacker-controlled value — for example the unauthenticated email surfaced as the actor
+label on a failed admin login — cannot embed a newline to forge an additional CEF or
+syslog record. The newline that separates records in a batch is emitted by the formatter
+itself, never sourced from event data. The `json` format is inherently safe because the
+encoder escapes control characters.
 
 ## 4. Classification
 
@@ -109,9 +150,19 @@ Each row is mapped to an `eventType` string before filtering and forwarding
 - **Traffic events** map from the hook decision and reason code: a block flagged
   `rate_limited` becomes `traffic.rate_limited`, a block flagged `budget_exceeded`
   becomes `traffic.budget_exceeded`, any other block becomes `traffic.request_blocked`.
-- **Admin events** map to `{entityType}.{action}` (for example `virtualKey.create`).
+- **Admin events** map to the canonical `{resource}.{verb}` form (for example
+  `virtual-key.create`), matching the IAM catalog so the same string appears in IAM
+  policy and in the SIEM filter.
+- **Legacy-shaped admin events** are mapped to their cataloged identities so they
+  are not silently dropped by a whitelist (and so they appear in the picker):
+  login rows (`admin.login.failed` / `admin.login.succeeded`, whose entityType is
+  absent or inconsistent) become `auth.login_failure` / `auth.login_success`, and
+  node override / break-glass writes (`thing` / `thing_override_set`) become
+  `node.write-override`.
 
 The `eventTypes` whitelist on the config filters which of these the bridge forwards.
+Because every emitted event type is cataloged and offered in the picker, enabling a
+whitelist never silently drops a class of security events.
 
 ## 5. Scheduler integration
 
@@ -127,14 +178,29 @@ begins forwarding — no restart required.
 
 The Control Plane owns the admin API
 (`packages/control-plane/internal/observability/siem/handler/`). It is reached
-under the admin API group and gated by IAM on the audit-log resource:
+under the admin API group. **Read** is gated on the audit-log resource; the
+**egress-mutating** verbs are gated on the higher-blast-radius `settings:write`
+tier:
 
 | Route | Verb | IAM | Purpose |
 | --- | --- | --- | --- |
 | `/settings/siem` | GET | audit-log read | Read the current config (auth headers masked) |
-| `/settings/siem` | PUT | audit-log write | Save the config (validates format and URL; audit-logged) |
-| `/settings/siem/test` | POST | audit-log write | Send a one-off probe event to the configured endpoint |
+| `/settings/siem` | PUT | **settings write** | Save the config (validates format and URL; audit-logged) |
+| `/settings/siem/test` | POST | **settings write** | Send a one-off probe event to the configured endpoint |
 | `/settings/siem/event-types` | GET | audit-log read | List selectable event types for the filter picker |
+
+The split is deliberate: reconfiguring the egress redirects the **entire org's**
+audit stream to an operator-supplied URL (and the probe POST is an SSRF primitive
+— see the egress guard in §3), so it is a system-integration setting, not an
+audit-log record operation. Gating the mutating verbs on `settings:write` (the
+verb also used by `health:reset`) means a narrow `audit-log:write` grant can no
+longer point the audit firehose at an attacker endpoint, while audit viewers keep
+read-only visibility of the redacted config. The CP UI mirrors this: the SIEM tab
+loads under `audit-log:read` but the Save/Test affordances render only with
+`settings:write`, keeping UI `allowedActions` in lockstep with the handler gate.
+The `/settings/siem/test` response reflects only a generic reachable/unreachable
+boolean — never the raw upstream status code or transport error — so it cannot be
+used as an oracle to fingerprint internal endpoints.
 
 The config — `enabled`, `url`, `format`, `headers`, and the `eventTypes` whitelist —
 is persisted as the `siem.config` row in `system_metadata`. The PUT validates that
@@ -143,9 +209,12 @@ GET masks the `Authorization` and `x-api-key` header values so secrets are never
 echoed back to the UI. Saving the config is itself recorded in the admin audit log.
 
 The event-type picker is sourced from `/settings/siem/event-types`, which returns
-the security-relevant `traffic.*` types plus one entry per `(resource, verb)` pair
-in the canonical IAM catalog, so the admin UI can offer a service → resource →
-event-type drill-down that mirrors the IAM policy editor.
+the security-relevant `traffic.*` types, the `auth.login_failure` /
+`auth.login_success` login types, and one entry per `(resource, verb)` pair in the
+canonical IAM catalog (which already includes `node.write-override`), so the admin
+UI can offer a service → resource → event-type drill-down that mirrors the IAM
+policy editor. The hand-listed `traffic.*` and `auth.*` entries cover the
+classifier outputs that do not correspond to a catalog `(resource, verb)` pair.
 
 Because the bridge re-reads `siem.config` every poll cycle, a saved change
 propagates within one poll interval without any restart or shadow push.
@@ -164,6 +233,7 @@ across services. The correlation-key model is described in
 - `packages/nexus-hub/internal/observability/siem/sink.go` — Sink interface + HTTPSink
 - `packages/nexus-hub/internal/observability/siem/formatter.go` — JSON / CEF / syslog formatters
 - `packages/nexus-hub/internal/observability/siem/classify.go` — event-type classification + whitelist filter
+- `packages/nexus-hub/internal/observability/siem/severity.go` — taxonomy-derived CEF/syslog severity
 - `packages/nexus-hub/internal/jobs/defs/audit/siem_bridge.go` — scheduler job wrapper
 - `packages/control-plane/internal/observability/siem/handler/` — admin config API
 - `packages/control-plane-ui/src/pages/infrastructure/siem/SettingsSiemTab.tsx` — admin UI

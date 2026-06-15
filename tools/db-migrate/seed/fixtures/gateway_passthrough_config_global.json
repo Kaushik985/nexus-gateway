@@ -1,0 +1,15 @@
+[
+  {
+    "id": "singleton",
+    "enabled": false,
+    "config": {
+      "bypassCache": false,
+      "bypassHooks": false,
+      "bypassNormalize": false
+    },
+    "expires_at": null,
+    "enabled_by": "",
+    "reason": null,
+    "updated_at": "2026-05-13T16:14:25.934+00:00"
+  }
+]

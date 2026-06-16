@@ -94,14 +94,15 @@ systemd units' `ReadWritePaths=/var/lib/nexus` sandbox allowance.
 
 ## 4. Secret generation (`first-boot-secrets.sh`)
 
-Five environment variables MUST be unique-per-instance and identical across
-the four services that share them (see `.env.example` `[MUST MATCH]` tags):
+Six environment variables MUST be unique-per-instance and identical across
+the services that share them (see `.env.example` `[MUST MATCH]` tags):
 
 | Env var | Used by | Generation |
 |---|---|---|
 | `INTERNAL_SERVICE_TOKEN` | all 4 | `openssl rand -hex 32` |
+| `HUB_CONFIG_TOKEN` | control-plane, nexus-hub | `openssl rand -hex 32` (Hub config-write surface; Hub fails closed at boot if unset) |
 | `ADMIN_KEY_HMAC_SECRET` | control-plane, ai-gateway | `openssl rand -hex 32` |
-| `CREDENTIAL_ENCRYPTION_KEY` | control-plane, ai-gateway | `openssl rand -hex 32` (AES-256, 64 hex chars) |
+| `CREDENTIAL_ENCRYPTION_KEY` | control-plane, ai-gateway, nexus-hub | `openssl rand -hex 32` (AES-256, 64 hex chars; Hub encrypts alert-channel secrets at rest) |
 | `COMPLIANCE_PROXY_API_TOKEN` | control-plane, compliance-proxy | `openssl rand -hex 32` |
 | `AI_GATEWAY_API_TOKEN` | ai-gateway only | `openssl rand -hex 32` |
 

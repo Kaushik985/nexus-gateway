@@ -318,6 +318,18 @@ func (h *Handler) UpdateCredential(c echo.Context) error {
 		}
 	}
 
+	// A replaced upstream key invalidates any open circuit: an auth_fail circuit
+	// (3× 401/403 from the old/bad key) never auto-recovers — it has no probe
+	// schedule and stays open until an explicit reset. Auto-close it on the key
+	// swap so a fixed credential re-enters the pool without a separate manual
+	// circuit-reset. Best-effort: the key update already succeeded, and a
+	// rate_limit circuit self-heals on its own cooldown regardless.
+	if apiKeyUpdated {
+		if err := h.clearCredentialCircuit(ctx, id); err != nil {
+			h.logger.Warn("update credential: circuit auto-clear failed", "id", id, "error", err)
+		}
+	}
+
 	if h.hub != nil {
 		if err := h.hub.InvalidateConfigE(ctx, "ai-gateway", "credentials"); err != nil {
 			h.logger.Error("update credential: hub invalidate failed", "id", id, "error", err)
@@ -427,21 +439,9 @@ func (h *Handler) CircuitReset(c echo.Context) error {
 	// and rehydrate. A failure here is fatal to the reset (return 500); a stale
 	// Redis key alone self-heals (cooldown promote / reconcile), but a stale DB
 	// row does not.
-	if err := h.creds.ClearCircuit(ctx, id); err != nil {
+	if err := h.clearCredentialCircuit(ctx, id); err != nil {
 		h.logger.Error("circuit-reset: db clear failed", "credentialID", id, "error", err)
 		return c.JSON(http.StatusInternalServerError, errJSON("Failed to reset circuit", "server_error", "INTERNAL_ERROR"))
-	}
-	// Clear the live Redis hash so the gateway sees the credential as closed
-	// immediately, and drop any pending dirty marker so a concurrent flush
-	// cannot re-derive the just-cleared state. Best-effort: the DB is already
-	// authoritative and the Hub reconcile will converge any residue.
-	if h.redis != nil {
-		if err := h.redis.Del(ctx, credstate.CircuitKey(id)).Err(); err != nil {
-			h.logger.Warn("circuit-reset: redis del failed", "credentialID", id, "error", err)
-		}
-		if err := h.redis.SRem(ctx, credstate.CircuitDirtySet, id).Err(); err != nil {
-			h.logger.Warn("circuit-reset: redis dirty-set srem failed", "credentialID", id, "error", err)
-		}
 	}
 	ae := audit.EntryFor(c, iam.ResourceCredential, iam.VerbUpdate)
 	ae.EntityID = id
@@ -449,6 +449,27 @@ func (h *Handler) CircuitReset(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, errJSON("Audit failure", "server_error", "AUDIT_FAILURE"))
 	}
 	return c.JSON(http.StatusOK, map[string]any{"reset": true, "id": id})
+}
+
+// clearCredentialCircuit force-closes a credential's circuit breaker across both
+// stores: the durable Credential.circuit* DB columns (authoritative — the UI
+// badge and the Hub rehydrate-on-restart path read them) and the live Redis
+// cred:circuit:{id} hash + dirty marker the AI Gateway reads. Returns the DB
+// clear error (the authoritative half); Redis cleanup is best-effort and only
+// logged, since the DB is authoritative and the Hub reconcile converges residue.
+func (h *Handler) clearCredentialCircuit(ctx context.Context, id string) error {
+	if err := h.creds.ClearCircuit(ctx, id); err != nil {
+		return err
+	}
+	if h.redis != nil {
+		if err := h.redis.Del(ctx, credstate.CircuitKey(id)).Err(); err != nil {
+			h.logger.Warn("clear circuit: redis del failed", "credentialID", id, "error", err)
+		}
+		if err := h.redis.SRem(ctx, credstate.CircuitDirtySet, id).Err(); err != nil {
+			h.logger.Warn("clear circuit: redis dirty-set srem failed", "credentialID", id, "error", err)
+		}
+	}
+	return nil
 }
 
 // credentialWithCircuit is the API response shape for a single credential.

@@ -19,7 +19,8 @@ import (
 // `traffic_event.latency_breakdown` JSONB. Per-source applicability:
 //
 //	ai-gateway       → PhaseAuth, PhaseQuota, PhaseRouting, PhaseCacheLookup,
-//	                   PhaseReqAdapter, PhaseRespAdapter
+//	                   PhaseReqAdapter, PhaseRespAdapter, PhaseHookExtract,
+//	                   PhaseHookBuild, PhaseHookPipeline, PhaseHookRewrite
 //	compliance-proxy → PhaseConnSetup, PhaseTLSHandshake
 //	agent            → PhaseIntercept
 //
@@ -56,6 +57,32 @@ const (
 	// triaging "why is request latency >> upstream + our overhead?"
 	// scenarios where the audit emit path is the slow link.
 	PhaseAuditEmit Phase = "audit_emit_ms"
+
+	// Request-hooks stage sub-phases. RequestHooksMs (the per-hook
+	// self-timing sum) only covers the hooks' own Execute time; the framing
+	// work (content extraction, pipeline build, body rewrite) was previously
+	// untimed and unrepresented in latency_breakdown. A hook whose cost
+	// scales with body size (e.g. a full-body PII scan over a large prompt)
+	// would register near-zero in request_hooks_ms while its real cost lands
+	// in the framing segments; these keys make each segment attributable.
+	// (For small bodies these segments are sub-millisecond.)
+	//
+	//	PhaseHookExtract — adapter.ExtractRequest content extraction that
+	//	                   produces the Normalized payload hooks consume.
+	//	PhaseHookBuild   — resolver.BuildPipeline (config resolve + hook
+	//	                   instantiation).
+	//	PhaseHookPipeline — pipeline.Execute wall-clock. Named "pipeline"
+	//	                   (not "exec") to distinguish it from the
+	//	                   request_hooks_ms column, which sums each hook's
+	//	                   own self-timing; this is the whole-Execute
+	//	                   wall-clock and is ≥ that sum (the gap is
+	//	                   in-pipeline framework overhead between hooks).
+	//	PhaseHookRewrite — adapter.RewriteRequestBody reverse-encode on a
+	//	                   Modify decision (0 when no rewrite occurs).
+	PhaseHookExtract  Phase = "hook_extract_ms"
+	PhaseHookBuild    Phase = "hook_build_ms"
+	PhaseHookPipeline Phase = "hook_pipeline_ms"
+	PhaseHookRewrite  Phase = "hook_rewrite_ms"
 
 	// compliance-proxy phases.
 	PhaseConnSetup    Phase = "conn_setup_ms"

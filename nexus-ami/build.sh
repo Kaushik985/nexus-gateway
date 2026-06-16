@@ -67,8 +67,12 @@ cp -r "$ui_dist"/. "$ARTIFACTS_DIR/ui-dist/"
 
 echo "==> [build] bundling Prisma schema + seed..."
 cd "$REPO_ROOT/tools/db-migrate"
-cp schema.prisma                  "$ARTIFACTS_DIR/prisma/"
-cp package.json package-lock.json "$ARTIFACTS_DIR/prisma/"
+# Prisma schema is a directory of split *.prisma files (prisma.config.ts points
+# `schema: 'schema'` at it). No package-lock.json — the appliance runs
+# `npm install` (install-node-prisma.sh), not `npm ci`. No migrations/ dir —
+# 1.0 applies the schema with `prisma db push`.
+cp -r schema                      "$ARTIFACTS_DIR/prisma/schema"
+cp package.json                   "$ARTIFACTS_DIR/prisma/"
 cp -r seed                        "$ARTIFACTS_DIR/prisma/seed"
 cp prisma.config.ts               "$ARTIFACTS_DIR/prisma/"
 cp -r migrations                  "$ARTIFACTS_DIR/prisma/migrations" 2>/dev/null || true

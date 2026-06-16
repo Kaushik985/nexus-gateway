@@ -10,7 +10,10 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-nexus_gateway}
       TZ: UTC
       PGTZ: UTC
-    command: ["postgres", "-c", "timezone=UTC", "-c", "log_timezone=UTC"]
+    # max_connections=200: headroom above the sum of all service pools
+    # (~84) so a local high-concurrency run matches the appliance default
+    # and never hits "too many clients". Stock Postgres defaults to 100.
+    command: ["postgres", "-c", "timezone=UTC", "-c", "log_timezone=UTC", "-c", "max_connections=200"]
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -70,7 +73,11 @@ services:
     container_name: nexus-nats
     environment:
       TZ: UTC
-    command: ["--jetstream", "--store_dir", "/data", "-m", "8222"]
+    # --max_payload 16777216 (16 MiB): a traffic_event carrying a large
+    # prompt/response body exceeds the 1MB NATS default and would fail to
+    # publish — dropped audit rows under concurrency. Matches the AMI nats
+    # max_payload and the Hub ConnectRPC 16MB frame cap.
+    command: ["--jetstream", "--store_dir", "/data", "-m", "8222", "--max_payload", "16777216"]
     ports:
       - "4222:4222"
       - "8222:8222"

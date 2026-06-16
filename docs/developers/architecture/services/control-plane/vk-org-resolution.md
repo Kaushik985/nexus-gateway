@@ -72,7 +72,7 @@ silently `NULL` while application VKs look fine.
 
 - `packages/ai-gateway/internal/platform/store/virtualkey.go` — `vkSelectSQL` + scan
 - `packages/control-plane/internal/ai/virtualkeys/vkstore` — VK CRUD + approval workflow
-- `tools/db-migrate/schema.prisma` — `VirtualKey`, `Project`, `Organization`, `NexusUser` models
+- `tools/db-migrate/schema/` — `VirtualKey` (`gateway.prisma`); `Project`, `Organization`, `NexusUser` (`identity.prisma`)
 - `docs/developers/architecture/services/control-plane/organization-hierarchy-architecture.md`
 - `docs/developers/architecture/cross-cutting/safety/quota-architecture.md`
 - `docs/developers/architecture/services/control-plane/cp-ai-providers-virtualkeys-architecture.md`

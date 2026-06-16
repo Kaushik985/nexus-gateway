@@ -1,0 +1,74 @@
+[
+  {
+    "layer": "business_1d",
+    "retention_days": 365,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "business_1h",
+    "retention_days": 90,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "business_1mo",
+    "retention_days": 1825,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "business_5m",
+    "retention_days": 7,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "diag_error",
+    "retention_days": 180,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "diag_fatal",
+    "retention_days": 365,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "diag_info",
+    "retention_days": 14,
+    "updated_at": "2026-05-13T16:22:46.811401+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "diag_warn",
+    "retention_days": 30,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "runtime_1d",
+    "retention_days": 365,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "runtime_1h",
+    "retention_days": 90,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "runtime_1mo",
+    "retention_days": 1825,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  },
+  {
+    "layer": "runtime_5m",
+    "retention_days": 7,
+    "updated_at": "2026-05-08T14:43:46.854983+00:00",
+    "updated_by": null
+  }
+]

@@ -24,8 +24,9 @@ Five stages, end-to-end. Per-key Type A (config blob is the state) and Type B (i
 1. **Admin → CP admin handler**. The CP UI submits to an admin endpoint (e.g. `/api/admin/...` for the specific surface). The handler validates the payload, checks the override blacklist when applicable (`packages/shared/schemas/configtypes/policy/override_policy.go` `IsOverridable`), and stamps an audit row.
 2. **CP → Hub via `hubclient.NotifyConfigChange`**. CP packages a `ConfigChangeRequest{ThingType, ConfigKey, State, Action, ActorID, ActorName, SourceIP}` and POSTs to Hub with Bearer service-token auth (`INTERNAL_SERVICE_TOKEN`). The client retries up to 3 times with exponential backoff on transient errors. The 4 server Things and the agent never call this — only CP does. Source: `packages/control-plane/internal/platform/hub/client.go` `Client.NotifyConfigChange`.
 3. **Hub `manager.Manager.UpdateConfig`** runs the 6-step write (template path) inside a single `pgx.Tx`:
+   - Step 0: `AcquireConfigVersionLock` takes a transaction-scoped advisory lock keyed by Thing type (`pg_advisory_xact_lock(hashtextextended(type, 0))`) as the **first** statement of the tx. This serializes per-type `desired_ver` allocation: without it, two concurrent same-type writers both read the same `MAX(desired_ver)` and — because Postgres' `EvalPlanQual` re-applies the `UPDATE` SET clause but does not recompute the CTE scalar — land the **same** `desired_ver`, making the second `config_changed` a silent client-side no-op (`DesiredVer <= reportedVer`) that drops a key until a process restart. The same lock is taken by the override write/clear path so a per-Thing override and a concurrent type-wide update cannot collide either. Acquiring it before any row lock keeps the lock-acquisition order consistent across both paths (no deadlock).
    - Step 1: `UpsertConfigTemplate` bumps `thing_config_template.version`.
-   - Step 2: `UpdateDesiredForType` `jsonb_set`s the new state into `thing.desired` for **every Thing of the type at once**, sets `desired_ver` to `COALESCE(MAX(desired_ver), 0)+1` (per-type monotonic), and emits `pg_notify(config_changed, thingID)` for every affected row.
+   - Step 2: `UpdateDesiredForType` `jsonb_set`s the new state into `thing.desired` for **every Thing of the type at once**, sets `desired_ver` to `COALESCE(MAX(desired_ver), 0)+1` (per-type monotonic — serialized by the Step 0 lock so concurrent same-type writers get distinct, consecutive versions), and emits `pg_notify(config_changed, thingID)` for every affected row.
    - Step 4: `InsertConfigChangeEvent` writes the audit row.
    - Tx commit. Then post-commit best-effort:
    - Step 3: Redis cache the desired key (`nexus:desired:<type>:<configKey>`).
@@ -35,7 +36,7 @@ Five stages, end-to-end. Per-key Type A (config blob is the state) and Type B (i
 4. **Hub → Thing push** happens via two parallel channels:
    - **Local WebSocket**: every Thing of the matching type currently connected to *this* Hub replica gets the frame (`pool.Broadcast`).
    - **Cross-Hub NATS**: peer Hub replicas receive the `nexus.hub.signal` and broadcast onto their own local pools (see §3).
-5. **Thing applies + reports**. The Thing's `OnConfigChanged` callback (registered through `configloader.Loader.Handler()`) decides Type A or Type B per key (§4), applies, and emits `shadow_report` over WS. Hub's `manager.HandleShadowReport` UPDATEs `thing.reported` + `thing.reported_ver` + `thing.reported_outcomes` and acks. The admin UI's Nodes / Configuration tab then renders the convergence (drift cleared, version equal).
+5. **Thing applies + reports**. The Thing's `OnConfigChanged` callback (registered through `configloader.Loader.Handler()`) decides Type A or Type B per key (§4), applies, and emits `shadow_report` over WS. **Per-key dispatch (F-0120/F-0122)**: a `config_changed` delta carries one key, and the thingclient re-applies and reports **only that key** (`mergeDelta` records the key into the full `desiredCache` but hands the callback a single-key map); full-map apply is reserved for the connect snapshot and the retry re-apply (§11). Hub's `manager.HandleShadowReport` **merges** the reported key(s) into `thing.reported` / `thing.reported_outcomes` per-key (jsonb `||`, version-guarded — §11) and bumps `thing.reported_ver`, then acks. The admin UI's Nodes / Configuration tab then renders the convergence (drift cleared, version equal).
 
 ## §3 — Cross-Hub fanout (NATS `nexus.hub.signal`)
 
@@ -66,7 +67,7 @@ Two structs cover all Hub→Thing config push traffic.
 **`ConfigChangedMessage`** (per-key delta, sent both by local broadcast and by NATS subscriber relay):
 - Source: `packages/nexus-hub/internal/fleet/manager/config.go` `ConfigChangedMessage`.
 - Fields: `Type` (= `"config_changed"`), `ConfigKey`, `State json.RawMessage`, `DesiredVer`, `Force bool` (omitempty).
-- **No `Desired` full-map field** — `config_changed` is strictly per-key delta. Full snapshots only travel on the "connected" frame.
+- **No `Desired` full-map field** — `config_changed` is strictly per-key delta. Full snapshots only travel on the "connected" frame. The thingclient receiver enforces this symmetrically: `handleHubMessage`'s `config_changed` branch has exactly two outcomes — a per-key apply+report when `ConfigKey` is set, or a warn-and-drop when it is empty. There is no full-map fallback arm. On the apply path the changed key is recorded into the full `desiredCache` but **only that key is dispatched to the callback and reported** (F-0122) — the Hub-side per-key reported merge (§11) is what lets a single-key report land without clobbering siblings.
 - `Force=true` is set exclusively by admin re-sync replays (§7).
 
 ## §5 — Template write vs override write
@@ -95,9 +96,9 @@ Every Thing wires its receivers through `packages/shared/transport/configloader/
 Three registration APIs:
 - **`Register[V any]`** — generic, auto-unmarshal into `V`. Used for typed Type A keys.
 - **`RegisterRaw`** — raw `[]byte` apply closure. Used when the receiver wants to control decoding.
-- **`RegisterRawPull`** — raw `[]byte` apply, but Hub pushes a `{needsPull: true}` stub instead of the real state. The Loader detects the stub and calls an external puller closure (HTTP fetch) to get the real bytes before invoking the apply. Currently only used by the agent (§7).
+- **`RegisterRawPull`** — raw `[]byte` apply, but the key is flagged Cat B: the WS shadow tick is treated as a signal only and its desired bytes are discarded. The Loader calls an external puller closure (HTTP fetch) to get the real bytes before invoking the apply. The pull is driven by this registration-time flag — `needsPull` is a client-side concept in the Loader, NOT a field Hub stamps into the pushed state; the Loader never inspects the pushed bytes for a `{needsPull: true}` marker. Currently only used by the agent (§7).
 
-`Loader.Handler()` returns a function compatible with `thingclient.Client.OnConfigChanged`. The thingclient invariants from A01 §7 (`applyConfig`'s no-callback skip, version-equality skip, error-no-report) apply identically.
+`Loader.Handler()` returns a function compatible with `thingclient.Client.OnConfigChanged`. The thingclient invariants from A01 §7 (`applyConfig`'s no-callback skip, version-equality skip, partial-report-on-error) apply identically. `Loader.Apply` is continue-on-error: it attempts every key, records each outcome on the `OutcomeTracker`, and returns `(partialReported, firstErr)`; `applyConfig` forwards that partial report (with the per-key outcomes ledger) to Hub even when `firstErr != nil` so a single bad key does not blank the node's per-key detail.
 
 Per-service wiring sites:
 - AI Gateway: `packages/ai-gateway/cmd/ai-gateway/configdispatch/configdispatch.go`.
@@ -105,18 +106,13 @@ Per-service wiring sites:
 - Compliance Proxy: `packages/compliance-proxy/cmd/compliance-proxy/configdispatch/`.
 - Agent: `packages/agent/cmd/agent/configdispatch.go` (plus `configappliers.go` for the per-key apply functions).
 
-**#115 — `streaming_compliance` handler pattern (all three services)**:
-the shadow handler routes the raw payload directly through
-`streampolicy.Store.ApplyShadowState(ctx, raw)`. No per-service DB
-re-read and no per-server setter wrapper. The Store is hot-swappable;
-SSE-hot-path readers call `Store.Get()` and atomically see the new
-policy. Three-service alignment — agent, compliance-proxy, and
-ai-gateway use the same `*streampolicy.Store` instance seeded via
-`streampolicy.BootStore` at boot (`packages/shared/transport/streaming/policy/store.go`).
+**`streaming_compliance` handler pattern (agent + compliance-proxy, NOT ai-gateway)**: agent and compliance-proxy register a configdispatch applier that routes the raw payload directly through `streampolicy.Store.ApplyShadowState(ctx, raw)`. The Store is hot-swappable; SSE-hot-path readers call `Store.Get()` and atomically see the new policy. **ai-gateway does not register a `streaming_compliance` applier** — the key is absent from `ValidByThingType["ai-gateway"]`, so Hub never pushes it to the gateway. ai-gateway's `streampolicy.Store` is seeded at boot from `system_metadata` and is treated as boot-time-only configuration. See [sse-streaming-compliance-architecture.md](../safety/sse-streaming-compliance-architecture.md) §Hub-push alignment.
+
+**`credentials` shadow applier (ai-gateway)**: on a `credentials` push, the applier parses a targeted-invalidation envelope and calls `CredManager.Invalidate(id)` for each changed credential ID. When the push carries no targeted IDs (e.g. a full-reload signal), it falls back to `CredManager.ClearCache()`. This avoids the prior behaviour of wiping the entire decrypted-credential cache on every `credentials` shadow event.
 
 ## §7 — Agent HTTP-pull subpath
 
-The agent is the only Thing that uses `RegisterRawPull`. For each Cat B key (the agent set: `exemptions`, `hooks`, `interception_domains`, `payload_capture`, `streaming_compliance`, `installed_rule_packs`, `user_context`, `killswitch`), Hub pushes a `{needsPull: true}` stub over WS; the Loader then calls the HTTP puller closure.
+The agent is the only Thing that uses `RegisterRawPull`. For each Cat B key (the agent set: `exemptions`, `hooks`, `interception_domains`, `payload_capture`, `streaming_compliance`, `installed_rule_packs`, `user_context`), Hub pushes minimal state bytes over WS as a signal; the Loader discards them and calls the HTTP puller closure to fetch the full payload before applying. (`killswitch` is Cat A — registered via the non-pull `RegisterRaw` path with full bytes pushed inline.) The pull is triggered by the `RegisterRawPull` flag on the client, not by any marker in the pushed payload.
 
 **Puller URL** (`packages/agent/cmd/agent/configdispatch.go` `agentPullConfig`):
 
@@ -138,9 +134,12 @@ When a server Thing's WebSocket is down, it falls back to HTTP polling. Source: 
 
 - **Heartbeat**: `POST /api/internal/things/heartbeat` carries `heartbeatRequest{id, status:"online", reportedVer}`. Hub returns `heartbeatResponse{ack, desiredVer, desired (optional map)}`. The Thing compares its `reportedVer` against the returned `desiredVer`; mismatch triggers a config pull.
 - **Config pull**: `GET /api/internal/things/config?type=<thingType>&id=<thingID>` (`BulkConfigPull` on Hub). Returns `{configs: {key: {state, version}}, desiredVer}`. Critically, when `id` is supplied, per-key `version` = the Thing's `thing.desired_ver` (per-type monotonic) — so the same comparison the WS path uses still works.
-- **Shadow report**: `POST /api/internal/things/shadow` carries the same `{reported, reportedVer, reportedOutcomes}` payload as the WS `shadow_report` frame — byte-for-byte compatible parsing on Hub.
+- **Shadow report**: `POST /api/internal/things/shadow` carries the same `{reported, reportedVer, reportedOutcomes}` payload as the WS `shadow_report` frame — byte-for-byte compatible parsing on Hub, and the same Hub-side per-key merge (§11).
+- **Live credential (F-0351)**: both transports read the Bearer token through `Client.currentToken()` at the moment of use — the WS handshake on every dial/reconnect, the HTTP client on every request. When `Config.TokenFn` is set it is authoritative (falling back to the static `Config.Token` only when nil or empty), so a credential rotated after `Start` (the agent's device-token renewal) is picked up on the next connection/request without restarting the client. Callers that never rotate leave `TokenFn` nil for unchanged behavior.
 
 Prometheus counter `httpFallbackReqs{type=...}` tracks each kind (`register`, `heartbeat`, `shadow`, `config_pull`).
+
+**Cross-Thing identity binding (HTTP fallback).** All `/api/internal/things/*` HTTP endpoints are gated by `DeviceOrServiceAuth`, which authenticates a device-token caller against its `X-Thing-Id` and attaches the validated `*store.Thing` to the request context. Every handler that operates on a thing id taken from the request body or query (`register`, `heartbeat`, `shadow`, `config?id=`, `deregister`, `:id/attestation-pubkey`, plus `audit`, `exemption`) enforces, via `requireThingMatch`, that a device-token caller's operated id equals its authenticated id — a device token cannot act on another Thing's row. Service-token callers (CP / Hub-internal) have no context Thing and bypass the check. This mirrors the WebSocket path, which already derives the acting identity from the validated connection rather than the frame payload. (The `renew-cert` handler was removed when Hub-issued P-256 mTLS device certificates were deprecated; agents now self-sign their device identity.)
 
 ## §9 — Hub-self special path (`selfshadow.Manager`)
 
@@ -155,41 +154,48 @@ The pg_notify channel is therefore a *Hub-internal* mechanism. It does **not** p
 
 ## §10 — Force-resync admin replay
 
-Admins can re-push a single key to a single Thing even when nothing has changed — useful for recovering a drifted `thing.reported` without bumping the template version.
+Admins can re-push the current desired config to a single Thing even when nothing has changed — useful for recovering a drifted `thing.reported`.
 
-- **Entry point**: CP admin endpoint → Hub `manager.Manager.RePushConfigKey(thingID, configKey)`. Source: `packages/nexus-hub/internal/fleet/manager/drift.go`.
-- **Build**: `rePushConfigKeyForThing` reads `thing.desired[configKey]`, marshals it, and constructs a `ConfigChangedMessage` with `Force: true`.
-- **Delivery preference** (also covers cross-Hub):
+- **Entry point**: CP admin endpoint → Hub `manager.Manager.ForceResyncKey(thingID, configKey)` (single key) or `ForceResyncAll(thingID)` (every key). Source: `packages/nexus-hub/internal/fleet/manager/drift.go`.
+- **Version bump (delivery guarantee)**: a force-resync first re-stamps the Thing's `desired_ver` (rewriting the current desired map unchanged) inside a transaction that takes `AcquireConfigVersionLock` (A01 §9 / F-0109), then does the immediate push. The bump is what makes the resync converge on an **HTTP-fallback Thing**: such a Thing is on no Hub's WS pool, so the WS/NATS push below cannot reach it — only the heartbeat version-compare (`desired_ver != reported_ver`, §8) delivers, and that fires only because the version moved. Without the bump, a force-resync of an in-sync HTTP-fallback Thing was a silent no-op that still reported success (F-0116). The override / break-glass post-commit path uses the lower-level `RePushConfigKey` instead, which does **not** bump — those flows already bumped `desired_ver` inside their own transaction, so the heartbeat pull is already armed.
+- **Immediate push** (also covers cross-Hub): after the bump, each key is pushed best-effort via `rePushConfigKeyForThing`, which builds a `ConfigChangedMessage` with `Force: true`:
   - If the target Thing is locally connected (`m.ws.IsConnected(thingID)` and `m.ws.Send(thingID, ...)` succeeds), deliver over WS directly.
   - Else publish a `HubSignal{Action: "config_changed", ThingID, Force: true, ...}` to `nexus.hub.signal` so the peer Hub that holds the WS connection can deliver.
+  - A `ErrNoDeliveryPath` here is **not** a failure: the version bump already guarantees the heartbeat pull delivers, so the key is counted as pushed.
 - **Thing-side effect**: with `Force=true` on the wire, `applyConfig`'s `desiredVer <= reportedVer` short-circuit (A01 §7) is bypassed. The callback runs and emits a fresh `shadow_report` even at the same version. Without `Force`, an admin replay at the same `DesiredVer` would be silently dropped on the client.
 
 ## §11 — Drift detection + recovery
 
 - **Triggers**:
   - HTTP fallback heartbeat returning a `desiredVer` greater than the Thing's `reportedVer` (Thing-driven discovery; §8).
-  - Periodic drift job: `packages/nexus-hub/internal/jobs/defs/drift/drift.go`. Scans `thing` for `(status = 'online' AND desired_ver != reported_ver)` rows and flips them to `status = 'drift'` via `UpdateThingStatus`.
-- **Auto-recovery**: the next successful `HandleShadowReport` that catches `reported_ver` up to `desired_ver` flips `status` back to `'online'` via the SQL `CASE WHEN status = 'drift' AND $3 >= desired_ver THEN 'online' ELSE status END` in the registry update (`packages/nexus-hub/internal/fleet/store/thing_registry.go`).
+  - Periodic drift job: `packages/nexus-hub/internal/jobs/defs/drift/drift.go`. Two passes. **Version pass** — `FindDriftedThings` scans `WHERE status IN ('online', 'drift')` with `desired_ver != reported_ver` (online **and** already-drift rows, not online-only). It does **not** flip to `drift` on first detection: each drifted Thing first goes through `handleDriftedThing`, which **attempts repair** by re-pushing the desired config (`mgr.RePushConfig`) and increments a per-Thing Redis retry counter (`nexus:drift:retry:<id>`, `driftRetryTTL` 5m); only once `retries > driftMaxRetries` (3) does it mark `status = 'drift'` via `UpdateThingStatus` (with no Redis it always repairs and never marks drift). **Content pass** (F-0112) — `FindEqualVersionOnlineThings` catches version-equal but content-divergent Things and runs the same retry/exhaustion machinery under a separate counter namespace (`nexus:drift:content-retry:`).
+- **Auto-recovery**: the next successful `HandleShadowReport` that catches `reported_ver` up to `desired_ver` flips `status` back to `'online'`. The registry update composes the monotonic guard (F-0111) with the per-key merge (F-0120) so a stale / duplicate / older report cannot regress state AND a single-key report cannot clobber siblings: `reported_ver = GREATEST(reported_ver, $3)`; the `reported` / `reported_outcomes` columns are **merged key-by-key** (`COALESCE(reported, '{}') || $2::jsonb`) only when `$3 >= reported_ver` (a stale report is dropped, an empty `{}` report is a no-op merge); and the drift-clear arm keys off the effective version — `CASE WHEN status = 'drift' AND GREATEST(reported_ver, $3) >= desired_ver THEN 'online' ELSE status END` (`packages/nexus-hub/internal/fleet/store/thing_shadow.go`). The HTTP heartbeat (§8) likewise only promotes `offline → online` and never clobbers `drift`/`revoked` (F-0208).
 - **Manual recovery**: admin uses the "Re-sync this key" action (§10).
-- **Apply-failure retry**: if the Thing's callback returns an error (A01 §7), it does **not** send a `shadow_report`. The next config push or the next reconnect snapshot triggers a fresh attempt — there is no per-failure retry timer on either side, just the next-event reconvergence loop.
+- **CP-side missed-push backstop (Category B)**: the Hub-side drift job above only detects divergence between `desired_ver` and `reported_ver` — it cannot see a write that never reached Hub at all (the CP→Hub push failed during a Hub restart/blip), because in that case Hub never bumped `desired_ver`. For that case the Control Plane keeps its own durable intent ledger (`propagation_ledger:*` rows in `system_metadata`) and its reconcile loop re-pushes any Category-B key whose push it never confirmed; see the Config reconciliation note in [control-plane-architecture.md](../../services/control-plane/control-plane-architecture.md) and the per-key catalog in [configuration-architecture.md](configuration-architecture.md) §6.
+- **Apply-failure handling + proactive retry (F-0121/F-0117)**: if the Thing's callback returns an error (A01 §7), or any key from a prior round is still unresolved, the client **still sends a partial `shadow_report`** carrying the keys that did apply plus the per-key `reportedOutcomes` ledger (so the Nodes page shows which key failed and why) and does **not** advance the global `reported_ver` — the node stays out of sync vs `desired_ver`. The failed keys are recorded in an in-memory registry (`Client.failed`) that holds `reported_ver` behind `desired_ver` until **every** key converges (since per-key dispatch no longer re-runs siblings, a clean round cannot falsely advance the version while a sibling is still broken). A **bounded backoff retry timer** then re-attempts the failed keys without waiting for the next push: on fire it re-applies the **full** desired snapshot (so the complete reported map re-lands at the advanced version, which the per-key merge + monotonic guard would otherwise leave a held sibling stale), clears keys that converge, and re-arms with exponential backoff up to `MaxConfigRetryAttempts` (default 8; `RetryInitialBackoff` 2s, `RetryMaxBackoff` 60s). The timer cancels the moment nothing is outstanding; a brand-new failure resets the budget. If the budget is exhausted the keys remain parked in drift for the next reconnect snapshot to re-converge. Auto-recovery (above) fires only once a later report catches `reported_ver` up to `desired_ver`.
 
 ## §12 — Status state machine writers
 
 `thing.status` ∈ `{enrolled, online, offline, drift, revoked}`. Each value is written by a specific code path:
 
-- `enrolled` — default at insert (`tools/db-migrate/schema.prisma` `Thing.status` default).
-- `online` — set by callers of `UpsertThingEnrollmentWithDesiredVer` who pass `Status: "online"`. Live call sites: `manager.RegisterThing` (HTTP enrollment + WS connect) and `selfreg.Manager` (Hub's own row at boot). Hub flips it via the upsert's `ON CONFLICT` path on every successful registration, which also resets `process_started_at` + clears `reported_outcomes` when the prior status was not `online`.
+- `enrolled` — default at insert (`tools/db-migrate/schema/nodes.prisma` `Thing.status` default).
+- `online` — written by five paths, not one:
+  - **First-time enrollment** — `UpsertThingEnrollmentWithDesiredVer` with `Status: "online"`. `manager.RegisterThing` reaches this **only** on the `ErrNotFound` branch (the row does not yet exist); `selfreg.Manager` enrolls Hub's own row at boot the same way. It is *not* the steady-state path — a reconnecting Thing already has a row, so it never re-runs this upsert.
+  - **Reconnect / re-register** — `authstore.TouchThingSession` (`packages/nexus-hub/internal/identity/store/authstore/session.go`), called first by `RegisterThing`; it sets `status = 'online'` unconditionally and, when the prior status was not `online`, stamps `process_started_at = NOW()` + clears `reported_outcomes`. This is the common WS-connect online-writer.
+  - **WS liveness refresh** — `RefreshLiveness` (driven by the WS ping loop) promotes `offline → online` only, never clobbering `drift`/`revoked`.
+  - **HTTP fallback heartbeat** — `Store.Heartbeat` (§8) mirrors `RefreshLiveness`: `offline → online` only (F-0208 status gate).
+  - **Drift clear** — `UpdateShadowReport` flips `drift → online` when a version-guarded report catches `reported_ver` up to `desired_ver` (§11).
 - `offline` — two writers:
-  - `manager.Manager.MarkOffline` (called from `ws.Server` on WS disconnect, `packages/nexus-hub/internal/fleet/manager/enrichment.go`).
+  - `manager.Manager.MarkOffline` (called from `ws.Server` on WS disconnect, `packages/nexus-hub/internal/fleet/manager/enrichment.go`). The disconnect cleanup gates this on `pool.Remove(conn)` returning `true`: the pool only evicts (and reports `true`) when the disconnecting connection is still the registered one for its Thing ID. On a reconnect race — an ungraceful disconnect lingers while the Thing reconnects and a new connection is installed — the stale connection's late `Remove` returns `false`, so `MarkOffline` is **suppressed**; otherwise a live node would be marked offline and every subsequent `pool.Send` config push would be black-holed. The superseded connection is torn down with `Conn.CloseNow` (no close handshake) so a vanished peer cannot stall the pool lock.
   - `store.MarkStaleOffline` (called from the periodic `jobs/defs/drift/stale_thing` job for Things whose `last_seen_at` exceeds a per-type threshold).
-- `drift` — set by `jobs/defs/drift/drift.go` `UpdateThingStatus(thingID, "drift")` when a periodic scan detects `desired_ver != reported_ver` while `status='online'`.
+- `drift` — set by `jobs/defs/drift/drift.go` `UpdateThingStatus(thingID, "drift")`, but only **after** repair is exhausted: the job scans `status IN ('online', 'drift')` for a version (or content) mismatch and re-pushes the desired config up to `driftMaxRetries` (3) times (Redis-counted, 5m TTL) before flipping the row to `drift`. See §11 for the retry/repair sequence.
 - `revoked` — written by admin-driven revocation flows (out of scope here; covered alongside enrollment in the agent identity & enrollment doc).
 
 ## References
 
 - CP admin → Hub bridge — `packages/control-plane/internal/platform/hub/client.go`
 - Hub config write orchestrator — `packages/nexus-hub/internal/fleet/manager/config.go`, `override.go`, `drift.go`
-- Hub fleet store — `packages/nexus-hub/internal/fleet/store/thing_registry.go`
+- Hub fleet store — `packages/nexus-hub/internal/fleet/store/` (`thing_registry.go` core Thing CRUD + types; `thing_shadow.go` shadow-report merge + desired writes; `thing_liveness.go` heartbeat/liveness; `thing_drift.go` drift queries; `thing_identity.go` device-token + attestation; `thing_list.go` admin list)
 - Hub shadow store — `packages/nexus-hub/internal/fleet/shadow/`
 - Hub overrides store — `packages/nexus-hub/internal/fleet/overrides/`
 - Hub agent Cat B loaders — `packages/nexus-hub/internal/compliance/catbagent/`

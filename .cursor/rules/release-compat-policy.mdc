@@ -1,0 +1,35 @@
+---
+description: 1.0 GA — backward compatibility for shipped contracts; greenfield for internal-only code
+alwaysApply: true
+---
+
+# Release policy (1.0 GA): backward compatibility for shipped contracts (binding)
+
+The gateway is at **1.0 GA** — it has released users and downstream services.
+
+## Rules
+
+1. **Shipped contracts must stay backward compatible.** Any change to an
+   externally shipped contract — public/OSS + admin API (OpenAPI), agent↔Hub
+   wire protocol, `packages/shared/` API once in a released agent binary,
+   persisted DB schema, config-key / shadow / `system_metadata` keys, audit /
+   `traffic_event` shape — must preserve backward compatibility OR ship a
+   versioned migration + deprecation window. Never a silent break.
+2. **Breaking a shipped contract requires a major-version bump** plus a
+   `CHANGELOG.md` migration note describing the upgrade path.
+3. **Internal-only code stays greenfield.** Private functions, un-shipped
+   packages, tests, and dev-only seed/records: delete dead code outright, no
+   parallel "legacy" paths kept for their own sake.
+4. **Discriminator:** *has this contract shipped to a user or another service?*
+   — yes → migrate with a compat path; no → greenfield.
+
+Post-1.0 work is predominantly **additive**: new provider adapters, new spec
+coverage, improvements behind stable contracts.
+
+## Why
+
+At GA we owe migration paths to real users and services. A silent break to a
+shipped contract is a production incident; an aggressive internal refactor
+behind a stable contract is free. Keep the two straight.
+
+Skipping this rule requires **explicit user approval** in chat.

@@ -1,0 +1,120 @@
+[
+  {
+    "id": "1eab463a-80b4-497c-864f-81b29e97a086",
+    "name": "AI/ML Platform User Monthly",
+    "description": "Higher budget for AI/ML Platform team — intensive model experimentation expected",
+    "scope": "user",
+    "organizationId": "10000000-0000-0000-0000-000000000002",
+    "vkType": null,
+    "periodType": "monthly",
+    "costLimitUsd": 800,
+    "enforcementMode": "notify-and-proceed",
+    "alertThresholds": [
+      70,
+      90
+    ],
+    "priority": 10,
+    "enabled": true,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:19.49+00:00",
+    "updatedAt": "2026-05-10T16:41:19.49+00:00"
+  },
+  {
+    "id": "afd4aea8-e7a4-4f7a-b336-bd8750860fb2",
+    "name": "Application VK Weekly Cap",
+    "description": "Weekly cap for application virtual keys to control burst spending",
+    "scope": "virtual_key",
+    "organizationId": null,
+    "vkType": "application",
+    "periodType": "weekly",
+    "costLimitUsd": 500,
+    "enforcementMode": "reject",
+    "alertThresholds": [
+      80
+    ],
+    "priority": 5,
+    "enabled": true,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:20.504+00:00",
+    "updatedAt": "2026-05-10T16:41:20.504+00:00"
+  },
+  {
+    "id": "d4be988e-bfa5-4f35-a865-c9c02df31e29",
+    "name": "Apex Financial Group Org Ceiling",
+    "description": "Enterprise-wide hard spending ceiling for Apex Financial Group",
+    "scope": "organization",
+    "organizationId": "10000000-0000-0000-0000-000000000001",
+    "vkType": null,
+    "periodType": "monthly",
+    "costLimitUsd": 50000,
+    "enforcementMode": "reject",
+    "alertThresholds": [
+      80,
+      90
+    ],
+    "priority": 0,
+    "enabled": true,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:19.981+00:00",
+    "updatedAt": "2026-05-10T16:41:19.981+00:00"
+  },
+  {
+    "id": "dccff831-a99d-4b34-b0e8-23e3924be63b",
+    "name": "Application VK Default",
+    "description": "Default limit for all application virtual keys",
+    "scope": "virtual_key",
+    "organizationId": null,
+    "vkType": "application",
+    "periodType": "monthly",
+    "costLimitUsd": 5000,
+    "enforcementMode": "downgrade",
+    "alertThresholds": [
+      80,
+      95
+    ],
+    "priority": 0,
+    "enabled": true,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:19.729+00:00",
+    "updatedAt": "2026-05-10T16:41:19.729+00:00"
+  },
+  {
+    "id": "df1b0764-1380-4d87-ae71-348503f7a634",
+    "name": "Risk & Compliance User Monthly",
+    "description": "AI spend policy for Risk & Compliance staff — regulatory research and model risk scoring",
+    "scope": "user",
+    "organizationId": "10000000-0000-0000-0000-000000000003",
+    "vkType": null,
+    "periodType": "monthly",
+    "costLimitUsd": 500,
+    "enforcementMode": "track-only",
+    "alertThresholds": [
+      90
+    ],
+    "priority": 0,
+    "enabled": true,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:20.219+00:00",
+    "updatedAt": "2026-05-10T16:41:20.219+00:00"
+  },
+  {
+    "id": "ec401078-8c1b-4eac-a504-7a301b109445",
+    "name": "Technology User Monthly",
+    "description": "Default monthly AI spend budget for Technology & Innovation staff",
+    "scope": "user",
+    "organizationId": "10000000-0000-0000-0000-000000000002",
+    "vkType": null,
+    "periodType": "monthly",
+    "costLimitUsd": 300,
+    "enforcementMode": "reject",
+    "alertThresholds": [
+      80,
+      90
+    ],
+    "priority": 10,
+    "enabled": true,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:19.248+00:00",
+    "updatedAt": "2026-05-10T16:41:19.248+00:00"
+  }
+]

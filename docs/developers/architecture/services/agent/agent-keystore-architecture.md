@@ -34,6 +34,20 @@ The macOS path uses the framework directly rather than shelling out to the
 missing item every backend returns a nil value (treated as "generate a new
 key"), not an error.
 
+### Composition-root seam
+
+`NewPlatformStore()` is constructed at exactly two places — the agent's
+composition roots: `cmd/agent/cmd_run.go` (the daemon builds it once and
+threads it down) and `cmd/agent/cmd_enroll.go` (the enroll/unenroll
+subcommands). Every downstream consumer — the audit queue, the spill-store key
+derivation, the enrollment manager, the attestation signer, the bridge-deps
+wiring — takes a `keystore.Store` parameter instead of constructing its own.
+Unit tests inject `keystore.NewMemoryStore()`; opening the real Keychain under
+`go test` would pop an OS authorization prompt and couple tests to host state.
+Absent an injected store, `enrollment.NewManager` deliberately defaults to the
+memory store, never the platform store. The seam is enforced by
+`scripts/check-keystore-seam.sh` (pre-commit and `npm run check:keystore-seam`).
+
 ## secretstore — session and identity secrets
 
 `secretstore` persists the values the enrollment and SSO flows and the clock-skew

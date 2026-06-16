@@ -12,7 +12,7 @@ The OpenAI-compatible families (Mistral, xAI, Groq, Perplexity, Together, Firewo
 
 ## 2. The database-backed catalog
 
-Coverage is defined by three tables (`tools/db-migrate/schema.prisma`), mirrored as Go structs in `packages/ai-gateway/internal/platform/store`:
+Coverage is defined by three tables (`tools/db-migrate/schema/providers.prisma`), mirrored as Go structs in `packages/ai-gateway/internal/platform/store`:
 
 - **Provider** — `adapter_type` (the `Format`, and the sole adapter-dispatch key), `baseUrl`, `pathPrefix`, `apiVersion`, `region`, `enabled`, custom `headers`, and per-provider streaming and traffic-capture policy overrides (null inherits the global policy).
 - **Model** — `code` (the customer-facing identifier clients send) versus `providerModelId` (the string sent upstream); `providerId`; `type` (chat / embedding / image / audio); `features`; `inputModalities` / `outputModalities`; pricing (`inputPricePerMillion`, `outputPricePerMillion`, and the cached-input read and write rates); `maxContextTokens` / `maxOutputTokens`; `status` and `lifecycle`; `aliases` (alternate codes that resolve to the same row); and `capabilityJson` for non-chat capability descriptors.
@@ -40,7 +40,7 @@ A model's capabilities are read from several places:
 
 - `packages/ai-gateway/internal/providers/core/types.go` — Format constants, AllFormats, CallTarget
 - `packages/ai-gateway/internal/platform/store/` — Provider / Model store structs
-- `tools/db-migrate/schema.prisma` — Provider, Model, Credential models
+- `tools/db-migrate/schema/providers.prisma` — Provider, Model, Credential models
 - `packages/ai-gateway/internal/routing/capability/` — capabilityJson parsing
 - `packages/ai-gateway/internal/ingress/models/models.go` — /v1/models surface
 - `packages/ai-gateway/internal/providers/target/resolver.go` — model-to-provider resolution into CallTarget

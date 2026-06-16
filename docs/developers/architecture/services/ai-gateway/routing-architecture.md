@@ -40,7 +40,7 @@ The resolver iterates the stage-1 rules in cache order. The first non-`fallback`
 
 Only the primary rule's `RetryPolicy` is carried forward (as `RuleRetryPolicyJSON`); fallback rules' retry policies are deliberately ignored, since the primary rule alone determines L2/L3 retry behavior for the routed targets. The handler field-merges this per-rule policy on top of the YAML default before invoking the executor.
 
-Recovery targets come from two sources, appended in order: the primary rule's inline `FallbackChain` (each entry looked up and tagged `Source = "fallback"`), then the separately collected `fallback`-type rules (evaluated, filtered, and tagged `Source = "recovery"`).
+Recovery targets come from two sources, appended in order: the primary rule's inline `FallbackChain` (each entry looked up, **filtered** by the stage-0 narrowing state and the virtual key's allowed-models list, and tagged `Source = "fallback"`), then the separately collected `fallback`-type rules (evaluated, filtered, and tagged `Source = "recovery"`). Both recovery sources pass through `NarrowingEngine.Filter` exactly like the primary path, so no failover target can escape the per-VK `allowedModels` allowlist (SEC-C1-01) — a `FallbackChain` entry pointing at a provider/model outside the VK's allowlist is dropped before it can be dispatched on primary failure.
 
 ### Stage 1.5 — capability pre-filter (embeddings only)
 

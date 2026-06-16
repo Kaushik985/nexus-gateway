@@ -9,7 +9,7 @@ This document covers the rollup pipelines: how raw data becomes bucketed rows, h
 | Pipeline | Source | Buckets | Producer jobs |
 | --- | --- | --- | --- |
 | Fleet-wide traffic | `traffic_event` | `metric_rollup_5m` → `_1h` → `_1d` → `_1mo` | `rollup-5m`, `merge-1h/1d/1mo`, `rollup-correction` |
-| Per-Thing traffic | `traffic_event` rows with non-null `thing_id` | `thing_metric_rollup_5m` → `_1h` → `_1d` → `_1mo` | `thing-rollup-5m`, `thing-merge-1h/1d/1mo` |
+| Per-Thing traffic | `traffic_event` rows with non-null `thing_id` | `thing_metric_rollup_5m` → `_1h` → `_1d` → `_1mo` | `thing-rollup-5m`, `thing-merge-1h/1d/1mo`, `thing-rollup-correction` |
 | Device fleet | `thing` + `traffic_event` | `metric_rollup_1h` (three metric names) | `metrics-rollup` |
 | Ops samples | `metric_ops_raw` (from `metrics_sample`) | `metric_ops_rollup_1h` → `_1d` → `_1mo` | `ops-rollup-1h`, `ops-rollup-1d/1mo` |
 
@@ -19,7 +19,7 @@ All producer jobs live under `packages/nexus-hub/internal/jobs/defs/rollup/` (tr
 
 ## 2. Storage model
 
-The rollup tables come in two column shapes (`tools/db-migrate/schema.prisma`).
+The rollup tables come in two column shapes (`tools/db-migrate/schema/observability.prisma`).
 
 **Scalar-value tables** — `metric_rollup_5m/1h/1d/1mo` and `thing_metric_rollup_5m/1h/1d/1mo`. Each row is one `(bucketStart, metricName, dimensionKey, subDimension)` tuple (the per-Thing tables add a `thing_id` column to the key) carrying a single `value` plus an optional JSON `metadata` blob. Histograms and timestamp metadata ride inside `metadata`; everything else is a single number. The natural key is a `@@unique`, which makes the producer's upsert safe (§4).
 
@@ -69,15 +69,38 @@ When `rollup_watermark` has no row for a job (fresh deployment, or a job seeded 
 
 `rollup-5m` (`rollup_5m.go`) is the canonical producer. For each sealed five-minute bucket it scans `traffic_event` over `[bucketStart, bucketStart+5m)` and expands every event into rollup rows: one row per `(metric, dimension, sub-dimension)` the event contributes to. A single event feeds many dimensions (provider, model, entity, org, routing rule, target host, Virtual Key, project, hook decision) and several metric families at once — counts, summed cost and tokens, latency sums and histograms, and distinct-entity / distinct-org / distinct-source sets. Cache-hit classification reads `gateway_cache_status` so gateway-cache hits are counted without conflating them with provider prompt-cache discounts (which are tracked on their own metric series). The hook-decision dimension collapses the request-stage and response-stage decisions to a single effective decision by worst-wins precedence (`REJECT_HARD` > `BLOCK_SOFT` > `ERROR` > `APPROVE`).
 
+**Cost is a passthrough, never re-priced (single canonical price source).** For success + non-cache rows the rollup emits `billed_cost_usd` equal to the row's `estimated_cost_usd` — the cost the AI Gateway already computed once from the **Model table** (cache-aware) and stamped onto the event. The rollup does **not** consult any second price source or recompute cost from tokens × price; it sums the gateway-stamped value verbatim. This is what keeps enforcement and reporting in lockstep: the live quota counter is incremented by the same `estimated_cost_usd` at reconcile time, and the gateway boot Backfill re-seeds the counter from `metric_rollup_1h.billed_cost_usd` — so the runtime counter and the rolled-up ledger price a given model identically and cannot drift across a reboot (audit F-0163; the retired `provider_pricing` table that once caused this drift is gone). See [quota-architecture.md §2a](../safety/quota-architecture.md#2a-single-canonical-price-source) and [cost-estimation-architecture.md](../../services/ai-gateway/cost-estimation-architecture.md).
+
 The internal-ops cost knob `excludeInternalOpsFromBilled` controls whether L2-embedding and ai-guard classifier costs fold into `billed_cost_usd`. It defaults to off — internal-ops costs are real money and count toward the quota-bearing billed total unless an operator opts out, in which case those costs stay on their dedicated `embedding_cost_usd` / `ai_guard_cost_usd` series only.
 
 The **merge cascade** (`rollup_merge.go`) rolls the result coarser: `merge-1h` folds `metric_rollup_5m` into `metric_rollup_1h`, `merge-1d` folds `1h` into `1d`, and `merge-1mo` folds `1d` into `1mo` on calendar-month boundaries. One `RollupMergeJob` type drives all three; the layer's source table, target table, and bucket length come from a per-layer config. Each merge reads its source bucket via `rollupstore.QueryRollupMergeSource`, combines rows sharing `(metricName, dimensionKey, subDimension)` through `metrics.MergeRollupRows`, and writes the target bucket under the same delete-then-insert-and-watermark transaction.
 
-`rollup-correction` (`rollup_correction.go`) handles late-arriving events. Events can land in `traffic_event` after their bucket has already been rolled up; once per day the correction job recomputes every five-minute bucket of the previous day, then re-merges that day's `1h` and `1d` layers (and the `1mo` layer only when the previous day was the last of its calendar month — i.e. the job runs on the 1st). It delegates to the same `rollup-5m` and merge jobs so the aggregation logic lives in exactly one place, and it deliberately does not touch the live watermark path. The "now" it derives this date arithmetic from is an injectable seam, so the month-boundary branch is covered deterministically in tests rather than only on the 1st of a month.
+### Per-metric aggregation kind (how rows fold)
+
+Folding two rollup rows that share a logical identity is **not** always a sum. The rule is carried by the per-metric **aggregation-kind registry** in `packages/shared/core/metrics/instruments/aggregation.go`, consulted in both places that fold rows: the merge cascade (`MergeRollupRows` / `MergeThingRollupRows`) and the read-side aggregation that collapses every bucket in a query window (`BuildResult`). A metric maps to one of:
+
+| Kind | Fold | Metrics |
+| --- | --- | --- |
+| `Sum` (default) | add the values | all additive counters and money — `request_count`, `*_tokens`, `*_cost_usd`, `latency_sum`, … and **every unregistered metric** |
+| `Distinct` | take the **max** | `active_entities`, `active_organizations`, `distinct_sources` |
+| `Histogram` | element-wise add of the six-bucket metadata array | `latency_histogram`, `hook_latency_histogram` |
+| `Timestamp` | MIN(first_seen), MAX(last_seen) in metadata | `first_seen`, `last_seen` |
+
+The default is `Sum`, so the registry is additive — only the explicitly classified metrics diverge, and `IsHistogramMetric` / `IsTimestampMetric` derive from the same table for a single source of truth.
+
+**Gauge snapshots are excluded from the merge cascade.** The device-fleet metrics `device_fleet_status` and `device_fleet_os` are point-in-time GAUGE counts (agent Things grouped by status / OS) that the `metrics-rollup` job writes directly into `metric_rollup_1h` every hour. They are read only from the `1h` tier and have no meaningful coarser aggregate: summing successive hourly snapshots into a `1d` (or `1mo`) bucket would over-count by the number of snapshots folded (~24× at `1d`, ~720× at `1mo`). The merge cascade therefore drops these gauge metrics from its source rows before folding (`excludeGaugeRows` in `rollup_merge.go`), so they never propagate past the `1h` tier.
+
+**Distinct-cardinality merge.** The producer emits the three distinct metrics as `Value = len(set)` per five-minute bucket — the count of distinct entities / orgs / source IPs seen *in that bucket*. The union cardinality across buckets cannot be recovered from per-bucket counts alone, so summing them is wrong: it inflates with the number of buckets folded (a 24-hour read at 1h granularity would sum up to 288 per-5m counts — 12 five-minute buckets × 24 hours). These metrics therefore fold by **MAX** — the largest single-bucket distinct count. This is a guaranteed **lower bound** on the true union (it can under-report when distinct sets differ across buckets) but eliminates the catastrophic over-count. A fully accurate union would require carrying a mergeable sketch (e.g. HyperLogLog) on the emit side instead of a scalar count; that is a deliberate follow-up, not in this change.
+
+`rollup-correction` (`rollup_correction.go`) handles late-arriving events. Events can land in `traffic_event` after their bucket has already been rolled up; once per day the correction job recomputes every five-minute bucket of the **trailing correction window** (default 7 days, sized to cover an agent that buffered offline for several days), re-merges those days' `1h` and `1d` layers, and re-merges the `1mo` layer for any fully-sealed month the window reached into. The window must be at least as wide as the longest offline-buffer horizon: an event written more than that many days after its timestamp would otherwise land in a sealed bucket outside the window and appear in raw `traffic_event` but in no rollup.
+
+The correction job calls the same per-bucket aggregation as `rollup-5m` and the merge jobs (so the logic lives in exactly one place) but with the watermark write **suppressed** (`writeWatermark = false`): re-aggregating historical buckets must not rewind the live `rollup-5m` / `merge-*` watermarks, which would force the next live tick to re-scan the whole intervening window. The DELETE+INSERT still commits per bucket, so the backfill is durable and idempotent. The "now" the date arithmetic derives from is an injectable seam, so the month-boundary branch is covered deterministically in tests rather than only on the 1st of a month.
+
+`thing-rollup-correction` (`thing_rollup_correction.go`) is the per-Thing twin: the per-Thing pipeline seals buckets behind its own watermark exactly like the fleet pipeline, so without a correction sibling a late event whose per-Thing 5m bucket had already sealed would never be re-aggregated and per-Thing dashboards would permanently under-count. It shares the same `runCorrection` logic via the `correctionRollup` / `correctionMerge` seams and likewise suppresses the watermark write.
 
 ## 6. Per-Thing traffic pipeline
 
-The per-Thing pipeline mirrors the fleet pipeline but keys every row by `thing_id`, so a single Thing's dashboard reads its own small table instead of filtering the fleet-wide one. `thing-rollup-5m` (`thing_rollup_5m.go`) aggregates `traffic_event` rows where `thing_id IS NOT NULL`, and `thing-merge-1h/1d/1mo` (`thing_rollup_merge.go`) cascade the result. The watermarks are independent of the fleet pipeline, so per-Thing recovery is isolated.
+The per-Thing pipeline mirrors the fleet pipeline but keys every row by `thing_id`, so a single Thing's dashboard reads its own small table instead of filtering the fleet-wide one. `thing-rollup-5m` (`thing_rollup_5m.go`) aggregates `traffic_event` rows where `thing_id IS NOT NULL`, `thing-merge-1h/1d/1mo` (`thing_rollup_merge.go`) cascade the result, and `thing-rollup-correction` (`thing_rollup_correction.go`) re-aggregates the trailing correction window for late events. The watermarks are independent of the fleet pipeline, so per-Thing recovery is isolated.
 
 Only data-plane Things produce per-Thing rows (the rows with a `thing_id`). Agent-sourced rows are gated by `enableAgentRollup`, which defaults off: at fleet scale agents compute their own rollups locally, so the Hub appends `AND source != 'agent'` to the per-Thing query unless the toggle is on. Rows whose metrics evaluate to zero for a Thing are skipped at emit time, so empty rows never reach the table.
 
@@ -124,6 +147,8 @@ The Hub-side helpers `rollupstore.QueryRollup` (fleet) and `rollupstore.QueryThi
 
 Because a coarse table only holds buckets the merge cascade has already sealed, a "right now" query against, say, `metric_rollup_1h` would miss the request a user just sent until the next merge tick. The `metricsstore` readers close that gap by stitching at the merge watermark: `QueryRollupAware` reads sealed buckets from the coarse table and the trailing unsealed window from the finer `metric_rollup_5m`, and `QueryRollupCascade` unions all four layers between consecutive merge watermarks so an aggregate query is always complete up to the latest sealed five-minute bucket.
 
+The read collapse honors the same per-metric aggregation kind as the merge cascade: `BuildResult` folds additive metrics by sum and distinct-cardinality metrics by max across the buckets in the window (see §5 "Per-metric aggregation kind"). This is why a multi-bucket read of a distinct metric — e.g. the fleet "Top Destinations" `DeviceCount`, which reads `active_entities` grouped by `target_host` over 24 hours — returns the per-bucket peak rather than the sum of every bucket's count.
+
 The Control Plane analytics and quota handlers (`packages/control-plane/internal/traffic/analytics/handler/`, `packages/control-plane/internal/settings/store/metricsstore/`, `packages/control-plane/internal/ai/quota/handler/`) are the consumers; they resolve dimension-value identifiers back to display labels at response time.
 
 ## 10. Operational invariants
@@ -132,7 +157,7 @@ The Control Plane analytics and quota handlers (`packages/control-plane/internal
 - Re-running any producer for any bucket is idempotent — scalar tables upsert on the natural key, ops tables delete-then-insert on the synthetic key.
 - Dimension values stored in rollup rows are stable identifiers; display labels are never persisted in rollups.
 - Plain agents never produce per-instance ops rows or (by default) per-Thing traffic rows; they collapse into fleet aggregates so the row count stays bounded as the fleet grows.
-- Late-arriving traffic events are absorbed by the daily correction job, not by widening the live sealed-bucket grace.
+- Late-arriving traffic events are absorbed by the daily correction job, not by widening the live sealed-bucket grace. The correction job's trailing window (default 7 days) bounds how late an event can arrive and still be folded in; an event written more than that many days after its timestamp stays in raw `traffic_event` but enters no rollup. Widen the window to match the longest agent offline-buffer horizon if that bound is too tight.
 - Retention of aged rollup rows is a separate concern handled by the retention jobs; see [data-retention-purge-architecture.md](../storage/data-retention-purge-architecture.md).
 
 ## References
@@ -142,9 +167,9 @@ The Control Plane analytics and quota handlers (`packages/control-plane/internal
 - `packages/nexus-hub/internal/quota/rollup/` — `rollupstore` watermark, insert, purge, and query helpers
 - `packages/nexus-hub/internal/observability/opsmetrics/` — ops-sample writer and histogram merge
 - `packages/nexus-hub/cmd/nexus-hub/wiring/jobs.go` — scheduler registration of all rollup jobs
-- `packages/shared/core/metrics/instruments/` — `RollupRow`, `Histogram`, dimension-key builders, granularity selection
+- `packages/shared/core/metrics/instruments/` — `RollupRow`, `Histogram`, dimension-key builders, granularity selection, the per-metric aggregation-kind registry (`aggregation.go`), and the `MergeRollupRows` / `BuildResult` folders
 - `packages/shared/core/metrics/registry/` — `SampleBatch` / `Sample` WebSocket payload types
 - `packages/control-plane/internal/settings/store/metricsstore/` — Control Plane fleet rollup reader (`QueryRollupCascade`, `QueryRollupAware`)
 - `packages/control-plane/internal/observability/thingstats/thingstore/` — Control Plane per-Thing rollup reader
 - `packages/control-plane/internal/traffic/analytics/handler/` — read-side analytics consumers
-- `tools/db-migrate/schema.prisma` — `MetricRollup*`, `ThingMetricRollup*`, `MetricOpsRaw`, `MetricOpsRollup*`, `RollupWatermark` models
+- `tools/db-migrate/schema/observability.prisma` — `MetricRollup*`, `ThingMetricRollup*`, `MetricOpsRaw`, `MetricOpsRollup*`, `RollupWatermark` models

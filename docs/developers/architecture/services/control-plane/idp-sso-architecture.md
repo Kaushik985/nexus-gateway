@@ -140,6 +140,18 @@ disabled outcomes to block enumeration, rate limiting, and `admin.login.failed`
 / `admin.login.succeeded` audit rows. On success it mints a single-use
 authorization code and returns the redirect URI for the SPA to follow.
 
+The rate limiter
+(`packages/control-plane/internal/identity/authserver/login/limiter.go`) enforces
+two budgets in tandem — per-(ip, email) (default 10 / 5 min) to blunt guessing
+against one account, and a global per-IP cap (default 50 / 5 min) to bound a
+single source spraying one password across many usernames. When the shared CP
+Redis handle is wired it counts in Redis (atomic sliding window via a single
+EVALSHA), so both budgets hold across every Control Plane replica and survive a
+process restart. On any Redis error it degrades gracefully to an in-memory
+limiter — login is never left unprotected (the local per-process cap still
+applies) and never locked out (a cache blip cannot fail closed into a login
+DoS); distributed counting resumes automatically when Redis recovers.
+
 **Unified external-IdP entry.** For any external provider the SPA navigates the
 browser to `GET /authserver/idp/:idpId/start?authctx=<handle>`
 (`packages/control-plane/internal/identity/authserver/login/start.go`). One
@@ -157,7 +169,16 @@ handler owns the protocol divergence so the front end stays protocol-agnostic:
   be overridden by config. The start leg also generates a single-use `nonce`,
   stamps it on the pending entry, and sends it as the authorize `nonce`
   parameter — the callback verifies the returned ID token's `nonce` claim
-  against it to defeat ID-token replay/injection (OIDC Core §3.1.2.1).
+  against it to defeat ID-token replay/injection (OIDC Core §3.1.2.1). The start
+  leg also sets a short-lived (`MaxAge=300`), `HttpOnly; Secure; SameSite=Lax`
+  cookie `oidc_state` scoped to the callback path, carrying
+  `HMAC-SHA256(<per-process key>, authctx).authctx`. This binds the callback to
+  the browser that began the flow: the callback rejects any request whose signed
+  cookie is absent, tampered, or bound to a different `state` (login-CSRF
+  defense-in-depth on top of the single-use 256-bit `authctx` and the SPA↔CP
+  PKCE leg). The signing key is generated per process at mount time and held in
+  memory only — a server restart mid-login simply invalidates the in-flight
+  cookie and the user re-initiates, so no DB/Redis dependency is introduced.
 - `saml` — builds an SP-initiated AuthnRequest, records its ID against the
   `authctx`, and returns an auto-submitting HTML POST form that delivers the
   request to the IdP with `RelayState=<authctx>` (HTTP-POST binding). The
@@ -181,6 +202,12 @@ handler owns the protocol divergence so the front end stays protocol-agnostic:
   validates the ID token against that IdP's JWKS (issuer compared with a
   trailing slash trimmed; audience defaults to the client_id when unset; the
   `nonce` claim must echo the one stamped at start), and refuses a disabled IdP.
+  Before consuming the pending handle it enforces the login-CSRF binding: the
+  request must carry the `oidc_state` cookie set at start, its HMAC must verify
+  under the per-process key, and its embedded `authctx` must equal the `state`
+  query param — otherwise the callback returns `400 state_cookie_mismatch`
+  without burning the single-use handle. The cookie is cleared on every callback
+  that reaches this check so it cannot be replayed.
   An
   IdP that redirects back with `error`/`error_description` instead of a code
   (e.g. a missing `organization`) is logged at WARN with the full description
@@ -278,6 +305,20 @@ authenticated by a Bearer token looked up by SHA-256 hash. A SCIM token may be
 scoped to a specific IdP. This is the push side of provisioning: the external
 directory creates and deactivates users and group memberships ahead of (or
 instead of) interactive JIT, using the same group-mapping convention.
+
+**Per-IdP ownership scoping (SEC-M6-04).** An IdP-scoped SCIM token may only read
+or mutate the users and groups its own IdP provisioned — never a local/admin
+account, nor a user or group owned by another IdP. The User handlers enforce this
+via `assertScimUser` (the mirror of `assertScimGroup`): the target must exist, be
+`source = "scim"` (local / OIDC-JIT / SAML-JIT accounts are admin-managed and out
+of SCIM's reach), and — when the token is IdP-scoped — be linked to the token's
+IdP in the `UserFederatedIdentity` table (`scimstore.UserOwnedByIdP`); otherwise
+the handler returns `403`. `ListUsers` is likewise filtered to the token's IdP
+(`NexusUserListParams.OwnedByIdP`) so enumeration cannot harvest the ids/emails of
+users owned by other IdPs. A token with no IdP scope (a global/admin token) is
+unrestricted, matching the Group path. Without this guard a token minted for one
+IdP could re-email (account takeover), suspend, or deprovision any user in the
+system, including local super-admins.
 
 **Agent SSO enrollment.**
 `packages/control-plane/internal/identity/sso/handler` exposes

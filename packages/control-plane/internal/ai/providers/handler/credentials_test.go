@@ -312,7 +312,7 @@ func TestCreateCredential_HappyWithVault(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg()).
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).AddRow(makeCredentialRow(now)...))
 	v := newTestVault(t)
 	hub := &hubSpy{}
@@ -346,7 +346,7 @@ func TestCreateCredential_HappyWithMultiVault_DisabledFlag(t *testing.T) {
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg()).
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).AddRow(makeCredentialRow(now)...))
 	mv := newTestMultiVault(t)
 	h := newHandler(db, nil, &auditSpy{}, nil, nil, mv, ProxyConfig{})
@@ -467,6 +467,9 @@ func TestUpdateCredential_HappyAPIKeyOnly_VaultPath(t *testing.T) {
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).AddRow(makeCredentialRow(now)...))
+	// Replacing the key auto-clears any open circuit (ClearCircuit DB write).
+	mock.ExpectExec(`UPDATE "Credential" SET`).WithArgs("cred-1").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	v := newTestVault(t)
 	hub := &hubSpy{}
 	aud := &auditSpy{}
@@ -487,6 +490,52 @@ func TestUpdateCredential_HappyAPIKeyOnly_VaultPath(t *testing.T) {
 	}
 	if aud.count() != 1 {
 		t.Errorf("audit count = %d; want 1", aud.count())
+	}
+}
+
+func TestUpdateCredential_APIKeyReplace_AutoClearsCircuit(t *testing.T) {
+	// Replacing the upstream key must auto-close the credential's circuit so a
+	// fixed key re-enters the pool without a separate manual circuit-reset:
+	// the live Redis hash AND its dirty marker are dropped.
+	mock, db := newMockStore(t)
+	now := nowFixture()
+	mock.ExpectQuery(`FROM "Credential" WHERE id`).WithArgs("cred-1").
+		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).AddRow(makeCredentialRow(now)...))
+	mock.ExpectExec(`UPDATE "Credential"\s+SET "encryptedKey"`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(`UPDATE "Credential" SET`).
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows(credentialMetadataCols).AddRow(makeCredentialRow(now)...))
+	mock.ExpectExec(`UPDATE "Credential" SET`).WithArgs("cred-1").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mr, rdb := newMiniRedis(t)
+	mr.HSet("cred:circuit:cred-1", "state", "open", "open_reason", "auth_fail")
+	mr.SAdd("cred:circuit:dirty", "cred-1")
+	h := newHandler(db, &hubSpy{}, &auditSpy{}, rdb, newTestVault(t), nil, ProxyConfig{})
+	req := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(`{"apiKey":"new-funded-key"}`))
+	rec := httptest.NewRecorder()
+	c, _ := echoCtx(req, rec, "u-1")
+	c.SetParamNames("id")
+	c.SetParamValues("cred-1")
+	if err := h.UpdateCredential(c); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if mr.Exists("cred:circuit:cred-1") {
+		t.Errorf("live circuit hash should be cleared on key replacement")
+	}
+	if isMember, _ := mr.SIsMember("cred:circuit:dirty", "cred-1"); isMember {
+		t.Errorf("dirty-set marker should be removed on key replacement")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("db expectations: %v", err)
 	}
 }
 

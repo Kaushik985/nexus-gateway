@@ -1,0 +1,18 @@
+[
+  {
+    "id": "56210b1c-dc18-4820-b95b-4d6405e1c63f",
+    "packId": "d4143067-6079-486e-aca2-c61fd0d34335",
+    "pinVersion": "v1.0.0",
+    "boundHookId": "f13a2ae9-7d91-4ab6-8238-b87e30622240",
+    "enabled": true,
+    "installedAt": "2026-05-13T18:22:42.07+00:00"
+  },
+  {
+    "id": "8c6ee810-3388-4ed2-85d1-6b5664870fba",
+    "packId": "e63b835a-3b39-42be-8e7d-2d258d26f3f3",
+    "pinVersion": "v1.0.0",
+    "boundHookId": "f13a2ae9-7d91-4ab6-8238-b87e30622240",
+    "enabled": true,
+    "installedAt": "2026-05-13T18:22:39.076+00:00"
+  }
+]

@@ -1,0 +1,121 @@
+[
+  {
+    "id": "09126613-f872-4aab-8467-3cee5e2fdfdd",
+    "groupId": "e9614a74-1eb8-42b1-aa71-efc509527644",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-admin",
+    "createdAt": "2026-05-08T14:49:26.185+00:00"
+  },
+  {
+    "id": "1b14fdc8-1be6-4f7d-a90f-111b360feeec",
+    "groupId": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "principalType": "virtual_key",
+    "principalId": "a0000001-0000-4000-8000-000000000001",
+    "createdAt": "2026-05-08T14:46:53.315+00:00"
+  },
+  {
+    "id": "24f75549-b4fa-4e61-afd0-7f8c0374b370",
+    "groupId": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "principalType": "api_key",
+    "principalId": "40228302-4977-4dad-b8f4-faeaa76bf635",
+    "createdAt": "2026-05-10T16:42:11.595+00:00"
+  },
+  {
+    "id": "3788ea7b-eac3-465a-946b-98bed127a251",
+    "groupId": "7b1ddde3-19fc-442f-b342-69d3d2596714",
+    "principalType": "api_key",
+    "principalId": "8d9a559f-0365-41d7-abb0-ed64aee6e2ff",
+    "createdAt": "2026-05-10T16:42:09.014+00:00"
+  },
+  {
+    "id": "47749f89-e634-40cf-8ed8-76e5c5093c45",
+    "groupId": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "principalType": "nexus_user",
+    "principalId": "f9cf5b74-b5eb-4277-95e0-a2277250f3b5",
+    "createdAt": "2026-05-15T05:24:29.759+00:00"
+  },
+  {
+    "id": "57d87a43-2caa-445c-bec5-898d762ff2b7",
+    "groupId": "e9614a74-1eb8-42b1-aa71-efc509527644",
+    "principalType": "api_key",
+    "principalId": "86c3123d-4f10-4890-88f7-936e17780b37",
+    "createdAt": "2026-05-10T16:42:12.933+00:00"
+  },
+  {
+    "id": "7409fa1b-1cf6-41fc-a1da-b172f000f908",
+    "groupId": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-viewer",
+    "createdAt": "2026-05-08T14:49:32.486+00:00"
+  },
+  {
+    "id": "8e07766a-e791-43a4-a45a-d91eb9c82f70",
+    "groupId": "e9614a74-1eb8-42b1-aa71-efc509527644",
+    "principalType": "api_key",
+    "principalId": "a5e8d4b2-d8fd-487f-a830-6a3437c715d0",
+    "createdAt": "2026-05-10T16:42:07.691+00:00"
+  },
+  {
+    "id": "9af052f2-2b4e-49c9-897d-617f88ce2841",
+    "groupId": "c9c3de6b-dc93-4768-a92e-db5322ff6234",
+    "principalType": "nexus_user",
+    "principalId": "f9cf5b74-b5eb-4277-95e0-a2277250f3b5",
+    "createdAt": "2026-05-15T05:24:22.179+00:00"
+  },
+  {
+    "id": "a4868879-aa52-4fac-9120-38e4431dc025",
+    "groupId": "a42f5031-cc14-4a62-993b-4bd668e58a44",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-admin",
+    "createdAt": "2026-05-10T16:44:15.094+00:00"
+  },
+  {
+    "id": "af6cd511-4691-4ddb-a5ac-4d89d6220200",
+    "groupId": "7b1ddde3-19fc-442f-b342-69d3d2596714",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-compliance",
+    "createdAt": "2026-05-08T14:49:28.262+00:00"
+  },
+  {
+    "id": "d522b046-485e-46af-887a-b977024e14ff",
+    "groupId": "ac9e63f8-dfbd-48f4-8f6e-c0d477bc03dc",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-provider-ops",
+    "createdAt": "2026-05-08T14:49:30.621+00:00"
+  },
+  {
+    "id": "decf7fce-3953-4f0a-ae12-d786d3205b6d",
+    "groupId": "a42f5031-cc14-4a62-993b-4bd668e58a44",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-compliance",
+    "createdAt": "2026-05-10T16:44:16.376+00:00"
+  },
+  {
+    "id": "e653f2e5-261b-453d-bfd3-57b036bcbb4e",
+    "groupId": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "principalType": "virtual_key",
+    "principalId": "a0000003-0000-4000-8000-000000000003",
+    "createdAt": "2026-05-08T14:46:55.404+00:00"
+  },
+  {
+    "id": "f17af569-3a2c-4efa-be22-c140864fb2fd",
+    "groupId": "022f8182-3eea-48c4-82e8-c3d8472a8499",
+    "principalType": "nexus_user",
+    "principalId": "f9cf5b74-b5eb-4277-95e0-a2277250f3b5",
+    "createdAt": "2026-05-15T05:24:14.43+00:00"
+  },
+  {
+    "id": "f53186fe-ef87-46f7-b6b6-b6b5eca9bb9c",
+    "groupId": "ea62b5e1-21dd-4dfc-a02a-ca302afe718b",
+    "principalType": "nexus_user",
+    "principalId": "nexus-user-provider-ops",
+    "createdAt": "2026-05-10T16:44:17.713+00:00"
+  },
+  {
+    "id": "f84e169e-6104-4092-8687-be45ac75e93e",
+    "groupId": "ac9e63f8-dfbd-48f4-8f6e-c0d477bc03dc",
+    "principalType": "api_key",
+    "principalId": "cc0488ec-88c0-4219-97d0-ae255a1ef365",
+    "createdAt": "2026-05-10T16:42:10.31+00:00"
+  }
+]

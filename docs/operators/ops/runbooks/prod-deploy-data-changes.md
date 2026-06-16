@@ -122,11 +122,11 @@ Send a request that triggers an admin policy with `onMatch.inflightAction = "blo
 
 ## How to add a new entry
 
-When a branch lands DB-shape changes (schema migration in `tools/db-migrate/migrations/`, or in-place JSON-key flip, or computed-column re-population), append a new entry to this file with the same Scope / Tables / Value rule / Order / Smoke / Rollback shape. Commit the entry as part of the same PR. If the PR lands without an entry here, the operator running the deploy will not know what to flip and the runtime will drift from the binary's expectations.
+When a branch lands DB-shape changes (schema change in `tools/db-migrate/schema/` applied via `prisma db push`, or in-place JSON-key flip, or computed-column re-population), append a new entry to this file with the same Scope / Tables / Value rule / Order / Smoke / Rollback shape. Commit the entry as part of the same PR. If the PR lands without an entry here, the operator running the deploy will not know what to flip and the runtime will drift from the binary's expectations.
 
 ## References
 
-- `tools/db-migrate/seed/data/seed-baseline.sql` — current canonical seed for fresh installs (matches the post-deploy shape).
+- `tools/db-migrate/seed/fixtures/` — the two-tier fixture seed (reference fixtures + a demo tenant under `fixtures/demo/`) for fresh installs (matches the post-deploy shape).
 - `packages/shared/schemas/configtypes/interception/killswitch.go` — wire schema.
 - `packages/control-plane/internal/governance/killswitch/handler/handler.go` — admin API surface.
 - `packages/compliance-proxy/internal/runtime/killswitch/killswitch.go` — receiver.

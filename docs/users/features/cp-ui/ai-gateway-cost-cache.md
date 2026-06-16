@@ -4,11 +4,11 @@ This document covers the cost and cache half of the AI GATEWAY sidebar section: 
 
 ## Quota Policies
 
-**Purpose.** Define a spending or token budget over a scope, with an action to take when the budget is exceeded.
+**Purpose.** Define a spending budget (USD) over a scope, with an action to take when the budget is exceeded.
 
 **List page.** Columns: name, scope (with a sub-line showing the organization name, or the virtual-key type, plus the period), cost limit (USD), enforcement mode, and an enabled toggle. The list has a scope filter, an enabled filter, and a search box. Row actions are edit and delete; clicking a row opens the detail page.
 
-**Create and detail.** Creation is grouped into four cards: Basic Info (name, description); Policy Type (scope, plus an organization picker when scope is organization, or a virtual-key type when scope is vk); Limits & Enforcement (period type, enforcement mode, cost limit, token limit, alert thresholds — default `80, 90`); and Advanced (priority, enabled). The detail page renders all fields as a key-value grid, with thresholds shown as `80% · 90%`.
+**Create and detail.** Creation is grouped into four cards: Basic Info (name, description); Policy Type (scope, plus an organization picker when scope is organization, or a virtual-key type when scope is vk); Limits & Enforcement (period type, enforcement mode, cost limit, alert thresholds — default `80, 90`); and Advanced (priority, enabled). The cost limit is required and must be greater than zero — it is the policy's only enforceable limit. The detail page renders all fields as a key-value grid, with thresholds shown as `80% · 90%`.
 
 **Key concepts.** `scope` is `organization`, `user`, `project`, or `vk`. For vk scope, `vkType` is `personal` or `application`. `periodType` is `daily`, `weekly`, or `monthly`. `enforcementMode` is one of `reject` (block over-budget requests), `downgrade` (route to a cheaper target), `notify-and-proceed` (alert but allow), or `track-only` (record only). `alertThresholds` is a list of integer percentages that fire alerts as usage climbs. `priority` orders policies when more than one applies.
 
@@ -20,7 +20,7 @@ This document covers the cost and cache half of the AI GATEWAY sidebar section: 
 
 **List page.** Columns: target type (badge), target (name and id), cost limit (USD), enforcement mode (or "inherit from policy"), period type (or inherit), and reason. The list has a target-type filter and a searchable target picker. Row actions are edit and delete; clicking a row opens the detail page.
 
-**Create and detail.** Creation has two sections: Target (target type — user, vk, project, or organization — and the target itself, chosen through a searchable combobox or the organization tree) and Override Settings (cost limit, token limit, enforcement mode, period type, and a reason). Enforcement mode and period type both default to inherit, sent as unset so they fall back to the governing policy. The detail page shows the target, its organization, the limits, the enforcement and period (with their inherit fallback), and the reason.
+**Create and detail.** Creation has two sections: Target (target type — user, vk, project, or organization — and the target itself, chosen through a searchable combobox or the organization tree) and Override Settings (cost limit, enforcement mode, period type, and a reason). Cost limit, enforcement mode, and period type all default to inherit, sent as unset so they fall back to the governing policy; choosing "custom amount" for the cost limit reveals a positive-number field that replaces the policy cap. The detail page shows the target, its organization, the limits, the enforcement and period (with their inherit fallback), and the reason.
 
 **Key concepts.** An override differs from a policy by targeting one concrete entity rather than a scope class. Leaving enforcement mode or period type as inherit means the value comes from the policy that governs the target. The `reason` field documents why the exception exists.
 
@@ -69,4 +69,4 @@ The emergency-disable hooks turn the semantic cache or the extract cache off fle
 - `packages/control-plane-ui/src/pages/ai-gateway/passthrough/PassthroughPage.tsx` — Emergency Passthrough page
 - `packages/ai-gateway/internal/execution/passthrough/` — the bypass-flag execution path
 - `packages/control-plane-ui/src/api/` — `quotaPolicyApi`, `quotaOverrideApi`, `semanticCacheConfigApi`, `extractCacheConfigApi`, `timeSensitivePatternsApi`, `semanticFeedbackApi`, `passthroughApi`
-- `tools/db-migrate/schema.prisma` — `QuotaPolicy`, `QuotaOverride`, `SemanticCacheConfig`, `ExtractCacheConfig` models
+- `tools/db-migrate/schema/` — `QuotaPolicy`, `QuotaOverride` (`gateway.prisma`); `SemanticCacheConfig`, `ExtractCacheConfig` (`cache.prisma`)

@@ -1,28 +1,26 @@
 ---
 name: openapi-review
-description: Audit and enrich a generated Control Plane OpenAPI spec file claim-by-claim against the handler code. Pre-commit gate for the `openapi-gen` generator output — every per-kind spec under docs/users/api/openapi/control-plane/ must pass this audit before commit. The generator produces the structural draft (paths, verbs, types, status codes, IAM tiers); this skill verifies that draft against the handlers and fills the semantic layer the generator cannot recover: accurate field/operation descriptions, request/response examples, enum value sets, and the true required-field set. Trigger keywords: openapi review, openapi audit, review schema, audit api spec, enrich openapi, /openapi-review.
+description: Audit and enrich a Control Plane OpenAPI spec file claim-by-claim against the handler code. Pre-commit gate for every per-kind spec under docs/users/api/openapi/control-plane/. The spec must mirror what the handlers actually implement — paths, verbs, types, status codes, IAM tiers — and carry the semantic layer only a human audit can supply: accurate field/operation descriptions, request/response examples, enum value sets, and the true required-field set. Trigger keywords: openapi review, openapi audit, review schema, audit api spec, enrich openapi, /openapi-review.
 ---
 
 # openapi-review
 
-Audit one generated OpenAPI spec file claim-by-claim against the control-plane handlers, then enrich it so an AI (or a partner) can understand and call the API correctly. Pre-commit twin of the `openapi-gen` generator.
+Audit one OpenAPI spec file claim-by-claim against the control-plane handlers, then enrich it so an AI (or a partner) can understand and call the API correctly.
 
 Use this skill when:
 
-- About to commit freshly generated specs under `docs/users/api/openapi/control-plane/` (binding gate for `openapi-gen`).
+- About to commit a new or edited spec under `docs/users/api/openapi/control-plane/` (binding gate).
 - Retroactively auditing a spec suspected of drift from its handler.
-- Re-enriching a spec after a regeneration overwrote structural fields.
+- Re-enriching a spec after a handler change altered the contract.
 
-The generator is **structural**; this skill is **semantic**. The generator emits what the AST proves (paths, verbs, field names/types, optionality, status codes, IAM action + tier). It cannot recover what the handlers enforce imperatively — enum value sets held in `validXxx` maps, "field is required" checks, cross-field rules — nor human-readable descriptions or examples. That gap is this skill's job.
+The handler code is the single source of truth. The spec must carry both the **structural** layer (paths, verbs, field names/types, optionality, status codes, IAM action + tier — everything the code proves) and the **semantic** layer (enum value sets held in `validXxx` maps, "field is required" checks, cross-field rules, human-readable descriptions and examples). This skill verifies the first and fills the second.
 
 ---
 
 ## Division of truth (binding)
 
-- **Generator owns structure.** Paths, HTTP verbs, request/response field names + types, path parameters, status codes, `x-nexus-iam-action`, `x-nexus-tier`. If any of these is *wrong*, the fix is in the generator (`packages/nexus-cli/internal/openapigen/`), NOT a hand-edit — a hand-edit is clobbered on the next regen. Report the structural defect; do not paper over it.
+- **Handlers own the contract.** Paths, HTTP verbs, request/response field names + types, path parameters, status codes, `x-nexus-iam-action`, `x-nexus-tier` in the spec must match what the handler code under `packages/control-plane/**` enforces. If the spec disagrees with the handler, the spec is wrong — fix the spec (or, if the handler itself is defective, report it as a system issue; see Hard rule 7).
 - **This skill owns semantics.** `summary`, `description` (operation + per-field), `examples`, `enum`, the corrected `required` set, and any `x-nexus-*` clarification. These are enriched in place.
-
-Because regeneration overwrites structural fields and the generated `summary`/`description`, enrichment is re-applied by re-running this skill after each regen. The handler code is the single source of truth for both passes.
 
 ---
 
@@ -32,9 +30,9 @@ A spec file is CLEAN only if it satisfies ALL of:
 
 1. **Code-anchored.** Every path, verb, field, enum value, status code, and required-flag traces to handler code that exists on disk right now (`packages/control-plane/**`). Cite the handler for each.
 2. **No fabricated fields or enums.** An `enum` may only list values the handler actually accepts — found in a `validXxx` map, a `switch`, or a `oneof`/membership check. If you cannot find the value set in code, do NOT invent one; leave the field free and note it.
-3. **`required` reflects handler validation, not the pointer heuristic.** The generator marks every non-pointer field required. Replace this with the set the handler actually rejects when absent (the `"X is required"` checks). Remove over-marked entries; add any required pointer field the handler demands.
-4. **IAM extensions are immutable here.** Never alter `x-nexus-iam-action` / `x-nexus-tier` — they are code-derived. If one looks wrong, report it as a generator/handler issue.
-5. **No `x-nexus-unresolved-*` left behind.** Those mark a type the generator could not map. Resolve to a real schema by reading the type, or report it.
+3. **`required` reflects handler validation.** The required set is exactly the fields the handler rejects when absent (the `"X is required"` checks) — not a guess from field types. Remove over-marked entries; add any field the handler demands.
+4. **IAM extensions match the handler's `iamMW(...)` wiring.** `x-nexus-iam-action` / `x-nexus-tier` must mirror the IAM middleware on the route. If one looks wrong, verify against the route registration and report a mismatch as a system issue rather than silently editing.
+5. **No unresolved-type markers left behind.** Any `x-nexus-unresolved-*` marker means a type was never mapped to a real schema. Resolve it by reading the Go type, or report it.
 6. **English-only**, timeless prose. No dates, no Epic/SDD/bug/PR references, no line numbers in descriptions.
 7. **Surfaces system issues, not just spec issues.** If per-operation verification reveals a handler problem — a route with no validation, a response shape that contradicts the model, a dead field the UI anticipates — output it with: (a) finding, (b) code evidence, (c) recommended fix, (d) next action. The audit is the cheapest checkpoint.
 
@@ -55,7 +53,7 @@ SPEC=<spec-path>
 python3 -c "import yaml,sys; d=yaml.safe_load(open('$SPEC')); assert d['openapi']=='3.1.0'; assert 'paths' in d" \
   || echo "DRIFT: not a valid 3.1 document"
 
-# Generator gap markers must be gone
+# Unresolved-type markers must be gone
 grep -nE 'x-nexus-unresolved-(type|basic)' "$SPEC" && echo "DRIFT: unresolved type markers remain"
 
 # Every $ref resolves inside components.schemas
@@ -78,7 +76,7 @@ for p,item in d.get('paths',{}).items():
 PY
 ```
 
-Cross-check the file's operation set against `_index.yaml` for the same kind — a path/verb present in one but not the other means the file was hand-edited out of sync with a regen.
+Cross-check the file's operation set against `_index.yaml` for the same kind — a path/verb present in one but not the other means the two files were edited out of sync.
 
 ### Pass 2 — Per-operation audit (independent sub-agent)
 
@@ -100,55 +98,54 @@ handlers under packages/control-plane/**. For EACH operation:
      optionality).
    - response status codes == the codes in c.JSON calls.
    - the success-response schema == the type returned on 200/201.
-   Verdict each: VERIFIED / DRIFTED / FABRICATION. Structural drift is a
-   GENERATOR bug — report it, do not propose a hand-edit.
+   Verdict each: VERIFIED / DRIFTED / FABRICATION. Propose the concrete
+   spec correction for each structural drift.
 3. Draft semantic enrichment grounded in the handler:
    - operation summary + description (what it does, from the handler).
    - per-field description for non-obvious fields.
    - enum: the exact value set the handler validates against. Quote the
      validXxx map / switch / membership check. NO invented values.
    - required: the fields the handler rejects when absent ("X is
-     required" checks). This REPLACES the generator's pointer heuristic.
+     required" checks). Nothing else may be marked required.
    - one realistic request example + one response example, values
      consistent with the field types and enums.
 
-Hard rules: enum/required must cite handler code; never touch
-x-nexus-iam-action / x-nexus-tier; English-only; no dates/line-numbers
-in spec prose.
+Hard rules: enum/required must cite handler code; x-nexus-iam-action /
+x-nexus-tier must match the route's IAM wiring; English-only; no
+dates/line-numbers in spec prose.
 
 Report under 900 words: per-operation verdict + the concrete enrichment
 YAML to splice in. End with CLEAN or N issues.
 ```
 
-### Pass 3 — Apply enrichment + triage
+### Pass 3 — Apply corrections + triage
 
-- **FABRICATION / structural DRIFT** → it is a generator defect. Record it for a generator fix; do not mask it in the file.
-- **Semantic enrichment** → splice the sub-agent's drafted `summary` / `description` / `enum` / corrected `required` / `examples` into the spec, preserving the generated structural fields and the `x-nexus-*` extensions.
+- **FABRICATION / structural DRIFT** → fix the spec to match the handler. If the handler itself looks defective, additionally report it as a system issue (Hard rule 7); do not paper over it in the spec.
+- **Semantic enrichment** → splice the sub-agent's drafted `summary` / `description` / `enum` / corrected `required` / `examples` into the spec, preserving the structural fields and the `x-nexus-*` extensions.
 - Verify each enum/required edit cites a handler check; drop any the sub-agent could not ground in code.
 
 ### Pass 4 — Re-run if substantial
 
-If you applied enrichment to more than ~3 operations or removed any fabrication, re-dispatch Pass 2 on the edited file. Enrichment edits can introduce their own drift (a wrong enum value, an example that violates the schema).
+If you applied corrections or enrichment to more than ~3 operations or removed any fabrication, re-dispatch Pass 2 on the edited file. Edits can introduce their own drift (a wrong enum value, an example that violates the schema).
 
 ### Pass 5 — Verdict + handoff
 
 ```
 openapi-review: <spec-path>
   Pass 1 (mechanical): N hits → fixed
-  Pass 2 (per-operation): N ops verified, N enriched, N structural defects → logged for generator
+  Pass 2 (per-operation): N ops verified, N enriched, N structural defects → fixed
   Pass 4 (re-audit): CLEAN
   Verdict: CLEAN, ready to commit
 ```
 
-A non-CLEAN verdict blocks commit of that spec. Structural defects logged here become generator fixes (`internal/openapigen/`) + a regen, not file hand-edits.
+A non-CLEAN verdict blocks commit of that spec.
 
 ---
 
 ## Anti-patterns to refuse
 
 - Inventing enum values or examples that "look right" — every enum traces to a `validXxx` map / membership check, or it does not go in.
-- Trusting the generator's `required` list — it is a pointer heuristic and is usually wrong for create/update bodies. Always re-derive from handler validation.
-- Hand-editing paths/verbs/types to fix structural drift — that is clobbered on regen. Fix the generator.
-- Touching `x-nexus-iam-action` / `x-nexus-tier`. Code-derived; immutable in this skill.
+- Marking fields `required` from type shape alone — always derive from handler validation.
+- Editing `x-nexus-iam-action` / `x-nexus-tier` without verifying against the route's IAM middleware wiring.
 - Declaring CLEAN after only the mechanical pass. The per-operation handler cross-check is where real drift and the enum/required corrections surface.
 - Enriching a field with a description that restates its name ("the name field"). Describe its role and constraints from the handler, or leave it.

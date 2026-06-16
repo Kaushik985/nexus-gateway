@@ -12,11 +12,11 @@ A "device" in the UI is an enrolled Agent endpoint; the admin device API serves 
 
 **Enrollment.** A device joins the fleet by enrolling, and the enrollment method is set by the Device Auth mode (see below). In `mtls-only` mode, the "Enroll device" dialog generates a one-time enrollment token (with an optional hostname) that is shown once, is copyable, and carries an expiry; the installer presents it to the Hub. In the login modes, the device enrolls through a browser login instead, which binds it to the authenticated user.
 
-**Detail.** The detail page shows an identity card (hostname, bound user, physical id, thing id, IP, OS, agent version, last heartbeat, enrolled-at and enrolled-by) and a free-form tag editor (tags up to 64 characters, replaced as a set). It has tabs for traffic, compliance, configuration (the effective config JSON), system (host info and NICs), and activity (assignments plus admin audit). Actions are force-refresh, rotate-cert, unenroll (revoke), and diagnostic-mode for a 30-minute, 2-hour, or 8-hour window.
+**Detail.** The detail page shows an identity card (hostname, bound user, physical id, thing id, IP, OS, agent version, last heartbeat, enrolled-at and enrolled-by) and a free-form tag editor (tags up to 64 characters, replaced as a set). It has tabs for traffic, compliance, configuration (the effective config JSON), system (host info and NICs), and activity (assignments plus admin audit). Actions are force-refresh, unenroll (revoke), and diagnostic-mode for a 30-minute, 2-hour, or 8-hour window.
 
 **Key concepts.** A device's status is `online`, `enrolled`, `offline`, `revoked`, or `drift` (the latter set when its applied configuration trails its target). Each device is identified by a hardware-stable fingerprint — a 128-bit hash the Agent derives from stable hardware signals (hardware UUID, hardware serial, primary MAC, and CPU model), carried as the device's physical id. When a device re-enrolls, the Hub matches on this fingerprint and reuses the existing thing id instead of minting a new one, so the device keeps the same identity — and its history, configuration, and user assignment — across re-enrollments. The bound user is the person the device is assigned to.
 
-**Where the data comes from.** `devicesApi` — `list`, `get`, `getEvents`, `getAssignments`, `forceRefresh`, `rotateCert`, `setTags`, `generateEnrollToken`, `unenroll`, `listMine`; `fleetApi` — `getDeviceTimeline`, `getDeviceAudit`, `getDeviceConfig`; `diagModeApi` — `list`, `enable`, `disable`.
+**Where the data comes from.** `devicesApi` — `list`, `get`, `getEvents`, `getAssignments`, `forceRefresh`, `setTags`, `generateEnrollToken`, `unenroll`, `listMine`; `fleetApi` — `getDeviceTimeline`, `getDeviceAudit`, `getDeviceConfig`; `diagModeApi` — `list`, `enable`, `disable`.
 
 ## Device Groups
 
@@ -24,11 +24,11 @@ A "device" in the UI is an enrolled Agent endpoint; the admin device API serves 
 
 **List page.** Columns: name, description, member count, and created-at. Row actions are edit and delete.
 
-**Create and detail.** Creation collects a name and an optional description. The detail page shows a summary, a static members table (hostname, OS, status, an optional expiry, and a remove control, with a searchable add-member picker), a smart-membership card (a predicate editor with a preview of matches and save/revert), and a bulk-actions card (force config refresh, rotate certs — fanned out with per-device results).
+**Create and detail.** Creation collects a name and an optional description. The detail page shows a summary, a static members table (hostname, OS, status, an optional expiry, and a remove control, with a searchable add-member picker), a smart-membership card (a predicate editor with a preview of matches and save/revert), and a bulk-actions card (force config refresh — fanned out with per-device results).
 
 **Key concepts.** A group supports both membership models at once. Static membership adds and removes specific devices, each with an optional expiry. Smart membership is a predicate query that the Hub recomputes about every 60 seconds; a badge marks each group as Static or Smart. Predicate operators include `eq`, `ne`, `in`, `nin`, `prefix`, `regex`, `cidr`, `lt`/`le`/`gt`/`ge`, `relative_seconds_within`, `idp_group_member`, `tags_contains`, and `tags_contains_all`, combined under a top-level `all` (AND) or `any` (OR). The `idp_group_member` operator binds an external IdP group to a device group.
 
-**Where the data comes from.** `deviceGroupsApi` — `list`, `get`, `create`, `update`, `delete`, `addMember`, `removeMember`, `previewMembership`, `setMembershipQuery`, `bulkForceRefresh`, `bulkRotateCert`.
+**Where the data comes from.** `deviceGroupsApi` — `list`, `get`, `create`, `update`, `delete`, `addMember`, `removeMember`, `previewMembership`, `setMembershipQuery`, `bulkForceRefresh`.
 
 ## Device Auth
 
@@ -77,4 +77,4 @@ Three pages live in the Devices area without a sidebar entry. The **Fleet Overvi
 - `packages/shared/core/metrics/platform/fingerprint.go` — the hardware-stable device fingerprint (physical id) computation
 - `packages/agent/internal/identity/enrollment/` — the Agent-side enrollment flows
 - `packages/control-plane-ui/src/api/` — `devicesApi`, `deviceGroupsApi`, `fleetApi`, `fleetAnalyticsApi`, `diagModeApi`
-- `tools/db-migrate/schema.prisma` — `DeviceGroup`, `DeviceGroupMembership`, `DeviceAssignment` models
+- `tools/db-migrate/schema/nodes.prisma` — `DeviceGroup`, `DeviceGroupMembership`, `DeviceAssignment` models

@@ -16,7 +16,7 @@ The IAM resource/verb catalog in `packages/shared/identity/iam/` is the single s
 - `packages/nexus-hub/internal/observability/consumer/` — Hub-side batched DB writer.
 - `packages/nexus-hub/internal/fleet/manager/` — Hub-side direct in-transaction writer (override mutations).
 - `packages/nexus-hub/internal/traffic/chain/` — hash-chain helper, shared between both writer paths.
-- `tools/db-migrate/schema.prisma` — `AdminAuditLog` model.
+- `tools/db-migrate/schema/admin.prisma` — `AdminAuditLog` model.
 
 ## 3. Entry struct
 
@@ -34,7 +34,7 @@ The IAM resource/verb catalog in `packages/shared/identity/iam/` is the single s
 | `BeforeState` | any | optional pre-mutation snapshot — marshalled to JSONB |
 | `AfterState` | any | optional post-mutation snapshot — marshalled to JSONB |
 | `NexusRequestID` | string | per-request id from `middleware.NexusRequestIDFromContext` |
-| `Via` | string | request channel: `"assistant"` for an AI-initiated admin write performed by the E90 web assistant, empty for a direct human/UI action. `EntryFor` reads it from the unforgeable in-process initiator context value (`audit.InitiatorFromContext`, set only by the assistant's in-process self-call transport; never consulted for any authorization decision). It is folded into the canonical hash (omitempty) so the AI-attribution marker is tamper-evident (E90 invariant I5). |
+| `Via` | string | request channel: `"assistant"` for an AI-initiated admin write performed by the web assistant (suffixed with the sub-agent marker — `"assistant ▸ subagent 2"` — when a dispatched child made the call), empty for a direct human/UI action. `EntryFor` reads it from the unforgeable in-process initiator context value (`initiator.From`, set only by the assistant's in-process self-call transport; never consulted for any authorization decision). It is folded into the canonical hash (omitempty) so the AI-attribution marker is tamper-evident. |
 
 The Hub-side row also carries `previousHash`, `integrityHash`, `hashInput`, and a Postgres-side autoincrement `sequenceNumber`. Those columns are not part of the Entry struct — they are computed by the Hub writers under `pg_advisory_xact_lock` and never leave the wire as plaintext fields.
 
@@ -49,7 +49,7 @@ Two intentional exceptions construct `audit.Entry{...}` directly:
 
 ## 4. Persistence — `AdminAuditLog` table
 
-Schema in `tools/db-migrate/schema.prisma`:
+Schema in `tools/db-migrate/schema/admin.prisma`:
 
 | Column | Type | Notes |
 |---|---|---|
@@ -66,25 +66,24 @@ Schema in `tools/db-migrate/schema.prisma`:
 | `beforeState` | Json? | |
 | `afterState` | Json? | |
 | `nexusRequestId` | string? | matches access logs / `x-nexus-request-id` response header |
-| `clientRequestId` / `clientUserId` / `clientSessionId` | string? | optional admin-client correlation fields; `EntryFor` does not populate them, so they are NULL on rows produced by the canonical path |
-| `via` | string? | request channel — `"assistant"` for an AI-initiated write by the E90 web assistant, NULL for a direct human/UI action. Hashed (omitempty) so the marker is tamper-evident (I5); see §"AI-attribution marker (`via`)" below |
+| `via` | string? | request channel — `"assistant"` for an AI-initiated write by the web assistant, NULL for a direct human/UI action. Hashed (omitempty) so the marker is tamper-evident; see §"AI-attribution marker (`via`)" below |
 | `previousHash` | string? | NULL only on the genesis row |
 | `integrityHash` | string | NOT NULL — SHA-256 over the canonical hashInput |
 | `hashInput` | bytes | exact bytes that were hashed; persisted so `VerifyChain` can recompute without depending on JSONB roundtrip stability |
 
-Indexes on `timestamp`, `actorId`, `entityType`, `nexusRequestId`, `clientRequestId`, `sequenceNumber`, `via`.
+Indexes on `timestamp`, `actorId`, `entityType`, `nexusRequestId`, `sequenceNumber`, `via`.
 
 ### AI-attribution marker (`via`)
 
-`via` distinguishes admin writes the E90 web assistant performs on a user's behalf from direct human/UI actions (epic invariant **I5**). The flow is a single producer-side stamp folded into the existing chain:
+`via` distinguishes admin writes the web assistant performs on a user's behalf from direct human/UI actions. The flow is a single producer-side stamp folded into the existing chain:
 
-1. The assistant's in-process self-call transport (`internal/assistant/selfcall.go`, web-only — the CLI's `core.Client` uses a plain network transport and never marks the channel) dispatches each admin call straight into the CP echo router and marks the request with an **unforgeable context value** (`audit.WithInitiator(ctx, audit.ViaAssistant)`). A Go context value has no HTTP representation, so the channel cannot be set from the wire. The legacy `X-Nexus-Initiated-By` header was deliberately **not** named `X-Nexus-Via` (that belongs to the data-plane service-hop chain marker, `packages/shared/traffic/markers.go`); it is now retained only as the name `audit.StripInitiatorHeader` scrubs at ingress.
-2. `audit.EntryFor` reads the channel via `audit.InitiatorFromContext(c.Request().Context())` into `Entry.Via`; `Writer.Log` carries it on `mq.AdminAuditMessage.Via` (`omitempty`).
+1. The assistant's in-process self-call transport (`internal/platform/selfdispatch`, web-only — the CLI's `core.Client` uses a plain network transport and never marks the channel) dispatches each admin call straight into the CP echo router and marks the request with an **unforgeable context value** (`initiator.With(ctx, initiator.ViaAssistant)`). A Go context value has no HTTP representation, so the channel cannot be set from the wire. The `X-Nexus-Initiated-By` header name was deliberately **not** `X-Nexus-Via` (that belongs to the data-plane service-hop chain marker, `packages/shared/traffic/markers.go`); it exists only as the name `audit.StripInitiatorHeader` scrubs at ingress.
+2. `audit.EntryFor` reads the channel via `initiator.From(c.Request().Context())` (composed with the `subagentmark` label when present) into `Entry.Via`; `Writer.Log` carries it on `mq.AdminAuditMessage.Via` (`omitempty`).
 3. The Hub consumer sets `chain.HashPayload.Via` before `chain.NextHash`, so the value enters the SHA-256'd canonical bytes and the `via` column in the same INSERT. The SIEM bridge (`queryAdminEvents`) also selects and emits `via`, so the AI-vs-human distinction reaches the external SIEM a security team triages on — not just the DB.
 
 Because `HashPayload.Via` uses `omitempty` and the canonical encoding is sorted-key, a row with an empty `via` (every existing row and every human/system write) hashes **byte-identically** to the pre-`via` recipe — adding the field neither re-anchors the chain nor requires a backfill. A row written with `via="assistant"` hashes differently, so once persisted the marker cannot be stripped or forged **after the fact** without breaking `integrityHash`. `VerifyChain` reads `hashInput` verbatim and reconstructs nothing, so it needs no change to validate the new field.
 
-**Trust model (write-time forgery) — CLOSED as of P2b (#16).** `via` is advisory for attribution and is **never** consulted for any authorization decision. The forward property I5 relies on holds unconditionally: the assistant's transport always marks the channel and the agent cannot strip it, so a genuine AI-initiated write can never *evade* the marker. The reverse — an authenticated admin manually mis-attributing their own write as AI-initiated — is now **defeated**: the channel is an in-process context value (set only by the self-call transport, which cannot be reached from the public ingress), and `audit.StripInitiatorHeader` (an `e.Pre` middleware) deletes any inbound `X-Nexus-Initiated-By` header at the edge before `EntryFor` runs. `EntryFor` no longer reads the header at all, so a forged header is inert.
+**Trust model (write-time forgery).** `via` is advisory for attribution and is **never** consulted for any authorization decision. The forward property holds unconditionally: the assistant's transport always marks the channel and the agent cannot strip it, so a genuine AI-initiated write can never *evade* the marker. The reverse — an authenticated admin manually mis-attributing their own write as AI-initiated — is **defeated**: the channel is an in-process context value (set only by the self-call transport, which cannot be reached from the public ingress), and `audit.StripInitiatorHeader` (an `e.Pre` middleware) deletes any inbound `X-Nexus-Initiated-By` header at the edge before `EntryFor` runs. `EntryFor` never reads the header at all, so a forged header is inert.
 
 The hash chain is the cryptographic spine: each row's `previousHash` equals the prior row's `integrityHash`, and the prior row's `integrityHash` is computed under a `pg_advisory_xact_lock` shared across every writer path so the chain cannot fork even when multiple writers commit concurrently. Every `AdminAuditLog` row joins the one chain — there is no parallel non-chained row class.
 
@@ -113,6 +112,8 @@ h.audit.LogObserved(c.Request().Context(), ae)
 4. `INSERT INTO "AdminAuditLog" … ON CONFLICT (id) DO NOTHING` — id is the message UUID, so a retried MQ delivery is idempotent.
 
 On any failure (Begin / Insert / Commit), the entire batch is NAK'd back to the queue and the failure breaks out by stage in the `mq.admin_errors_total` counter (`db_begin` / `db_insert` / `db_commit`).
+
+A message that **fails to deserialize** (the Control Plane is the sole producer, so this is a permanent error redelivery cannot fix) is not silently ack-dropped — that would lose a ledger row. The raw bytes are persisted to a DB-independent on-disk dead-letter file (`admin-audit-dlq.jsonl`, `mq.admin_disk_dlq_inserted_total`) and only then acked; if the on-disk write itself fails the message is NAK'd so the broker retries and the disk sink gets another chance (audit defect F-0198).
 
 ### 5.2 Hub direct in-transaction writer (override path)
 
@@ -289,7 +290,7 @@ A marshal failure on `BeforeState` or `AfterState` inside Hub still inserts the 
 - `packages/nexus-hub/internal/traffic/chain/chain.go`
 - `packages/nexus-hub/internal/config/config.go`
 - `packages/nexus-hub/cmd/nexus-hub/wiring/jobs.go`
-- `tools/db-migrate/schema.prisma`
+- `tools/db-migrate/schema/admin.prisma`
 - `docs/developers/architecture/cross-cutting/observability/audit-pipeline-architecture.md`
 - `docs/developers/architecture/cross-cutting/observability/siem-bridge-architecture.md`
 - `docs/developers/architecture/cross-cutting/storage/data-retention-purge-architecture.md`

@@ -1,0 +1,1424 @@
+[
+  {
+    "id": "002bbb70-0c9d-45bf-9107-5711f3d1aa8c",
+    "code": "gemini-embedding-001",
+    "name": "Gemini Embedding 001",
+    "description": "Latest Google text embedding model. Successor to text-embedding-004 with improved retrieval quality.",
+    "providerId": "c6e3b252-303a-45fd-b5dd-f9467eeba669",
+    "providerModelId": "gemini-embedding-001",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0.15,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 2048,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "embedding"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": {
+      "embeddings": {
+        "max_batch_size": 100,
+        "max_input_tokens": 2048,
+        "default_dimension": 3072,
+        "supported_dimensions": [
+          768,
+          1536,
+          3072
+        ],
+        "supported_task_types": [
+          "RETRIEVAL_QUERY",
+          "RETRIEVAL_DOCUMENT",
+          "SEMANTIC_SIMILARITY",
+          "CLASSIFICATION",
+          "CLUSTERING",
+          "QUESTION_ANSWERING",
+          "FACT_VERIFICATION"
+        ],
+        "supported_encoding_formats": [
+          "float"
+        ]
+      }
+    },
+    "createdAt": "2026-05-08T14:45:14.962+00:00",
+    "updatedAt": "2026-05-10T16:40:56.389+00:00"
+  },
+  {
+    "id": "06056793-2ab1-4975-a0db-66896ca56134",
+    "code": "gpt-4o",
+    "name": "GPT-4o",
+    "description": "Most capable GPT-4 model. Great for complex tasks requiring advanced reasoning, vision, and tool use.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-4o",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 2.5,
+    "outputPricePerMillion": 10,
+    "cachedInputReadPricePerMillion": 1.25,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:04.678+00:00",
+    "updatedAt": "2026-05-10T16:40:49.056+00:00"
+  },
+  {
+    "id": "18fe13bc-c14a-4f55-ae9e-1a9da78edbd5",
+    "code": "deepseek-v4-pro",
+    "name": "DeepSeek V4 Pro",
+    "description": "Advanced V4 model with extended context and improved capability for complex tasks.",
+    "providerId": "35584423-e803-44e1-8430-cacf9b6fbc18",
+    "providerModelId": "deepseek-v4-pro",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.435,
+    "outputPricePerMillion": 0.87,
+    "cachedInputReadPricePerMillion": 0.0435,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:15.972+00:00",
+    "updatedAt": "2026-05-10T16:40:57.159+00:00"
+  },
+  {
+    "id": "1d5f88f6-ff4c-4422-9623-4d1a0f5e127e",
+    "code": "text-embedding-3-large",
+    "name": "Text Embedding 3 Large",
+    "description": "Most capable embedding model. Best for high-accuracy retrieval.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "text-embedding-3-large",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0.13,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 8191,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "embedding"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": {
+      "embeddings": {
+        "max_batch_size": 2048,
+        "max_input_tokens": 8191,
+        "default_dimension": 3072,
+        "supported_dimensions": [
+          256,
+          512,
+          1024,
+          3072
+        ],
+        "supported_encoding_formats": [
+          "float",
+          "base64"
+        ]
+      }
+    },
+    "createdAt": "2026-05-08T14:45:09.55+00:00",
+    "updatedAt": "2026-05-10T16:40:52.523+00:00"
+  },
+  {
+    "id": "200298f3-1d55-43c7-b51d-843797240cec",
+    "code": "kimi-k2-thinking",
+    "name": "Kimi K2 Thinking",
+    "description": "Kimi K2 Thinking — 256K context, extended reasoning / chain-of-thought model.",
+    "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c",
+    "providerModelId": "kimi-k2-thinking",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming",
+      "vision",
+      "prompt_caching",
+      "reasoning"
+    ],
+    "inputPricePerMillion": 0.95,
+    "outputPricePerMillion": 4,
+    "cachedInputReadPricePerMillion": 0.475,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 262144,
+    "maxOutputTokens": 16384,
+    "status": "deprecated",
+    "deprecationDate": "2026-06-03T00:00:00+00:00",
+    "replacedBy": "kimi-k2.6",
+    "aliases": [],
+    "enabled": false,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:17.244+00:00",
+    "updatedAt": "2026-05-10T16:40:57.964+00:00"
+  },
+  {
+    "id": "217c7211-30ad-4768-8cc3-5eea304eadbd",
+    "code": "dall-e-3",
+    "name": "DALL-E 3",
+    "description": "OpenAI image generation API.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "dall-e-3",
+    "type": "image",
+    "features": [],
+    "inputPricePerMillion": 0,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": null,
+    "maxOutputTokens": null,
+    "status": "disabled",
+    "deprecationDate": "2026-05-12T00:00:00+00:00",
+    "replacedBy": "gpt-image-2",
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:09.816+00:00",
+    "updatedAt": "2026-05-10T16:40:52.765+00:00"
+  },
+  {
+    "id": "293245a3-c21c-4a73-8861-9b056b2d56f6",
+    "code": "embed-english-v3.0",
+    "name": "Embed English v3",
+    "description": "Cohere Embed v3 English model. Best-in-class retrieval and semantic search for English text.",
+    "providerId": "f8a55245-c860-46dd-a3f8-8626af8e7735",
+    "providerModelId": "embed-english-v3.0",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0.1,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 512,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "embedding"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": {
+      "embeddings": {
+        "max_batch_size": 96,
+        "max_input_tokens": 512,
+        "default_dimension": 1024,
+        "supported_dimensions": [
+          1024
+        ],
+        "supported_input_types": [
+          "search_document",
+          "search_query",
+          "classification",
+          "clustering"
+        ],
+        "supported_embedding_types": [
+          "float",
+          "int8",
+          "uint8",
+          "binary",
+          "ubinary"
+        ]
+      }
+    },
+    "createdAt": "2026-05-20T00:00:00+00:00",
+    "updatedAt": "2026-05-20T00:00:00+00:00"
+  },
+  {
+    "id": "30427b06-24a9-420a-a574-893d18585acf",
+    "code": "gpt-4.1",
+    "name": "GPT-4.1",
+    "description": "GPT-4.1 multimodal model.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-4.1",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 2,
+    "outputPricePerMillion": 8,
+    "cachedInputReadPricePerMillion": 1,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:08.355+00:00",
+    "updatedAt": "2026-05-10T16:40:51.981+00:00"
+  },
+  {
+    "id": "30723f51-4774-428b-b974-50dc7b660d2f",
+    "code": "gemini-2.5-flash-lite",
+    "name": "Gemini 2.5 Flash-Lite",
+    "description": "Lowest-cost Gemini 2.5 tier.",
+    "providerId": "c6e3b252-303a-45fd-b5dd-f9467eeba669",
+    "providerModelId": "gemini-2.5-flash-lite",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.1,
+    "outputPricePerMillion": 0.4,
+    "cachedInputReadPricePerMillion": 0.025,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 1048576,
+    "maxOutputTokens": 8192,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:12.994+00:00",
+    "updatedAt": "2026-05-10T16:40:55.342+00:00"
+  },
+  {
+    "id": "30c77ee8-2acf-4ca2-92ac-9dca82d4c84d",
+    "code": "embed-multilingual-v3.0",
+    "name": "Embed Multilingual v3",
+    "description": "Cohere Embed v3 multilingual model. Semantic search and retrieval across 100+ languages.",
+    "providerId": "f8a55245-c860-46dd-a3f8-8626af8e7735",
+    "providerModelId": "embed-multilingual-v3.0",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0.1,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 512,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "embedding"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": {
+      "embeddings": {
+        "max_batch_size": 96,
+        "max_input_tokens": 512,
+        "default_dimension": 1024,
+        "supported_dimensions": [
+          1024
+        ],
+        "supported_input_types": [
+          "search_document",
+          "search_query",
+          "classification",
+          "clustering"
+        ],
+        "supported_embedding_types": [
+          "float",
+          "int8",
+          "uint8",
+          "binary",
+          "ubinary"
+        ]
+      }
+    },
+    "createdAt": "2026-05-20T00:00:00+00:00",
+    "updatedAt": "2026-05-20T00:00:00+00:00"
+  },
+  {
+    "id": "336c5475-8c81-4e9e-9a29-a1c26517bce0",
+    "code": "o4-mini",
+    "name": "o4 Mini",
+    "description": "Compact reasoning model in the o-series family.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "o4-mini",
+    "type": "chat",
+    "features": [
+      "streaming"
+    ],
+    "inputPricePerMillion": 0.6,
+    "outputPricePerMillion": 2.4,
+    "cachedInputReadPricePerMillion": 0.3,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 100000,
+    "status": "deprecated",
+    "deprecationDate": "2026-10-23T00:00:00+00:00",
+    "replacedBy": "gpt-5.4-mini",
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:06.724+00:00",
+    "updatedAt": "2026-05-10T16:40:50.621+00:00"
+  },
+  {
+    "id": "3f45ca57-c842-4e40-a901-4d607f3fe064",
+    "code": "gpt-4o-mini",
+    "name": "GPT-4o Mini",
+    "description": "Small, fast, and affordable. Best for lightweight tasks.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-4o-mini",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.15,
+    "outputPricePerMillion": 0.6,
+    "cachedInputReadPricePerMillion": 0.075,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:04.947+00:00",
+    "updatedAt": "2026-05-10T16:40:49.304+00:00"
+  },
+  {
+    "id": "55cb4856-66ce-469f-95b9-37b08a7a21ca",
+    "code": "text-embedding-004",
+    "name": "Text Embedding 004",
+    "description": "Previous-generation Google text embedding model. DISABLED 2026-05-21: Google v1beta returns 404 (\"not found for API version v1beta, or is not supported for embedContent\") for our project API key — likely region/quota-restricted on this model id. Use gemini-embedding-001 instead (documented successor with improved retrieval quality, verified working with the same API key).",
+    "providerId": "c6e3b252-303a-45fd-b5dd-f9467eeba669",
+    "providerModelId": "text-embedding-004",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0.025,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 2048,
+    "maxOutputTokens": null,
+    "status": "deprecated",
+    "deprecationDate": null,
+    "replacedBy": "gemini-embedding-001",
+    "aliases": [],
+    "enabled": false,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "embedding"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": {
+      "embeddings": {
+        "max_batch_size": 100,
+        "max_input_tokens": 2048,
+        "default_dimension": 768,
+        "supported_dimensions": [
+          768
+        ],
+        "supported_task_types": [
+          "RETRIEVAL_QUERY",
+          "RETRIEVAL_DOCUMENT",
+          "SEMANTIC_SIMILARITY",
+          "CLASSIFICATION",
+          "CLUSTERING",
+          "QUESTION_ANSWERING",
+          "FACT_VERIFICATION"
+        ],
+        "supported_encoding_formats": [
+          "float"
+        ]
+      }
+    },
+    "createdAt": "2026-05-08T14:45:15.443+00:00",
+    "updatedAt": "2026-05-10T16:40:56.627+00:00"
+  },
+  {
+    "id": "5686a34b-147a-47db-a210-75a9e5f93f52",
+    "code": "claude-sonnet-4-5-20250929",
+    "name": "Claude Sonnet 4.5",
+    "description": "Pinned Sonnet 4.5 snapshot. Earlier Claude 4 Sonnet for reproducible deployments.",
+    "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450",
+    "providerModelId": "claude-sonnet-4-5-20250929",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "thinking"
+    ],
+    "inputPricePerMillion": 3,
+    "outputPricePerMillion": 15,
+    "cachedInputReadPricePerMillion": 0.3,
+    "cachedInputWritePricePerMillion": 3.75,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 65536,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:11.131+00:00",
+    "updatedAt": "2026-05-10T16:40:54.011+00:00"
+  },
+  {
+    "id": "5f388862-78ab-4670-b1f4-bf2e96695f59",
+    "code": "claude-opus-4-6",
+    "name": "Claude Opus 4.6",
+    "description": "Previous Claude Opus 4 generation. Strong reasoning and agentic capabilities.",
+    "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450",
+    "providerModelId": "claude-opus-4-6",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "thinking"
+    ],
+    "inputPricePerMillion": 5,
+    "outputPricePerMillion": 25,
+    "cachedInputReadPricePerMillion": 0.5,
+    "cachedInputWritePricePerMillion": 6.25,
+    "maxContextTokens": 1000000,
+    "maxOutputTokens": 131072,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:10.604+00:00",
+    "updatedAt": "2026-05-10T16:40:53.484+00:00"
+  },
+  {
+    "id": "6bf24832-0b9a-4175-b5e3-e0de4c9ed387",
+    "code": "gpt-5.5",
+    "name": "GPT-5.5",
+    "description": "Latest flagship GPT-5 model for complex reasoning, coding, and professional work.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-5.5",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 5,
+    "outputPricePerMillion": 30,
+    "cachedInputReadPricePerMillion": 2.5,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 256000,
+    "maxOutputTokens": 32768,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:06.99+00:00",
+    "updatedAt": "2026-05-10T16:40:50.861+00:00"
+  },
+  {
+    "id": "6d3a7d64-6127-4b44-92d2-9dff6989d2fc",
+    "code": "moonshot-v1-32k",
+    "name": "Moonshot (Kimi) 32K",
+    "description": "Kimi chat model with 32k context.",
+    "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c",
+    "providerModelId": "moonshot-v1-32k",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming"
+    ],
+    "inputPricePerMillion": 1,
+    "outputPricePerMillion": 3,
+    "cachedInputReadPricePerMillion": 0.5,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 32768,
+    "maxOutputTokens": 4096,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:17.772+00:00",
+    "updatedAt": "2026-05-10T16:40:58.488+00:00"
+  },
+  {
+    "id": "7b36ec2a-5455-4a41-a295-fce787cc28dd",
+    "code": "deepseek-v4-flash",
+    "name": "DeepSeek V4 Flash",
+    "description": "Fast, cost-effective V4 model. Strong multilingual reasoning and coding at competitive pricing.",
+    "providerId": "35584423-e803-44e1-8430-cacf9b6fbc18",
+    "providerModelId": "deepseek-v4-flash",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.14,
+    "outputPricePerMillion": 0.28,
+    "cachedInputReadPricePerMillion": 0.014,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 65536,
+    "maxOutputTokens": 8192,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:15.707+00:00",
+    "updatedAt": "2026-05-10T16:40:56.916+00:00"
+  },
+  {
+    "id": "83ef5dcd-45c6-494a-97c1-0d08ab54832c",
+    "code": "gpt-5.4-mini",
+    "name": "GPT-5.4 Mini",
+    "description": "Strongest mini model for coding, computer use, and subagents.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-5.4-mini",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.75,
+    "outputPricePerMillion": 4.5,
+    "cachedInputReadPricePerMillion": 0.375,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:07.519+00:00",
+    "updatedAt": "2026-05-10T16:40:51.5+00:00"
+  },
+  {
+    "id": "85b48c68-fe0e-4c11-b885-6b0ab6643e27",
+    "code": "moonshot-v1-8k",
+    "name": "Moonshot (Kimi) 8K",
+    "description": "Kimi chat model with 8k context.",
+    "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c",
+    "providerModelId": "moonshot-v1-8k",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming"
+    ],
+    "inputPricePerMillion": 0.2,
+    "outputPricePerMillion": 2,
+    "cachedInputReadPricePerMillion": 0.1,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 8192,
+    "maxOutputTokens": 4096,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:18.639+00:00",
+    "updatedAt": "2026-05-10T16:40:58.728+00:00"
+  },
+  {
+    "id": "862cd7ce-0927-4296-88a2-ebb0ff482e5c",
+    "code": "claude-sonnet-4-6",
+    "name": "Claude Sonnet 4.6",
+    "description": "Latest balanced Claude. Best price-to-performance for production traffic in the Claude 4 family.",
+    "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450",
+    "providerModelId": "claude-sonnet-4-6",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "thinking"
+    ],
+    "inputPricePerMillion": 3,
+    "outputPricePerMillion": 15,
+    "cachedInputReadPricePerMillion": 0.3,
+    "cachedInputWritePricePerMillion": 3.75,
+    "maxContextTokens": 1000000,
+    "maxOutputTokens": 65536,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:10.868+00:00",
+    "updatedAt": "2026-05-10T16:40:53.772+00:00"
+  },
+  {
+    "id": "86d0e3a8-3eab-4809-8c7c-4a22d93a391d",
+    "code": "kimi-k2.5",
+    "name": "Kimi K2.5",
+    "description": "Kimi K2.5 — 256K context, automatic prefix caching, improved instruction following.",
+    "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c",
+    "providerModelId": "kimi-k2.5",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming",
+      "vision",
+      "prompt_caching"
+    ],
+    "inputPricePerMillion": 0.6,
+    "outputPricePerMillion": 3,
+    "cachedInputReadPricePerMillion": 0.3,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 262144,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:16.979+00:00",
+    "updatedAt": "2026-05-10T16:40:57.68+00:00"
+  },
+  {
+    "id": "9e180605-9630-404c-9b3a-aac49f4cd767",
+    "code": "gpt-4-turbo",
+    "name": "GPT-4 Turbo",
+    "description": "Previous generation GPT-4 with vision. Good balance of capability and cost. Deprecated — prefer GPT-4o.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-4-turbo",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 10,
+    "outputPricePerMillion": 30,
+    "cachedInputReadPricePerMillion": 5,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 4096,
+    "status": "deprecated",
+    "deprecationDate": "2026-10-23T00:00:00+00:00",
+    "replacedBy": "gpt-5.5",
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:05.215+00:00",
+    "updatedAt": "2026-05-10T16:40:49.574+00:00"
+  },
+  {
+    "id": "a546c0eb-a6a5-490a-a1c0-00cec727053e",
+    "code": "gemini-2.5-pro",
+    "name": "Gemini 2.5 Pro",
+    "description": "High-capability Gemini 2.5 Pro.",
+    "providerId": "c6e3b252-303a-45fd-b5dd-f9467eeba669",
+    "providerModelId": "gemini-2.5-pro",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode",
+      "thinking"
+    ],
+    "inputPricePerMillion": 1.25,
+    "outputPricePerMillion": 10,
+    "cachedInputReadPricePerMillion": 0.3125,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 1048576,
+    "maxOutputTokens": 65536,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:12.239+00:00",
+    "updatedAt": "2026-05-10T16:40:54.82+00:00"
+  },
+  {
+    "id": "a7387e60-64a9-49b5-9acf-cf62c4cde100",
+    "code": "text-embedding-3-small",
+    "name": "Text Embedding 3 Small",
+    "description": "Most cost-effective embedding model. Good for most use cases.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "text-embedding-3-small",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0.02,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 8191,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "embedding"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": {
+      "embeddings": {
+        "max_batch_size": 2048,
+        "max_input_tokens": 8191,
+        "default_dimension": 1536,
+        "supported_dimensions": [
+          512,
+          1024,
+          1536
+        ],
+        "supported_encoding_formats": [
+          "float",
+          "base64"
+        ]
+      }
+    },
+    "createdAt": "2026-05-08T14:45:08.62+00:00",
+    "updatedAt": "2026-05-10T16:40:52.222+00:00"
+  },
+  {
+    "id": "af53ba68-7c04-4fa0-84f6-d06f6c15ec9c",
+    "code": "o3-mini",
+    "name": "o3 Mini",
+    "description": "Reasoning model optimized for STEM and agentic workflows.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "o3-mini",
+    "type": "chat",
+    "features": [
+      "streaming"
+    ],
+    "inputPricePerMillion": 1.1,
+    "outputPricePerMillion": 4.4,
+    "cachedInputReadPricePerMillion": 0.55,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 100000,
+    "status": "deprecated",
+    "deprecationDate": "2026-10-23T00:00:00+00:00",
+    "replacedBy": "gpt-5.5",
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:05.752+00:00",
+    "updatedAt": "2026-05-10T16:40:50.098+00:00"
+  },
+  {
+    "id": "b1c43ce4-1b19-4d81-8e74-f9c0a8393ff9",
+    "code": "kimi-k2.6",
+    "name": "Kimi K2.6",
+    "description": "Kimi K2.6 — latest Kimi model, 256K context, automatic prefix caching, best overall quality.",
+    "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c",
+    "providerModelId": "kimi-k2.6",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming",
+      "vision",
+      "prompt_caching"
+    ],
+    "inputPricePerMillion": 0.95,
+    "outputPricePerMillion": 4,
+    "cachedInputReadPricePerMillion": 0.475,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 262144,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:16.236+00:00",
+    "updatedAt": "2026-05-10T16:40:57.439+00:00"
+  },
+  {
+    "id": "b299b0f2-8e10-4deb-aed9-2def5b7ea2b7",
+    "code": "gpt-5.4-nano",
+    "name": "GPT-5.4 Nano",
+    "description": "Lowest-latency, lowest-cost GPT-5 variant for high-volume tasks.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-5.4-nano",
+    "type": "chat",
+    "features": [
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.2,
+    "outputPricePerMillion": 1.25,
+    "cachedInputReadPricePerMillion": 0.1,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 16384,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:08.088+00:00",
+    "updatedAt": "2026-05-10T16:40:51.741+00:00"
+  },
+  {
+    "id": "b30ca49e-34a3-4183-b67e-50306cc387e2",
+    "code": "gpt-5.4",
+    "name": "GPT-5.4",
+    "description": "More affordable GPT-5 model for coding and professional work.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "gpt-5.4",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 2.5,
+    "outputPricePerMillion": 15,
+    "cachedInputReadPricePerMillion": 1.25,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 256000,
+    "maxOutputTokens": 32768,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:07.255+00:00",
+    "updatedAt": "2026-05-10T16:40:51.151+00:00"
+  },
+  {
+    "id": "bff825a3-7f51-4a87-8b31-03ef745993a0",
+    "code": "claude-opus-4-7",
+    "name": "Claude Opus 4.7",
+    "description": "Latest top-tier Claude. Strongest reasoning, agentic, and coding model in the Claude 4 family.",
+    "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450",
+    "providerModelId": "claude-opus-4-7",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "thinking"
+    ],
+    "inputPricePerMillion": 5,
+    "outputPricePerMillion": 25,
+    "cachedInputReadPricePerMillion": 0.5,
+    "cachedInputWritePricePerMillion": 6.25,
+    "maxContextTokens": 1000000,
+    "maxOutputTokens": 131072,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:10.34+00:00",
+    "updatedAt": "2026-05-10T16:40:53.243+00:00"
+  },
+  {
+    "id": "ca94f1a2-8a03-499b-b7b8-433621e8504a",
+    "code": "moonshot-v1-128k",
+    "name": "Moonshot (Kimi) 128K",
+    "description": "Kimi chat model with 128k context.",
+    "providerId": "64119a02-f3e4-4ff3-a023-e2289bc3135c",
+    "providerModelId": "moonshot-v1-128k",
+    "type": "chat",
+    "features": [
+      "function_calling",
+      "streaming"
+    ],
+    "inputPricePerMillion": 2,
+    "outputPricePerMillion": 5,
+    "cachedInputReadPricePerMillion": 1,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 128000,
+    "maxOutputTokens": 4096,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:17.509+00:00",
+    "updatedAt": "2026-05-10T16:40:58.205+00:00"
+  },
+  {
+    "id": "d22e86fb-3990-4b94-b69a-661c4ecdb326",
+    "code": "local-bge-small",
+    "name": "Local BGE Small",
+    "description": "Placeholder embedding model for the local inference server. Admin reconfigures providerModelId and dimension after deploying their inference server.",
+    "providerId": "b8a43cf6-0b38-4fa8-9fed-d56459c63a2a",
+    "providerModelId": "BAAI/bge-small-en-v1.5",
+    "type": "embedding",
+    "features": [],
+    "inputPricePerMillion": 0,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": 512,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": false,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-06-13T06:35:32.837+00:00",
+    "updatedAt": "2026-06-13T06:35:32.837+00:00"
+  },
+  {
+    "id": "e65623cf-60e8-489f-a91f-6e4869216d15",
+    "code": "claude-haiku-4-5-20251001",
+    "name": "Claude Haiku 4.5",
+    "description": "Fast, affordable Claude 4 tier. Optimised for high-volume routing, summarisation, and simple agent steps.",
+    "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450",
+    "providerModelId": "claude-haiku-4-5-20251001",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming"
+    ],
+    "inputPricePerMillion": 1,
+    "outputPricePerMillion": 5,
+    "cachedInputReadPricePerMillion": 0.1,
+    "cachedInputWritePricePerMillion": 1.25,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 65536,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:11.396+00:00",
+    "updatedAt": "2026-05-10T16:40:54.291+00:00"
+  },
+  {
+    "id": "e94494db-5076-422c-a30b-5e35e0bea13a",
+    "code": "claude-opus-4-1-20250805",
+    "name": "Claude Opus 4.1",
+    "description": "Pinned Opus 4.1 snapshot. Pin for reproducibility; prefer claude-opus-4-7 for new deployments.",
+    "providerId": "dee77e2b-fbe8-4281-9d87-cd8886f90450",
+    "providerModelId": "claude-opus-4-1-20250805",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "thinking"
+    ],
+    "inputPricePerMillion": 15,
+    "outputPricePerMillion": 75,
+    "cachedInputReadPricePerMillion": 1.5,
+    "cachedInputWritePricePerMillion": 18.75,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 65536,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:11.663+00:00",
+    "updatedAt": "2026-05-10T16:40:54.532+00:00"
+  },
+  {
+    "id": "eb00781a-9eb5-467c-ada6-535a53eb50c0",
+    "code": "o1",
+    "name": "o1",
+    "description": "Advanced reasoning model for complex math, science, and coding tasks.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "o1",
+    "type": "chat",
+    "features": [
+      "streaming",
+      "function_calling"
+    ],
+    "inputPricePerMillion": 15,
+    "outputPricePerMillion": 60,
+    "cachedInputReadPricePerMillion": 7.5,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 100000,
+    "status": "disabled",
+    "deprecationDate": "2025-07-28T00:00:00+00:00",
+    "replacedBy": "o3",
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:05.485+00:00",
+    "updatedAt": "2026-05-10T16:40:49.813+00:00"
+  },
+  {
+    "id": "f2b78c3c-fd1d-4297-916c-6ae75418c7f7",
+    "code": "gemini-2.5-flash",
+    "name": "Gemini 2.5 Flash",
+    "description": "Fast Gemini 2.5 Flash.",
+    "providerId": "c6e3b252-303a-45fd-b5dd-f9467eeba669",
+    "providerModelId": "gemini-2.5-flash",
+    "type": "chat",
+    "features": [
+      "vision",
+      "function_calling",
+      "streaming",
+      "json_mode"
+    ],
+    "inputPricePerMillion": 0.3,
+    "outputPricePerMillion": 2.5,
+    "cachedInputReadPricePerMillion": 0.075,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 1048576,
+    "maxOutputTokens": 8192,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:12.506+00:00",
+    "updatedAt": "2026-05-10T16:40:55.064+00:00"
+  },
+  {
+    "id": "f69056cf-a9b2-4129-a31b-5f503c5030a0",
+    "code": "whisper-1",
+    "name": "Whisper 1",
+    "description": "OpenAI speech-to-text API.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "whisper-1",
+    "type": "audio",
+    "features": [],
+    "inputPricePerMillion": 0,
+    "outputPricePerMillion": 0,
+    "cachedInputReadPricePerMillion": null,
+    "cachedInputWritePricePerMillion": null,
+    "maxContextTokens": null,
+    "maxOutputTokens": null,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:10.078+00:00",
+    "updatedAt": "2026-05-10T16:40:53.004+00:00"
+  },
+  {
+    "id": "fa8b2162-2a72-48a3-be86-956c29d9f6b1",
+    "code": "o3",
+    "name": "o3",
+    "description": "High-capability reasoning model.",
+    "providerId": "6b6d307f-a80b-4dcb-801b-1ffa07e25cab",
+    "providerModelId": "o3",
+    "type": "chat",
+    "features": [
+      "streaming"
+    ],
+    "inputPricePerMillion": 10,
+    "outputPricePerMillion": 40,
+    "cachedInputReadPricePerMillion": 5,
+    "cachedInputWritePricePerMillion": 0,
+    "maxContextTokens": 200000,
+    "maxOutputTokens": 100000,
+    "status": "active",
+    "deprecationDate": null,
+    "replacedBy": null,
+    "aliases": [],
+    "enabled": true,
+    "inputModalities": [
+      "text"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "lifecycle": "ga",
+    "capabilityJson": null,
+    "createdAt": "2026-05-08T14:45:06.019+00:00",
+    "updatedAt": "2026-05-10T16:40:50.338+00:00"
+  }
+]

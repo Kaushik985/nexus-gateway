@@ -77,19 +77,78 @@ machine: `PENDING` → `IN_PROGRESS` → `COMPLETED` or `REJECTED`. Every route 
 gated on the `dsar` resource, and create / update / fulfill are recorded in the
 admin audit log.
 
+Fulfillment first validates that the request's `subjectId` resolves to a real
+`NexusUser`. A subjectId that matches no user is rejected (HTTP 422) and the
+request is moved to `REJECTED` — never `COMPLETED` — so an empty access export
+or a zero-row erasure cannot be mistaken for a successful operation.
+
 A request is one of two types:
 
-- **ACCESS** — fulfillment exports the subject's data and stores the export in the
-  request's outcome.
-- **ERASURE** — fulfillment **anonymizes rather than deletes**. It nulls the
-  identifying columns on the subject's `traffic_event` rows — `entity_id` and
-  `source_ip` for virtual-key traffic, and `source_ip` and `source_process` for
-  the subject's agent traffic within its assignment windows — and returns counts
-  of the rows anonymized. The rows themselves remain, which preserves the audit
-  trail and the aggregate rollups while severing the link to the person.
+- **ACCESS** — fulfillment exports every personal-data surface for the subject —
+  the `NexusUser` record, IAM group memberships, AI-gateway + agent traffic, the
+  inline request/response bodies (capped), device-assignment history, and the
+  assistant sessions/memory/files — and stores the export in the request's
+  `outcome`. The admin-audit row records only per-surface counts (a digest),
+  never the export contents, so the unbounded, never-erased audit log does not
+  itself become a residual copy of the subject's PII.
+- **ERASURE** — fulfillment removes the subject's personal data in a single
+  transaction while preserving the rows that carry no personal data (so audit
+  integrity and aggregate rollups survive). It:
+  - scrubs the subject's captured bodies in BOTH copies — the raw
+    `traffic_event_payload` (`inline_request_body`, `inline_response_body`, and
+    the `request_spill_ref` / `response_spill_ref` pointers) AND the canonical
+    `traffic_event_normalized` sidecar (`request_normalized`,
+    `response_normalized`, the error reasons, and the redaction spans), so the
+    prompt/response content is gone from both the raw and normalized stores;
+  - nulls the identifying columns on the subject's `traffic_event` rows —
+    `entity_id`, `entity_name`, the `identity` snapshot, and `source_ip` for
+    virtual-key traffic; `source_ip`, `source_process`, `entity_name`, and
+    `identity` for agent traffic within its assignment windows;
+  - deletes the subject's assistant data — `AssistantMemory`, `AssistantSession`,
+    `AssistantFile`, `AssistantPendingConfirm`, and `AssistantChatEvent` rows
+    keyed by `userId` (the chat audit-chain rows carry digests + counts only,
+    but they are keyed to the subject, so erasure removes them with the
+    sessions they attest);
+  - nulls the persisted ACCESS export (`dsar_request.outcome`) for the same
+    subject — a prior access request stored a full PII copy there, so erasure
+    must scrub it for the correct ACCESS-then-ERASURE sequence to leave no
+    residual personal data;
+  - **deletes the account record itself (default behaviour).** Art.17 covers
+    "all personal data", which on a compliance gateway includes the account
+    profile and federated-identity claims, not just the traffic footprint. So the
+    same transaction also removes: the subject's owned `VirtualKey` and
+    `AdminApiKey` rows (their owner FKs are `ON DELETE SET NULL`, so the account
+    delete alone would only orphan-null them — they are removed outright); the
+    `UserFederatedIdentity` rows (external IdP subject, `externalEmail`,
+    `rawClaims`) and `RefreshToken` rows for the subject; the `ScimToken` rows the
+    subject *created* (whose `createdBy` is `ON DELETE RESTRICT` and would
+    otherwise block the delete); and finally the `NexusUser` row itself. Its
+    remaining referrers (`DeviceAssignment.userId`, `ThingDiagModeWindow.setBy`,
+    `MetricOpsRetentionConfig.updatedBy`) are `ON DELETE SET NULL` and resolve
+    automatically.
 
-Erasure is keyed by the subject's user id, and the resulting counts are written
-into the request outcome and the audit entry.
+  **Audit-trail retention exception.** The tamper-evident admin-audit hash chain
+  (`AdminAuditLog`) is the one personal-data-adjacent surface that erasure does
+  **not** touch. Its rows carry no subject PII beyond an opaque actor id, and
+  breaking the hash chain would destroy the tamper-evidence the gateway relies on
+  as a compliance control. Retaining it is the documented accountability /
+  legal-obligation basis exception (GDPR Art.17(3)(b)/(e)) to the otherwise-
+  complete erasure.
+
+  Payloads are scrubbed before the identifying columns are nulled, because the
+  selection predicates depend on those columns; the account-deletion stage runs
+  last (after the traffic anonymisation, which keys on `entity_id` =
+  `NexusUser.id`) so it cannot strand an earlier stage. The physical spill objects
+  behind any cleared spill references are not deleted by this transaction (it
+  holds only a database pool); their count is reported as `spillRefsOrphaned` and
+  their out-of-band deletion is tracked separately; the database retains no
+  reference to them.
+
+Erasure is keyed by the subject's user id; the per-stage counts (anonymized rows,
+payloads scrubbed, orphaned spill references, assistant rows erased, prior-access
+exports scrubbed, owned keys / federated identities / refresh + SCIM tokens
+deleted, and whether the account record itself was deleted) are written into the
+request outcome and the audit entry.
 
 ## 4. Design notes
 
@@ -103,9 +162,14 @@ into the request outcome and the audit entry.
 - **Chunked deletes for hot tables.** The ops tables are the highest-volume, so
   ops-retention deletes in bounded chunks to keep transactions short; the
   lower-volume audit tables purge in a single statement per table.
-- **Erasure preserves rows.** Right-to-erasure is column-level anonymization, not
-  row deletion, so audit integrity and aggregate metrics survive a subject's
-  erasure.
+- **Erasure preserves only the audit/metric rows, deletes everything personal —
+  including the account.** Traffic rows are anonymized in place (column-level) so
+  aggregate metrics survive a subject's erasure; the subject's own content
+  (payload bodies) and assistant data carry no aggregate value and are
+  scrubbed/deleted outright; the account record and its identity/credential rows
+  are deleted by default (full Art.17 erasure). The single retained surface is the
+  tamper-evident admin-audit hash chain — see the audit-trail retention exception
+  in §3.
 
 ## References
 
@@ -116,4 +180,4 @@ into the request outcome and the audit entry.
 - `packages/nexus-hub/internal/jobs/defs/rollup/rollup_retention.go` — metric_rollup tier purge
 - `packages/nexus-hub/internal/quota/rollup/rollupstore.go` — `PurgeRollupBefore`
 - `packages/control-plane/internal/governance/dsar/` — DSAR access + erasure flow
-- `tools/db-migrate/schema.prisma` — `dsar_request`, `metric_ops_retention_config` models
+- `tools/db-migrate/schema/` — `dsar_request` (`compliance.prisma`); `metric_ops_retention_config` (`observability.prisma`)

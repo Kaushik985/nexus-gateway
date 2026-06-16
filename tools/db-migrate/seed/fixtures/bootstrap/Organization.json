@@ -1,0 +1,19 @@
+[
+  {
+    "id": "b0075000-0000-4000-8000-0000000000a0",
+    "name": "Default Organization",
+    "code": "DEFAULT",
+    "parentId": null,
+    "path": "/b0075000-0000-4000-8000-0000000000a0/",
+    "description": "Default organization provisioned on first boot. Rename it to your own from Settings.",
+    "contactName": null,
+    "contactEmail": null,
+    "contactPhone": null,
+    "enabled": true,
+    "timezone": "UTC",
+    "source": "local",
+    "externalGroupId": null,
+    "createdAt": "2026-01-01T00:00:00.000+00:00",
+    "updatedAt": "2026-01-01T00:00:00.000+00:00"
+  }
+]

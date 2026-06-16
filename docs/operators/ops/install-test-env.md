@@ -204,10 +204,10 @@ verify with:
 
 Two paths:
 
-**(a) Fresh schema from the repo.** Run the Prisma migrations from a
+**(a) Fresh schema from the repo.** Apply the schema from a
 checkout that matches the binaries you'll install in Section 8 (clone
-the repo, then `cd tools/db-migrate && npx prisma migrate deploy`).
-This is the right path for a clean test environment.
+the repo, then `cd tools/db-migrate && npm run db:push`, followed by
+`npm run seed`). This is the right path for a clean test environment.
 
 **(b) Restore from an existing host's `pg_dump`.** Use this when you're
 mirroring an existing environment (the migration use-case this guide
@@ -241,7 +241,7 @@ SELECT 'traffic_event' AS tbl, count(*) FROM traffic_event
 UNION ALL SELECT 'thing', count(*) FROM thing
 UNION ALL SELECT 'Credential', count(*) FROM "Credential"
 UNION ALL SELECT 'VirtualKey', count(*) FROM "VirtualKey"
-UNION ALL SELECT '_prisma_migrations', count(*) FROM _prisma_migrations
+UNION ALL SELECT 'Model', count(*) FROM "Model"
 ORDER BY tbl;
 ```
 
@@ -487,12 +487,16 @@ Three on-disk artifacts the services expect:
 
 # (3) Compliance-proxy CA — signs per-domain leaf certs at intercept
 #     time so the proxy can MITM HTTPS for org-managed devices.
-#     Devices must trust this CA explicitly.
+#     Devices must trust this CA explicitly. pathlen:0 is required:
+#     the proxy CA only ever signs leaf certs, and the constraint
+#     stops a stolen CA key from minting an intermediate CA that
+#     trusting devices would accept.
 [NEW] $ sudo -u nexus bash -c '
   cd /var/lib/nexus/proxy-ca
   openssl ecparam -genkey -name prime256v1 -noout -out ca.key
   openssl req -x509 -new -nodes -key ca.key -days 3650 \
-    -subj "/CN=nexus-compliance-proxy-ca-test" -out ca.crt
+    -subj "/CN=nexus-compliance-proxy-ca-test" \
+    -addext "basicConstraints=critical,CA:TRUE,pathlen:0" -out ca.crt
 '
 [NEW] $ sudo chmod 600 /var/lib/nexus/proxy-ca/ca.key
 [NEW] $ sudo chmod 644 /var/lib/nexus/proxy-ca/ca.crt

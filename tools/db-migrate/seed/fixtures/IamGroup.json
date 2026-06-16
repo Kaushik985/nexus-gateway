@@ -1,0 +1,90 @@
+[
+  {
+    "id": "7b1ddde3-19fc-442f-b342-69d3d2596714",
+    "name": "compliance-team",
+    "description": "Alias for security-admins (legacy name)",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-08T14:46:31.244+00:00",
+    "updatedAt": "2026-05-10T16:41:51.151+00:00"
+  },
+  {
+    "id": "c9c3de6b-dc93-4768-a92e-db5322ff6234",
+    "name": "developers",
+    "description": "Developers with self-service VK and AI Gateway invocation access",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:52.199+00:00",
+    "updatedAt": "2026-05-10T16:41:52.199+00:00"
+  },
+  {
+    "id": "022f8182-3eea-48c4-82e8-c3d8472a8499",
+    "name": "members",
+    "description": "Standard employees with agent login and AI Guard access only",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:52.487+00:00",
+    "updatedAt": "2026-05-10T16:41:52.487+00:00"
+  },
+  {
+    "id": "ea62b5e1-21dd-4dfc-a02a-ca302afe718b",
+    "name": "provider-admins",
+    "description": "AI Gateway operators: manage providers, models, routing, credentials, VKs",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:51.44+00:00",
+    "updatedAt": "2026-05-10T16:41:51.44+00:00"
+  },
+  {
+    "id": "ac9e63f8-dfbd-48f4-8f6e-c0d477bc03dc",
+    "name": "provider-managers",
+    "description": "Alias for provider-admins (legacy name)",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-08T14:46:34.556+00:00",
+    "updatedAt": "2026-05-10T16:41:51.681+00:00"
+  },
+  {
+    "id": "a42f5031-cc14-4a62-993b-4bd668e58a44",
+    "name": "security-admins",
+    "description": "Compliance and security team with audit and monitoring access",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-10T16:41:50.913+00:00",
+    "updatedAt": "2026-05-10T16:41:50.913+00:00"
+  },
+  {
+    "id": "e9614a74-1eb8-42b1-aa71-efc509527644",
+    "name": "super-admins",
+    "description": "Platform administrators with full access",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-08T14:46:27.477+00:00",
+    "updatedAt": "2026-05-10T16:41:50.654+00:00"
+  },
+  {
+    "id": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "name": "viewers",
+    "description": "Read-only access to Control Plane dashboard",
+    "idp_group_name": null,
+    "source": "local",
+    "identity_provider_id": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-05-08T14:46:37.728+00:00",
+    "updatedAt": "2026-05-10T16:41:51.96+00:00"
+  }
+]

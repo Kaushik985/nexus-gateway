@@ -33,21 +33,46 @@ export default [
             'packages/control-plane/internal/assistant/**',
         ],
         docs: [
-            'docs/developers/specs/e90-s4-navigation.md',
-            'docs/developers/specs/e90-s5-write-confirm.md',
-            'docs/developers/specs/e90-s6-persistence.md',
-            'docs/developers/specs/e90-s7-builtin-skills.md',
-            'docs/developers/specs/e90-s8-hardening.md',
-            'docs/operators/ops/runbooks/e90-web-assistant.md',
+            'docs/developers/architecture/nexus-operator-toolkit-architecture.md',
+            'docs/users/features/cp-ui/web-assistant.md',
+            'docs/operators/ops/runbooks/web-assistant.md',
+            'docs/users/api/openapi/control-plane/assistant.yaml',
         ],
-        waiverHint: 'Changes under internal/assistant/** ("Chat with Nexus") must update the matching e90 story doc (s4 navigation / s5 write+confirm / s6 persistence / s7 skills+files / s8 hardening) and/or the web-assistant runbook.',
+        waiverHint: 'Changes under internal/assistant/** ("Chat with Nexus") must update the toolkit architecture doc (web-face section), the web-assistant feature doc / runbook, and/or the assistant OpenAPI spec.',
+    },
+    {
+        name: 'operator-toolkit',
+        code: [
+            'packages/nexus-cli/internal/cli/**',
+            'packages/nexus-cli/internal/tui/**',
+            'packages/nexus-agent-core/agent/**',
+        ],
+        docs: [
+            'docs/developers/architecture/nexus-operator-toolkit-architecture.md',
+            'docs/users/features/operator-toolkit.md',
+        ],
+        waiverHint: 'The nexus CLI/TUI surfaces and the agent kernel are documented in nexus-operator-toolkit-architecture.md + the operator-toolkit feature doc — update them in the same PR.',
+    },
+    {
+        name: 'agent-linux-platform',
+        code: [
+            'packages/agent/internal/platform/linux/**',
+            'packages/agent/internal/sync/status/status_health.go',
+            'packages/shared/transport/tlsbump/egress_proxy.go',
+        ],
+        docs: [
+            'docs/developers/architecture/services/agent/agent-linux-platform-architecture.md',
+        ],
+        waiverHint: 'The Linux agent platform doc owns the NEXUS_AGENT iptables chain, the reconciler + interception-health verdict, /proc PID attribution, SO_MARK loop avoidance, and the egress-proxy (upstreamProxy) upstream-forwarding path — update it in the same PR when changing any of these.',
     },
     {
         name: 'cost-estimation',
         code: [
             'packages/ai-gateway/internal/ingress/proxy/proxy.go',
             'packages/ai-gateway/internal/ingress/proxy/proxy_cache.go',
-            'packages/ai-gateway/internal/observability/metrics/cost.go',
+            'packages/ai-gateway/internal/ingress/proxy/proxy_responses.go',
+            'packages/ai-gateway/internal/ingress/proxy/stage_accounting.go',
+            'packages/ai-gateway/internal/ingress/proxy/stream_accounting.go',
             'packages/ai-gateway/internal/cache/layer/pricing.go',
             'packages/ai-gateway/internal/execution/estimator/**',
             'packages/shared/transport/normalize/codecs/anthropic_messages.go',
@@ -85,11 +110,11 @@ export default [
     {
         name: 'thing-config-sync',
         code: [
-            'packages/nexus-hub/internal/things/**',
+            'packages/nexus-hub/internal/fleet/**',
             'packages/shared/transport/thingclient/**',
             'packages/ai-gateway/cmd/ai-gateway/configdispatch/**',
             'packages/compliance-proxy/cmd/compliance-proxy/configdispatch/**',
-            'packages/agent/cmd/agent/configdispatch/**',
+            'packages/agent/cmd/agent/configdispatch.go',
         ],
         docs: [
             'docs/developers/architecture/cross-cutting/foundation/thing-config-sync-architecture.md',
@@ -118,9 +143,11 @@ export default [
     },
     {
         name: 'jobs-rollup',
+        // The rollup + merge tiers live together under defs/rollup/ (rollup_5m.go,
+        // rollup_merge.go, thing_rollup_merge.go, rollup_correction.go, …); there
+        // is no separate defs/merge/ directory.
         code: [
             'packages/nexus-hub/internal/jobs/defs/rollup/**',
-            'packages/nexus-hub/internal/jobs/defs/merge/**',
         ],
         docs: [
             'docs/developers/architecture/cross-cutting/observability/metrics-rollup-architecture.md',
@@ -128,14 +155,52 @@ export default [
         ],
     },
     {
+        // Every job definition (audit, drift, expiry, health, metrics, quota,
+        // retention, rollup, semanticcacheflush) is catalogued in jobs-architecture.md;
+        // editing any job's logic must keep that catalogue current. defs/rollup/**
+        // additionally trips the jobs-rollup entry above for the rollup doc.
+        name: 'jobs-defs-catalogue',
+        code: [
+            'packages/nexus-hub/internal/jobs/defs/**',
+        ],
+        docs: [
+            'docs/developers/architecture/cross-cutting/foundation/jobs-architecture.md',
+        ],
+    },
+    {
+        // Hub + compliance-proxy flat `{"error":"…"}` envelope emitters. The
+        // error-taxonomy doc §9 catalogs every live error shape; editing one of
+        // these emitters (e.g. changing the field set) must keep §9 accurate
+        // (F-0321). Scoped to the specific emitter files, not the whole handler
+        // trees, to avoid false lockstep failures on unrelated handler edits.
+        name: 'error-envelope-service',
+        code: [
+            'packages/shared/transport/httperr/**',
+            'packages/nexus-hub/internal/alerts/engine/handlers_admin.go',
+            'packages/nexus-hub/internal/alerts/engine/handlers_internal.go',
+            'packages/nexus-hub/internal/identity/handler/bootstrap/agent_bootstrap.go',
+            'packages/nexus-hub/internal/observability/handler/diag/runtime_bridge.go',
+            'packages/compliance-proxy/internal/runtime/auth/auth.go',
+            'packages/compliance-proxy/internal/runtime/breakglass/break_glass.go',
+            'packages/compliance-proxy/internal/runtime/config/runtime_config.go',
+            'packages/compliance-proxy/internal/runtime/handler/handler.go',
+            'packages/compliance-proxy/internal/runtime/server/server.go',
+        ],
+        docs: [
+            'docs/developers/architecture/cross-cutting/safety/error-taxonomy-architecture.md',
+        ],
+        waiverHint: 'Only needed when the error envelope SHAPE changes (fields added/removed). A no-op behavioural edit to these files can waive with NEXUS_DOC_LOCKSTEP_WAIVE=1.',
+    },
+    {
         name: 'audit-traffic-event',
         code: [
             'packages/ai-gateway/internal/platform/audit/**',
-            'packages/nexus-hub/internal/jobs/consumer/**',
+            'packages/nexus-hub/internal/observability/consumer/**',
         ],
         docs: [
             'docs/developers/architecture/services/ai-gateway/cost-estimation-architecture.md',
             'docs/developers/architecture/cross-cutting/observability/observability-architecture.md',
+            'docs/developers/architecture/cross-cutting/observability/admin-audit-log-coverage.md',
         ],
     },
     {
@@ -144,7 +209,6 @@ export default [
             'packages/ai-gateway/internal/cache/core/**',
             'packages/ai-gateway/internal/cache/semantic/**',
             'packages/ai-gateway/internal/cache/freshness/**',
-            'packages/ai-gateway/internal/cache/budget/**',
             'packages/ai-gateway/internal/cache/stream/**',
         ],
         docs: [
@@ -183,6 +247,17 @@ export default [
         docs: [
             'docs/users/features/agent-ui/**',
         ],
+    },
+    {
+        name: 'hook-pipeline',
+        code: [
+            'packages/shared/policy/pipeline/policy.go',
+            'packages/shared/policy/pipeline/pipeline.go',
+        ],
+        docs: [
+            'docs/developers/architecture/services/ai-gateway/hook-architecture.md',
+        ],
+        waiverHint: 'PolicyResolver / BuildPipeline / pipeline execution semantics (resolve filters, build-time strictFailClosed fail-closed enforcement, per-hook failBehavior on Execute) are documented in hook-architecture.md §4-§5 — update it when the resolve/build/execute contract changes.',
     },
     {
         name: 'sse-streaming-compliance',
@@ -225,8 +300,6 @@ export default [
             'docs/users/api/openapi/**',
             // New / changed user-facing capability docs.
             'docs/users/features/**',
-            // Roadmap edits that flip an epic to shipped or retire one.
-            'docs/developers/roadmap.md',
         ],
         docs: [
             'docs/developers/specs/e2e-coverage-matrix.md',

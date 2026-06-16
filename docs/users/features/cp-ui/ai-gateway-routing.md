@@ -78,4 +78,4 @@ These five pages form a setup chain: register a **Provider**, attach a **Credent
 - `packages/control-plane-ui/src/pages/ai-gateway/virtual-keys/detail/` — virtual key detail tabs
 - `packages/ai-gateway/internal/routing/strategies/` — the routing strategy implementations
 - `packages/control-plane-ui/src/api/` — `providerApi`, `credentialApi`, `reliabilitySettingsApi`, `routingApi`, `virtualKeyApi`
-- `tools/db-migrate/schema.prisma` — `Provider`, `Credential`, `RoutingRule`, `VirtualKey` models
+- `tools/db-migrate/schema/` — `Provider`, `Credential` (`providers.prisma`); `RoutingRule`, `VirtualKey` (`gateway.prisma`)

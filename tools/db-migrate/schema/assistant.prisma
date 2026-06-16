@@ -1,0 +1,99 @@
+/// Web assistant ("Chat with Nexus") session metadata. The transcript content
+/// lives in object storage (keyed by userId+id); this row is the DB index used
+/// for listing / delete, plus the cloud-maintained audit-chain head anchor
+/// (chainSeq/chainHead — what makes a truncated chain tail detectable) and the
+/// durable tamper flag (chainBrokenAt). Strong per-user isolation: every
+/// runtime query filters by userId, and the userId FK cascade-deletes a user's
+/// sessions.
+model AssistantSession {
+  id            String    @id @default(uuid())
+  userId        String
+  title         String    @default("")
+  msgCount      Int       @default(0)
+  lastSeq       Int       @default(0)
+  spillRef      Json?
+  chainSeq      Int       @default(0)
+  chainHead     String    @default("")
+  chainBrokenAt DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, updatedAt])
+}
+
+/// Web assistant durable memory, isolated per user (recall/remember/update/forget).
+model AssistantMemory {
+  userId    String
+  name      String
+  type      String
+  body      String
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@id([userId, name])
+}
+
+/// Web assistant sandbox file metadata. Content lives in object storage at
+/// assistant/<userId>/<sessionId>/files/<id>; isolated per user.
+model AssistantFile {
+  id          String   @id @default(uuid())
+  userId      String
+  sessionId   String
+  name        String
+  size        Int
+  contentType String   @default("application/octet-stream")
+  spillRef    Json
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, sessionId])
+}
+
+/// Durable record of a parked dangerous-write confirmation. The in-memory
+/// confirm registry holds the live rendezvous channel; this row mirrors it so a
+/// POST /confirm that misses the in-memory entry can tell "the pod restarted,
+/// re-issue" from "expired/unknown". makeConfirm writes the row on register and
+/// deletes it when the confirm resolves, so a row that outlives confirmTimeout
+/// is an orphan from a restart. It does NOT resume the write (the turn
+/// goroutine is in-memory and gone after a restart) — it drives the clearer
+/// re-issue error + cross-pod visibility. Isolated per user; cascade-deleted
+/// with the user.
+model AssistantPendingConfirm {
+  key            String   @id // userId:sessionId:callId
+  userId         String
+  sessionId      String
+  callId         String
+  tool           String
+  input          Json
+  reason         String   @default("")
+  requiresSecond Boolean  @default(false)
+  isProd         Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, createdAt])
+}
+
+/// Append-only, hash-chained log of a chat session's persisted transcript
+/// revisions (web turn saves and deletion tombstones). hashInput stores the
+/// canonical envelope verbatim; hash = SHA256(prevHash || hashInput), so
+/// verification never depends on spilled or mutable content. Deliberately no
+/// FK to AssistantSession: deleting a session must not erase the audit
+/// evidence of its history (the tombstone IS evidence); only the owning user
+/// cascades. The unique (userId, sessionId, seq) index is the chain append's
+/// optimistic CAS — scoped per user so the chain namespace matches the
+/// per-user session namespace.
+model AssistantChatEvent {
+  id            String   @id @default(uuid())
+  sessionId     String
+  userId        String
+  seq           Int
+  kind          String // revision | tombstone
+  origin        String   @default("web")
+  msgCount      Int      @default(0)
+  contentDigest String   @default("")
+  prevHash      String?
+  hash          String
+  hashInput     Bytes
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, sessionId, seq])
+  @@index([userId, createdAt])
+}

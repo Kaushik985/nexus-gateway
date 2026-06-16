@@ -290,7 +290,7 @@ For each call, you must find a matching row. Flag:
 - `api_key_fingerprint` empty → caller-key fingerprinting regression
   (this column is the SHA256[:8] of the **caller's real provider key**
   on this `source`; see `traffic_event` schema comments at
-  `tools/db-migrate/schema.prisma`).
+  `tools/db-migrate/schema/traffic.prisma`).
 - `usage_extraction_status` ∉ `{ok, streaming_reported,
   streaming_estimated}` → token-extraction regression in the proxy.
 - `target_host` empty / wrong → CONNECT/SNI parsing regression.

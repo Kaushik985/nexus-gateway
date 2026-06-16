@@ -1,0 +1,56 @@
+[
+  {
+    "id": "0c61a0e5-c9f1-42a9-80af-838ed147c135",
+    "groupId": "a42f5031-cc14-4a62-993b-4bd668e58a44",
+    "policyId": "15a8355b-8818-4114-bf97-8a699a74f6e3",
+    "createdAt": "2026-05-10T16:41:56.68+00:00"
+  },
+  {
+    "id": "0d75a12a-f07a-44de-a50e-5fa20fbaf90c",
+    "groupId": "e9614a74-1eb8-42b1-aa71-efc509527644",
+    "policyId": "39397464-ea15-4041-8029-482f7ad2b7f3",
+    "createdAt": "2026-05-08T14:46:29.173+00:00"
+  },
+  {
+    "id": "148b6c2f-dc59-4cda-a502-a5836b0a2db3",
+    "groupId": "ea62b5e1-21dd-4dfc-a02a-ca302afe718b",
+    "policyId": "d808273b-8816-4795-a9ce-4f63e5a07543",
+    "createdAt": "2026-05-10T16:41:59.822+00:00"
+  },
+  {
+    "id": "1c2f3b58-cdec-427a-92ec-435a7a1e877f",
+    "groupId": "022f8182-3eea-48c4-82e8-c3d8472a8499",
+    "policyId": "ea6be045-ad4b-473d-8b0d-4e732fa09825",
+    "createdAt": "2026-05-10T16:42:06.111+00:00"
+  },
+  {
+    "id": "8a4ddedd-696e-47f0-bd1e-5b52fd77caed",
+    "groupId": "2c3eea76-735d-4535-970d-730e55fe5960",
+    "policyId": "a677c0bb-dc15-450f-ad19-ff1ab363318f",
+    "createdAt": "2026-05-10T16:42:02.971+00:00"
+  },
+  {
+    "id": "96fddea8-bb79-4191-828b-c64a038d4c8c",
+    "groupId": "c9c3de6b-dc93-4768-a92e-db5322ff6234",
+    "policyId": "56cc0c4a-1eb3-47c7-b9a8-a340c85292e6",
+    "createdAt": "2026-05-10T16:42:04.548+00:00"
+  },
+  {
+    "id": "9e4702ab-f586-4a81-90a7-95f54fdd2f64",
+    "groupId": "e9614a74-1eb8-42b1-aa71-efc509527644",
+    "policyId": "4b0cec72-dca1-49d8-82fa-8f84259d9b90",
+    "createdAt": "2026-05-10T16:41:55.117+00:00"
+  },
+  {
+    "id": "c77e3a53-75a5-4df2-aa4f-947fcb630993",
+    "groupId": "ac9e63f8-dfbd-48f4-8f6e-c0d477bc03dc",
+    "policyId": "d808273b-8816-4795-a9ce-4f63e5a07543",
+    "createdAt": "2026-05-10T16:42:01.397+00:00"
+  },
+  {
+    "id": "ff7dda28-121a-43d7-b5e0-901b296a0dd5",
+    "groupId": "7b1ddde3-19fc-442f-b342-69d3d2596714",
+    "policyId": "15a8355b-8818-4114-bf97-8a699a74f6e3",
+    "createdAt": "2026-05-10T16:41:58.251+00:00"
+  }
+]

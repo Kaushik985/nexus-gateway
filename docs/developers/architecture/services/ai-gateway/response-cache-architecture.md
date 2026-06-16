@@ -29,7 +29,7 @@ Each handler applies its blob atomically, so cache behavior changes without a se
 
 The cache phase runs after request hooks and before the in-flight broker. For each request the handler:
 
-1. Runs the pre-lookup classifier, which short-circuits to `skipped` for a disabled cache, a no-cache header, a passthrough bypass, no routing target, or a freshness match (when `apply_freshness_rules` is on).
+1. Runs the pre-lookup classifier, which short-circuits to `skipped` for the embeddings endpoint (`embeddings_endpoint` — embeddings are never cached because each input is unique per workflow step and not session-bound, so caching wastes Redis and dilutes the chat cache-hit dashboards; checked first, regardless of cache config), a disabled cache, a no-cache header, a passthrough bypass, no routing target, or a freshness match (when `apply_freshness_rules` is on).
 2. Looks up L1 against the canonical key.
 3. On an L1 miss, attempts L2 via `tryL2Lookup`.
 4. On a full miss, dispatches through the broker (which coalesces concurrent identical misses onto one upstream call).
@@ -48,7 +48,7 @@ When the Redis client is not a plain `*redis.Client` (for example a Sentinel or 
 
 ## References
 
-- `tools/db-migrate/schema.prisma` — `ExtractCacheConfig`, `semantic_cache_config` models
+- `tools/db-migrate/schema/cache.prisma` — `ExtractCacheConfig`, `SemanticCacheConfig` models
 - `packages/ai-gateway/cmd/ai-gateway/configdispatch/configdispatch.go` — shadow-key dispatch into cache config
 - `packages/ai-gateway/cmd/ai-gateway/wiring/semantic.go` — L2 subsystem assembly (reader, writer, index lifecycle, circuit breaker, singleflight)
 - `packages/ai-gateway/internal/cache/core/cache.go` — L1 cache, runtime config atomics

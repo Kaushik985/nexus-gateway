@@ -96,7 +96,7 @@ materialized-path tree. See
 
 ## References
 
-- `tools/db-migrate/schema.prisma` — `Organization`, `Project`, `VirtualKey`, `NexusUser` models
+- `tools/db-migrate/schema/` — `Organization`, `Project`, `NexusUser` (`identity.prisma`); `VirtualKey` (`gateway.prisma`)
 - `packages/control-plane/internal/identity/users/orgstore` — org CRUD + path materialization
 - `packages/control-plane/internal/identity/users/userstore/nexus_user_crud.go` — `IncludeSubOrgs` subtree query
 - `packages/ai-gateway/internal/policy/quota/policy_cache.go` — org-tree load (`orgParents`)

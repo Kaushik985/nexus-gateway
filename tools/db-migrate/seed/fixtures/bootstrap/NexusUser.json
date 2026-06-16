@@ -1,0 +1,23 @@
+[
+  {
+    "id": "nexus-user-super-admin",
+    "organizationId": "b0075000-0000-4000-8000-0000000000a0",
+    "displayName": "Admin",
+    "email": "admin@nexus.ai",
+    "status": "active",
+    "canAccessControlPlane": true,
+    "source": "local",
+    "osUsername": null,
+    "osDomain": null,
+    "passwordHash": null,
+    "passwordUpdatedAt": null,
+    "preferredTimezone": null,
+    "breakGlass": false,
+    "disabledReason": null,
+    "disabledAt": null,
+    "lastLoginAt": null,
+    "createdBy": "seed-script",
+    "createdAt": "2026-01-01T00:00:00.000+00:00",
+    "updatedAt": "2026-01-01T00:00:00.000+00:00"
+  }
+]

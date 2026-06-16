@@ -31,7 +31,13 @@ packages/agent/ui/build/*
 packages/agent/ui/build/darwin/*
 !packages/agent/ui/build/darwin/Info.plist
 packages/agent/ui/bindings/
-packages/agent/ui/frontend/dist/
+# Ignore dist/ CONTENTS (real Vite output) but keep the committed placeholders
+# so `go:embed all:frontend/dist` (ui/main.go) resolves on a fresh clone before
+# Vite has ever run. The real bundle is produced by Skill('build-agent'); the
+# two placeholders below are the only tracked files under dist/.
+packages/agent/ui/frontend/dist/*
+!packages/agent/ui/frontend/dist/.gitkeep
+!packages/agent/ui/frontend/dist/index.html
 # Stray binary left by `go build ./packages/agent/ui/` (the package's
 # main entry compiles into a `ui` executable next to the source).
 # Always a build artefact; never check in. The `/ui` rule below
@@ -84,7 +90,6 @@ packages/ai-gateway/bin/
 packages/compliance-proxy/bin/
 packages/control-plane/bin/
 packages/agent/bin/
-packages/nexus-cli/bin/
 
 # Delve / VSCode Go debug binaries
 __debug_bin*
@@ -196,3 +201,6 @@ worktrees/
 
 # JetBrains IDE
 .idea/
+
+# Local tool installs (golangci-lint etc.) — not committed
+.tooling/

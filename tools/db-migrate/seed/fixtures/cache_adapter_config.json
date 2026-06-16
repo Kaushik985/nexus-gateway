@@ -1,0 +1,114 @@
+[
+  {
+    "adapter_type": "anthropic",
+    "config": {
+      "rules": {
+        "claude-code-cch-strip": {
+          "enabled": false
+        }
+      },
+      "marker_inject_enabled": true,
+      "marker_boundary3_enabled": true
+    },
+    "updated_at": "2026-05-13T15:03:54.722+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "adapter_type": "azure-openai",
+    "config": {
+      "rules": {
+        "azure-openai-field-order-normalize": {
+          "enabled": true
+        }
+      }
+    },
+    "updated_at": "2026-05-13T07:59:16.777+00:00",
+    "updated_by": null
+  },
+  {
+    "adapter_type": "bedrock",
+    "config": {
+      "rules": {
+        "bedrock-claude-cch-strip": {
+          "enabled": false
+        }
+      },
+      "marker_inject_enabled": true,
+      "marker_boundary3_enabled": true
+    },
+    "updated_at": "2026-05-13T15:04:10.176+00:00",
+    "updated_by": "nexus-user-super-admin"
+  },
+  {
+    "adapter_type": "deepseek",
+    "config": {
+      "rules": {
+        "deepseek-field-order-normalize": {
+          "enabled": true
+        }
+      }
+    },
+    "updated_at": "2026-05-13T07:59:16.777+00:00",
+    "updated_by": null
+  },
+  {
+    "adapter_type": "gemini",
+    "config": {
+      "ttl_seconds": 3600,
+      "cache_enabled": true,
+      "min_system_chars": 4096,
+      "circuit_breaker_open_secs": 300,
+      "circuit_breaker_threshold": 5
+    },
+    "updated_at": "2026-05-13T08:52:58.719+00:00",
+    "updated_by": "manual-restore-prod-20260513c"
+  },
+  {
+    "adapter_type": "glm",
+    "config": {
+      "rules": {
+        "glm-field-order-normalize": {
+          "enabled": true
+        }
+      }
+    },
+    "updated_at": "2026-05-13T07:59:16.777+00:00",
+    "updated_by": null
+  },
+  {
+    "adapter_type": "moonshot",
+    "config": {
+      "rules": {
+        "moonshot-field-order-normalize": {
+          "enabled": true
+        }
+      }
+    },
+    "updated_at": "2026-05-13T07:59:16.777+00:00",
+    "updated_by": null
+  },
+  {
+    "adapter_type": "openai",
+    "config": {
+      "rules": {
+        "openai-field-order-normalize": {
+          "enabled": true
+        }
+      }
+    },
+    "updated_at": "2026-05-13T07:59:16.777+00:00",
+    "updated_by": null
+  },
+  {
+    "adapter_type": "vertex",
+    "config": {
+      "ttl_seconds": 3600,
+      "cache_enabled": false,
+      "min_system_chars": 4096,
+      "circuit_breaker_open_secs": 300,
+      "circuit_breaker_threshold": 5
+    },
+    "updated_at": "2026-05-13T08:52:58.719+00:00",
+    "updated_by": "manual-restore-prod-20260513c"
+  }
+]

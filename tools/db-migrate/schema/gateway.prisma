@@ -1,0 +1,154 @@
+model VirtualKey {
+  id                          String     @id @default(uuid())
+  name                        String // human-readable label, e.g., "engineering-openai"
+  keyHash                     String?    @unique // HMAC-SHA256 hash of the real API key
+  keyPrefix                   String? // First 12 chars for display (e.g., "nvk_a1b2c3d4")
+  /// HMAC keyring version that produced keyHash (SEC-W2-01 Layer A). Mirrors
+  /// Credential.encryption_key_id. New keys are stamped the keyring's *current
+  /// version; unlike admin keys, virtual keys are NOT lazy-migrated (the ai-gw
+  /// admission path is read-only) — they ride try-all-versions and are pruned by
+  /// re-issue / expiry.
+  keyVersion                  String     @default("v1") @map("key_version")
+  projectId                   String?
+  project                     Project?   @relation(fields: [projectId], references: [id])
+  sourceApp                   String?
+  enabled                     Boolean    @default(true)
+  expiresAt                   DateTime?  @db.Timestamptz(3)
+  rateLimitRpm                Int?
+  // E58-S4 T6.3: per-VK /v1/estimate compare-endpoint RPM cap (default
+  // 30/min in code). Compare requests dispatch N internally so they
+  // warrant their own rate bucket.
+  compareEndpointRateLimitRpm Int?
+  /// JSON array of { providerId, modelId }; modelId supports globs (same as legacy allowlist). Empty = all models.
+  allowedModels               Json       @default("[]")
+  ownerId                     String?
+  owner                       NexusUser? @relation("VirtualKeyOwner", fields: [ownerId], references: [id])
+  createdBy                   String?
+  createdAt                   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime   @updatedAt @db.Timestamptz(3)
+
+  vkType       String    @default("personal") // "personal" | "application"
+  vkStatus     String    @default("active") // "pending" | "active" | "expired" | "rejected" | "revoked"
+  approvedBy   String?
+  approvedAt   DateTime? @db.Timestamptz(3)
+  rejectedBy   String?
+  rejectedAt   DateTime? @db.Timestamptz(3)
+  rejectReason String?
+
+  @@index([name])
+  @@index([keyHash])
+  @@index([projectId])
+  @@index([ownerId])
+  @@index([vkType])
+  @@index([vkStatus])
+}
+
+model RoutingRule {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  strategyType    String // single | fallback | loadbalance | conditional | ab_split | smart | policy
+  config          Json // StrategyNode tree
+  matchConditions Json? // MatchConditions — sole rule-matching truth source (see docs/developers/specs/e20/e20-s2-routing-rule-modelid-removal.md).
+  priority        Int      @default(0)
+  /// 0 = policy narrowing (allow/deny); 1 = route decision (single winning rule among stage-1 matches).
+  pipelineStage   Int      @default(1)
+  /// Inline fallback chain: [{ providerId, modelId }] tried in order when primary targets fail.
+  fallbackChain   Json?
+  retryPolicy     Json? // RetryPolicy override; null = use ai-gateway YAML default
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([priority])
+  @@index([enabled])
+  @@index([enabled, pipelineStage, priority])
+}
+
+model QuotaPolicy {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  scope           String // "user" | "virtual_key" | "project" | "organization"
+  organizationId  String?
+  vkType          String? // "personal" | "application" | null
+  periodType      String // "daily" | "weekly" | "monthly"
+  costLimitUsd    Decimal? @db.Decimal(24, 6)
+  enforcementMode String   @default("reject")
+  alertThresholds Json     @default("[80, 90]")
+  priority        Int      @default(0)
+  enabled         Boolean  @default(true)
+  createdBy       String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([scope])
+  @@index([enabled])
+}
+
+model QuotaOverride {
+  id              String   @id @default(uuid())
+  targetType      String // "user" | "virtual_key" | "project" | "organization"
+  targetId        String
+  reason          String?
+  costLimitUsd    Decimal?  @db.Decimal(24, 6)
+  enforcementMode String?
+  periodType      String?
+  expiresAt       DateTime? @db.Timestamptz(3) // null = never expires; past = ignored by the enforcement engine
+  createdBy       String?
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([targetType, targetId])
+  @@index([targetType])
+}
+
+/// E48 — Emergency Passthrough 3-Tier Config, Tier 1 (singleton).
+/// Runtime kill-switch that degrades the gateway to a dumb pipe for matched
+/// traffic. Three independent bypass flags (bypassHooks / bypassCache /
+/// bypassNormalize) live inside `config` JSONB. CHECK constraints in the
+/// migration enforce: expires_at NOT NULL when enabled, expires_at <= NOW() + 8h,
+/// reason length >= 20 chars when enabled. Cross-toggle constraint
+/// (bypassNormalize=true requires bypassCache=true) is enforced at admin
+/// API + UI, not at DB level (would require query-time JSONB inspection).
+model GatewayPassthroughConfigGlobal {
+  id        String    @id @default("singleton")
+  enabled   Boolean   @default(false)
+  config    Json      @default("{\"bypassHooks\": false, \"bypassCache\": false, \"bypassNormalize\": false}")
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(3)
+  enabledBy String?   @map("enabled_by")
+  reason    String?
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("gateway_passthrough_config_global")
+}
+
+/// E48 — Emergency Passthrough 3-Tier Config, Tier 2 (per adapter_type).
+/// One row per adapter family in passthrough mode.
+model GatewayPassthroughConfigAdapter {
+  adapterType String    @id @map("adapter_type")
+  enabled     Boolean   @default(false)
+  config      Json      @default("{}")
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3)
+  enabledBy   String?   @map("enabled_by")
+  reason      String?
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("gateway_passthrough_config_adapter")
+}
+
+/// E48 — Emergency Passthrough 3-Tier Config, Tier 3 (per Provider).
+/// FK CASCADE: deleting a Provider deletes its passthrough row.
+model GatewayPassthroughConfigProvider {
+  providerId String    @id @map("provider_id")
+  enabled    Boolean   @default(false)
+  config     Json      @default("{}")
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(3)
+  enabledBy  String?   @map("enabled_by")
+  reason     String?
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("gateway_passthrough_config_provider")
+}

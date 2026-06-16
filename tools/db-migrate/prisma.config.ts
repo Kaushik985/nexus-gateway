@@ -2,14 +2,12 @@ import 'dotenv/config'
 import { defineConfig, env } from 'prisma/config'
 
 export default defineConfig({
-  schema: 'schema.prisma',
+  schema: 'schema',
   migrations: {
-    path: 'migrations',
-    // Delegate to the npm script so the shell evaluates `&&`. Prisma 7 token-
-    // splits this string and execs the first program directly, so chained
-    // commands here would silently drop everything after `&&` (regenerating
-    // the client but never running tsx). `npm run seed` resolves to
-    // `prisma generate && tsx seed/seed.ts` inside a real shell.
+    // No migration files in 1.0 — schema is applied with `prisma db push`.
+    // `seed` is still consumed by `prisma db seed`. Delegated to the npm
+    // script so the shell evaluates `&&` (Prisma 7 token-splits the string
+    // and would otherwise drop everything after `&&`).
     seed: 'npm run seed',
   },
   datasource: {

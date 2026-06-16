@@ -1,0 +1,54 @@
+[
+  {
+    "id": "970cde7c-5537-40b2-a8da-86d890028810",
+    "targetType": "project",
+    "targetId": "bb4f98a4-eb70-47b8-98c0-1cefb8e720d6",
+    "reason": "Core internal tool — higher project budget",
+    "costLimitUsd": 15000,
+    "enforcementMode": "downgrade",
+    "periodType": "monthly",
+    "expiresAt": null,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:21.555+00:00",
+    "updatedAt": "2026-05-10T16:41:21.555+00:00"
+  },
+  {
+    "id": "992be51b-3ba5-461e-bbb6-ca80d385fd79",
+    "targetType": "user",
+    "targetId": "nexus-user-viewer",
+    "reason": "Data scientist running large batch experiments this quarter",
+    "costLimitUsd": 1500,
+    "enforcementMode": null,
+    "periodType": null,
+    "expiresAt": null,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:21.269+00:00",
+    "updatedAt": "2026-05-10T16:41:21.269+00:00"
+  },
+  {
+    "id": "c800d758-1602-450c-a0f4-68f5c26a11e6",
+    "targetType": "user",
+    "targetId": "nexus-user-admin",
+    "reason": "AI team lead — needs higher personal budget for evaluation",
+    "costLimitUsd": 500,
+    "enforcementMode": "notify-and-proceed",
+    "periodType": null,
+    "expiresAt": null,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:21.029+00:00",
+    "updatedAt": "2026-05-10T16:41:21.029+00:00"
+  },
+  {
+    "id": "fb129d3c-169a-4569-a65e-22426a05f172",
+    "targetType": "organization",
+    "targetId": "10000000-0000-0000-0000-000000000003",
+    "reason": "Partner pilot program — strict budget control",
+    "costLimitUsd": 2000,
+    "enforcementMode": "reject",
+    "periodType": "monthly",
+    "expiresAt": null,
+    "createdBy": null,
+    "createdAt": "2026-05-10T16:41:21.794+00:00",
+    "updatedAt": "2026-05-10T16:41:21.794+00:00"
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "76131a0e-1ffd-458e-96a2-5ed3ad58a696",
+    "name": "Quantitative Research Lab",
+    "code": "RESEARCH",
+    "organizationId": "10000000-0000-0000-0000-000000000002",
+    "description": "AI-driven quantitative research, backtesting, and alpha signal generation",
+    "contactName": "Richard Park",
+    "contactEmail": "richard.park@apexfinancial.example",
+    "status": "active",
+    "createdAt": "2026-05-10T16:41:07.635+00:00",
+    "updatedAt": "2026-05-10T16:41:07.635+00:00"
+  },
+  {
+    "id": "79391ad7-1288-4502-8a51-d0d1fd1d234a",
+    "name": "Regulatory Reporting Assistant",
+    "code": "PARTNER-API",
+    "organizationId": "10000000-0000-0000-0000-000000000003",
+    "description": "AI-assisted SEC/FINRA regulatory filings and compliance document generation",
+    "contactName": "Michael Chen",
+    "contactEmail": "michael.chen@apexfinancial.example",
+    "status": "active",
+    "createdAt": "2026-05-10T16:41:08.968+00:00",
+    "updatedAt": "2026-05-10T16:41:08.968+00:00"
+  },
+  {
+    "id": "b469b780-fc83-4bba-99fe-55901fe6b7f4",
+    "name": "Marketing Content Studio",
+    "code": "CONTENT",
+    "organizationId": "10000000-0000-0000-0000-000000000001",
+    "description": "AI-assisted content generation for marketing campaigns and investor communications",
+    "contactName": "Linda Foster",
+    "contactEmail": "linda.foster@apexfinancial.example",
+    "status": "active",
+    "createdAt": "2026-05-10T16:41:06.346+00:00",
+    "updatedAt": "2026-05-10T16:41:06.346+00:00"
+  },
+  {
+    "id": "bb4f98a4-eb70-47b8-98c0-1cefb8e720d6",
+    "name": "AI Copilot for Developers",
+    "code": "COPILOT",
+    "organizationId": "10000000-0000-0000-0000-000000000002",
+    "description": "Internal AI coding assistant for software engineers",
+    "contactName": "James Rodriguez",
+    "contactEmail": "james.rodriguez@apexfinancial.example",
+    "status": "active",
+    "createdAt": "2026-05-10T16:41:03.725+00:00",
+    "updatedAt": "2026-05-10T16:41:03.725+00:00"
+  },
+  {
+    "id": "e993100f-dae6-44d6-bb91-5b76b4593d62",
+    "name": "AI/ML Research Platform",
+    "code": "DS-PLATFORM",
+    "organizationId": "10000000-0000-0000-0000-000000000002",
+    "description": "Enterprise ML experimentation, model training, and deployment platform",
+    "contactName": "David Thompson",
+    "contactEmail": "david.thompson@apexfinancial.example",
+    "status": "active",
+    "createdAt": "2026-05-10T16:41:05.009+00:00",
+    "updatedAt": "2026-05-10T16:41:05.009+00:00"
+  },
+  {
+    "id": "eb45d2f3-dcb9-4c9f-9c57-3b0e0133cd52",
+    "name": "Research Lab",
+    "code": "research-lab-archived-eb45d2f3",
+    "organizationId": "5fabaad6-0441-45f4-b3b0-cac754a3a4a0",
+    "description": "Placeholder for a project that was deleted; name recovered from traffic_event.identity.project. Owned 1396 historical events / 555 rollup buckets.",
+    "contactName": null,
+    "contactEmail": null,
+    "status": "archived",
+    "createdAt": "2026-05-13T15:12:42.18+00:00",
+    "updatedAt": "2026-05-13T15:12:42.18+00:00"
+  }
+]

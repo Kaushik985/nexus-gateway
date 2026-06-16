@@ -8,11 +8,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/ai/providers/credstore"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/audit"
 	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/crypto"
+	"github.com/AlphaBitCore/nexus-gateway/packages/control-plane/internal/platform/hub"
+	"github.com/AlphaBitCore/nexus-gateway/packages/shared/core/keyderive"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/identity/iam"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/schemas/credstate"
 )
@@ -89,13 +92,20 @@ func (h *Handler) CreateCredential(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errJSON("name, providerId, and apiKey are required", "validation_error", "VALIDATION_ERROR"))
 	}
 
+	// Generate the credential id app-side BEFORE sealing so the
+	// ciphertext is AAD-bound to its own immutable row identity. A blob copied
+	// from another credential's row then fails GCM auth on decrypt instead of
+	// yielding the wrong upstream key.
+	credID := uuid.New().String()
+	aad := keyderive.ProviderCredentialAAD(credID, body.ProviderID)
+
 	var enc *crypto.EncryptResult
 	var keyID string
 	var encErr error
 	if h.multiVault != nil {
-		enc, keyID, encErr = h.multiVault.Encrypt(body.APIKey)
+		enc, keyID, encErr = h.multiVault.Encrypt(body.APIKey, aad)
 	} else {
-		enc, encErr = h.vault.Encrypt(body.APIKey)
+		enc, encErr = h.vault.Encrypt(body.APIKey, aad)
 		keyID = "v1"
 	}
 	if encErr != nil {
@@ -117,6 +127,7 @@ func (h *Handler) CreateCredential(c echo.Context) error {
 		weight = *body.SelectionWeight
 	}
 	cred, err := h.creds.CreateCredential(c.Request().Context(), credstore.CreateCredentialParams{
+		ID:              credID,
 		Name:            body.Name,
 		ProviderID:      body.ProviderID,
 		EncryptedKey:    enc.Ciphertext,
@@ -134,13 +145,18 @@ func (h *Handler) CreateCredential(c echo.Context) error {
 	}
 
 	if h.hub != nil {
-		h.hub.InvalidateConfig(c.Request().Context(), "ai-gateway", "credentials")
+		if err := h.hub.InvalidateConfigE(c.Request().Context(), "ai-gateway", "credentials"); err != nil {
+			h.logger.Error("create credential: hub invalidate failed", "id", cred.ID, "error", err)
+			return hub.RespondPropagationFailure(c, err)
+		}
 	}
 
 	ae := audit.EntryFor(c, iam.ResourceCredential, iam.VerbCreate)
 	ae.EntityID = cred.ID
 	ae.AfterState = map[string]any{"id": cred.ID, "name": cred.Name, "providerId": cred.ProviderID}
-	h.audit.LogObserved(c.Request().Context(), ae)
+	if err := h.audit.LogCritical(c.Request().Context(), ae); err != nil {
+		return c.JSON(http.StatusInternalServerError, errJSON("Audit failure", "server_error", "AUDIT_FAILURE"))
+	}
 
 	return c.JSON(http.StatusCreated, cred)
 }
@@ -205,13 +221,16 @@ func (h *Handler) UpdateCredential(c echo.Context) error {
 		if h.multiVault == nil && h.vault == nil {
 			return c.JSON(http.StatusServiceUnavailable, errJSON("Credential vault not available", "server_error", "VAULT_UNAVAILABLE"))
 		}
+		// Re-seal under the same row-identity AAD (immutable id +
+		// provider) as the create path, so the rotated ciphertext stays bound.
+		aad := keyderive.ProviderCredentialAAD(id, existing.ProviderID)
 		var enc *crypto.EncryptResult
 		var keyID string
 		var encErr error
 		if h.multiVault != nil {
-			enc, keyID, encErr = h.multiVault.Encrypt(body.APIKey)
+			enc, keyID, encErr = h.multiVault.Encrypt(body.APIKey, aad)
 		} else {
-			enc, encErr = h.vault.Encrypt(body.APIKey)
+			enc, encErr = h.vault.Encrypt(body.APIKey, aad)
 			keyID = "v1"
 		}
 		if encErr != nil {
@@ -299,13 +318,30 @@ func (h *Handler) UpdateCredential(c echo.Context) error {
 		}
 	}
 
+	// A replaced upstream key invalidates any open circuit: an auth_fail circuit
+	// (3× 401/403 from the old/bad key) never auto-recovers — it has no probe
+	// schedule and stays open until an explicit reset. Auto-close it on the key
+	// swap so a fixed credential re-enters the pool without a separate manual
+	// circuit-reset. Best-effort: the key update already succeeded, and a
+	// rate_limit circuit self-heals on its own cooldown regardless.
+	if apiKeyUpdated {
+		if err := h.clearCredentialCircuit(ctx, id); err != nil {
+			h.logger.Warn("update credential: circuit auto-clear failed", "id", id, "error", err)
+		}
+	}
+
 	if h.hub != nil {
-		h.hub.InvalidateConfig(ctx, "ai-gateway", "credentials")
+		if err := h.hub.InvalidateConfigE(ctx, "ai-gateway", "credentials"); err != nil {
+			h.logger.Error("update credential: hub invalidate failed", "id", id, "error", err)
+			return hub.RespondPropagationFailure(c, err)
+		}
 	}
 
 	ae := audit.EntryFor(c, iam.ResourceCredential, iam.VerbUpdate)
 	ae.EntityID = id
-	h.audit.LogObserved(ctx, ae)
+	if err := h.audit.LogCritical(ctx, ae); err != nil {
+		return c.JSON(http.StatusInternalServerError, errJSON("Audit failure", "server_error", "AUDIT_FAILURE"))
+	}
 
 	return c.JSON(http.StatusOK, updated)
 }
@@ -325,12 +361,17 @@ func (h *Handler) DeleteCredential(c echo.Context) error {
 	}
 
 	if h.hub != nil {
-		h.hub.InvalidateConfig(c.Request().Context(), "ai-gateway", "credentials")
+		if err := h.hub.InvalidateConfigE(c.Request().Context(), "ai-gateway", "credentials"); err != nil {
+			h.logger.Error("delete credential: hub invalidate failed", "id", id, "error", err)
+			return hub.RespondPropagationFailure(c, err)
+		}
 	}
 
 	ae := audit.EntryFor(c, iam.ResourceCredential, iam.VerbDelete)
 	ae.EntityID = id
-	h.audit.LogObserved(c.Request().Context(), ae)
+	if err := h.audit.LogCritical(c.Request().Context(), ae); err != nil {
+		return c.JSON(http.StatusInternalServerError, errJSON("Audit failure", "server_error", "AUDIT_FAILURE"))
+	}
 
 	return c.JSON(http.StatusOK, map[string]any{"deleted": true, "id": id})
 }
@@ -398,26 +439,37 @@ func (h *Handler) CircuitReset(c echo.Context) error {
 	// and rehydrate. A failure here is fatal to the reset (return 500); a stale
 	// Redis key alone self-heals (cooldown promote / reconcile), but a stale DB
 	// row does not.
-	if err := h.creds.ClearCircuit(ctx, id); err != nil {
+	if err := h.clearCredentialCircuit(ctx, id); err != nil {
 		h.logger.Error("circuit-reset: db clear failed", "credentialID", id, "error", err)
 		return c.JSON(http.StatusInternalServerError, errJSON("Failed to reset circuit", "server_error", "INTERNAL_ERROR"))
 	}
-	// Clear the live Redis hash so the gateway sees the credential as closed
-	// immediately, and drop any pending dirty marker so a concurrent flush
-	// cannot re-derive the just-cleared state. Best-effort: the DB is already
-	// authoritative and the Hub reconcile will converge any residue.
-	if h.redis != nil {
-		if err := h.redis.Del(ctx, credstate.CircuitKey(id)).Err(); err != nil {
-			h.logger.Warn("circuit-reset: redis del failed", "credentialID", id, "error", err)
-		}
-		if err := h.redis.SRem(ctx, credstate.CircuitDirtySet, id).Err(); err != nil {
-			h.logger.Warn("circuit-reset: redis dirty-set srem failed", "credentialID", id, "error", err)
-		}
-	}
 	ae := audit.EntryFor(c, iam.ResourceCredential, iam.VerbUpdate)
 	ae.EntityID = id
-	h.audit.LogObserved(ctx, ae)
+	if err := h.audit.LogCritical(ctx, ae); err != nil {
+		return c.JSON(http.StatusInternalServerError, errJSON("Audit failure", "server_error", "AUDIT_FAILURE"))
+	}
 	return c.JSON(http.StatusOK, map[string]any{"reset": true, "id": id})
+}
+
+// clearCredentialCircuit force-closes a credential's circuit breaker across both
+// stores: the durable Credential.circuit* DB columns (authoritative — the UI
+// badge and the Hub rehydrate-on-restart path read them) and the live Redis
+// cred:circuit:{id} hash + dirty marker the AI Gateway reads. Returns the DB
+// clear error (the authoritative half); Redis cleanup is best-effort and only
+// logged, since the DB is authoritative and the Hub reconcile converges residue.
+func (h *Handler) clearCredentialCircuit(ctx context.Context, id string) error {
+	if err := h.creds.ClearCircuit(ctx, id); err != nil {
+		return err
+	}
+	if h.redis != nil {
+		if err := h.redis.Del(ctx, credstate.CircuitKey(id)).Err(); err != nil {
+			h.logger.Warn("clear circuit: redis del failed", "credentialID", id, "error", err)
+		}
+		if err := h.redis.SRem(ctx, credstate.CircuitDirtySet, id).Err(); err != nil {
+			h.logger.Warn("clear circuit: redis dirty-set srem failed", "credentialID", id, "error", err)
+		}
+	}
+	return nil
 }
 
 // credentialWithCircuit is the API response shape for a single credential.

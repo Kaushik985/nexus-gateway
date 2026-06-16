@@ -1,0 +1,83 @@
+model IamPolicy {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  type        String   @default("custom") // managed | custom
+  document    Json // { Version, Statement[] } — the policy document
+  enabled     Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  principalAttachments IamPolicyAttachment[]
+  groupAttachments     IamGroupPolicyAttachment[]
+
+  @@index([type])
+}
+
+model IamGroup {
+  id                 String   @id @default(uuid())
+  name               String   @unique
+  description        String?
+  /// IdP group name for auto-sync (e.g. OIDC/SAML group claim value).
+  idpGroupName       String?  @map("idp_group_name")
+  /// Provenance of this group: 'local' (admin-created in Nexus) or 'scim'
+  /// (auto-created when an external IdP pushed a group via SCIM). SCIM-
+  /// managed groups are read-only in the admin UI; their membership comes
+  /// exclusively from SCIM Group push.
+  source             String   @default("local") @map("source")
+  /// External IdP that pushed this group via SCIM. Required when
+  /// `source = 'scim'`; null for local groups. References `IdentityProvider.id`.
+  identityProviderId String?  @map("identity_provider_id") @db.Uuid
+  createdBy          String?
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(3)
+
+  members           IamGroupMembership[]
+  policyAttachments IamGroupPolicyAttachment[]
+  idpGroupMappings  IdpGroupMapping[]
+  identityProvider  IdentityProvider?          @relation("ScimManagedGroups", fields: [identityProviderId], references: [id], onDelete: SetNull)
+
+  @@index([source, identityProviderId])
+}
+
+model IamGroupMembership {
+  id            String   @id @default(uuid())
+  groupId       String
+  group         IamGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  principalType String // nexus_user | api_key | virtual_key (admin_user is a legacy value still matched by some queries)
+  principalId   String
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([groupId, principalType, principalId])
+  @@index([principalType, principalId])
+}
+
+model IamGroupPolicyAttachment {
+  id        String    @id @default(uuid())
+  groupId   String
+  group     IamGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  policyId  String
+  policy    IamPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@unique([groupId, policyId])
+}
+
+model IamPolicyAttachment {
+  id            String    @id @default(uuid())
+  principalType String // nexus_user | api_key | virtual_key (admin_user is a legacy value)
+  principalId   String
+  policyId      String
+  policy        IamPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  /// E52-S15 optional attachment expiry. NULL = permanent. Non-NULL =
+  /// break-glass / time-bounded grant; Engine.loadPolicies filters
+  /// `expires_at <= NOW()` so the policy effectively vanishes from
+  /// the principal's effective set at the deadline.
+  expires_at    DateTime? @map("expires_at") @db.Timestamptz(3)
+
+  @@unique([principalType, principalId, policyId])
+  @@index([principalType, principalId])
+  @@index([expires_at], map: "iam_policy_attachment_expires_idx")
+}

@@ -3,7 +3,7 @@
 [![CI](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/ci.yml/badge.svg?branch=main)](.github/workflows/ci.yml)
 [![Go CI](https://github.com/AlphaBitCore/nexus-gateway/actions/workflows/go-ci.yml/badge.svg?branch=main)](.github/workflows/go-ci.yml)
 [![Coverage gate](https://img.shields.io/badge/coverage-%E2%89%A595%25%20per%20package-brightgreen)](./scripts/check-go-coverage.sh)
-[![Status: Pre-GA](https://img.shields.io/badge/status-Pre--GA%20%C2%B7%20active%20development-orange)](./CHANGELOG.md)
+[![Status: 1.0 GA](https://img.shields.io/badge/status-1.0%20GA-brightgreen)](./CHANGELOG.md)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 
 > **Make AI safe to use across the enterprise.**
@@ -14,11 +14,25 @@ Nexus Gateway intercepts enterprise LLM traffic at three layers and runs all of 
 |---|---|---|
 | 🔑 **AI Gateway** | SDK layer — virtual keys on `/v1/chat/*`, `/v1/responses`, `/v1/embeddings`, `/v1/messages` | `packages/ai-gateway/` |
 | 🌐 **Compliance Proxy** | Network layer — transparent TLS bump (`CONNECT` + MITM) | `packages/compliance-proxy/` |
-| 💻 **Desktop Agent** | OS layer — macOS / Linux / Windows builds all in development, awaiting QA | `packages/agent/platform/{darwin,linux,windows}/` |
+| 💻 **Desktop Agent** | OS layer — macOS + Linux GA; Windows experimental | `packages/agent/platform/{darwin,linux,windows}/` |
 
 The three pipes are independent: AI Gateway, Compliance Proxy, and Agent each run the **full hooks pipeline on their own traffic** (`packages/shared/policy/hooks/`, plus the per-service compliance pipeline — e.g. `packages/agent/internal/compliance/pipeline.go`). The Agent always egresses directly to the upstream provider — it does **not** care whether enterprise network policy then routes that traffic through the Compliance Proxy.
 
 When it does — Agent stamps an Ed25519-signed `X-Nexus-Attestation` header on the outbound request (E60, `packages/agent/internal/identity/attestation/`). The Compliance Proxy peeks this header *before* the TLS bump (`packages/shared/transport/tlsbump/forward_handler.go:119`); if the signature verifies, the CONNECT becomes pure passthrough — no MITM, no hooks, no audit on that flow, since the Agent already ran them.
+
+---
+
+## See it in action
+
+The web **Console** to configure and inspect everything, the captured-traffic
+drawer that shows each AI request end to end, and the **Desktop Agent** on the
+endpoint:
+
+| Console — dashboard | Captured AI request — payloads | Desktop Agent |
+|---|---|---|
+| ![Console dashboard](docs/assets/screenshots/console/overview/dashboard.png) | ![Captured request payloads](docs/assets/screenshots/console/overview/traffic-detail-payloads.png) | ![Desktop Agent](docs/assets/screenshots/agent/overview.png) |
+
+**▶ [Full product tour](docs/users/product/tour.md)** — Console, Desktop Agent, and Chat with Nexus, screen by screen.
 
 ---
 
@@ -50,7 +64,7 @@ Reasoning tokens, function calls, vision inputs, structured outputs are carried 
 
 ### 🛡 Compliance pipeline
 
-PII detection · data classification · keyword filtering · content safety · rate limiting · IP allowlists · request-size validation · webhook forwarders · per-stage audit (request hooks and response hooks recorded independently) · body capture (256 KiB inline + spillstore for the rest, see `packages/shared/storage/spillstore/`) · SIEM forwarder (`packages/compliance-proxy/internal/siem/`) · three-tier kill switch · emergency passthrough (`bypassHooks` / `bypassCache` / `bypassNormalize`).
+PII detection · data classification · keyword filtering · content safety · rate limiting · IP allowlists · request-size validation · webhook forwarders · per-stage audit (request hooks and response hooks recorded independently) · body capture (256 KiB inline + spillstore for the rest, see `packages/shared/storage/spillstore/`) · SIEM forwarder (`packages/control-plane/internal/observability/siem/` and `packages/nexus-hub/internal/observability/siem/`) · three-tier kill switch · emergency passthrough (`bypassHooks` / `bypassCache` / `bypassNormalize`).
 
 ### 🎨 Modalities
 
@@ -104,7 +118,7 @@ The lateral dotted arrow is the **attestation handoff**: the Agent always egress
 | **Control Plane** | 3001 | `packages/control-plane/` (Echo) — admin API / BFF, IAM, SSO, analytics |
 | **AI Gateway** | 3050 | `packages/ai-gateway/` — `/v1` AI traffic, provider adapters, routing, quota |
 | **Compliance Proxy** | 3128 | `packages/compliance-proxy/` — CONNECT, MITM, compliance pipeline |
-| **Agent** | local | `packages/agent/` — macOS uses pf packet filter (`packages/agent/internal/platform/darwin/pfintercept/`); Linux uses `iptables`; Windows uses `WinDivert`. The legacy NETransparentProxyProvider path (`packages/agent/platform/darwin/NexusAgent/NexusAgentExtension/`) is still in the repo behind `interceptMode=ne`, but new builds default to pf. All three platforms are development-complete, not yet QA-signed-off. |
+| **Agent** | local | `packages/agent/` — macOS intercepts via the `NETransparentProxyProvider` system extension (`packages/agent/platform/darwin/NexusAgent/NexusAgentExtension/`), the sole macOS intercept path (the experimental pf-only alternative was retired before shipping); Linux uses `iptables`; Windows (experimental) uses `WinDivert`. macOS + Linux are GA; Windows is experimental. |
 | **Control Plane UI** | 3000 | `packages/control-plane-ui/` — React + Vite + TypeScript |
 
 **Storage stack**
@@ -185,8 +199,6 @@ admin@nexus.ai / admin123
 
 Additional seeded roles (`alice@nexus.ai`, `carol@nexus.ai`, `bob@nexus.ai`, `diana@nexus.ai`) are defined in `tools/db-migrate/seed/seed.ts`.
 
-Prefer the terminal? `nexus` (`packages/nexus-cli`) is a single Go binary that operates and observes the gateway from the command line — a Bubble Tea TUI (health overview, live traffic radar, event drill-down with an LLM "explain this event", SLO, cost, a chat playground, the kill switch and emergency passthrough, alerts and nodes, a k9s-style command palette, and an "Ask Nexus" natural-language bar that turns a plain-English question into a view jump or a data answer), a scriptable CLI (`nexus <noun> <verb> --output json`), and an MCP server (`nexus mcp serve`) that exposes the read/analyze tools to agents with an opt-in mitigate tier. It is a pure client over the same admin API + `/v1/*`, governed by the same IAM. See [docs/users/features/operator-toolkit.md](docs/users/features/operator-toolkit.md).
-
 ### Try it
 
 After the stack is up, walk through [`examples/01-hello-world/`](./examples/01-hello-world/) — a 3-minute curl-through-the-gateway demo that ends with you reading the resulting `traffic_event` Postgres row.
@@ -219,8 +231,8 @@ docker exec $(docker ps --filter "name=postgres" -q | head -1) \
 You came for an AI gateway. You also get the disciplined AI pair-programming setup that built it. [`CLAUDE.md`](./CLAUDE.md), [`.cursor/rules/`](./.cursor/rules/), [`.claude/skills/`](./.claude/skills/), and the [`scripts/check-*`](./scripts/) lint suite form a fork-adoptable methodology:
 
 - **Binding rules** in `CLAUDE.md` plus **35 `.cursor/rules/`** entries (`ls .cursor/rules/`).
-- **26 invocable skills** under `.claude/skills/` — `/prod-deploy`, `/smoke-gateway`, `/spec-writing`, `/add-provider-adapter`, hardened runbooks for repeatable procedures.
-- **23 `scripts/check-*` lint scripts** — every binding rule has a mechanical gate; pre-commit + CI dual layer.
+- **33 invocable skills** under `.claude/skills/` — `/prod-deploy`, `/smoke-gateway`, `/spec-writing`, `/add-provider-adapter`, hardened runbooks for repeatable procedures.
+- **25 `scripts/check-*` lint scripts** — every binding rule has a mechanical gate; pre-commit + CI dual layer.
 - **95% per-package coverage gate** enforced by `scripts/check-go-coverage.sh` + `scripts/.coverage-allowlist`.
 - **2-round completion self-audit** before claiming "done" (see `CLAUDE.md` → Mandatory rules → Workflow discipline → Self-audit).
 
@@ -234,8 +246,8 @@ packages/
   control-plane/     Go + Echo — admin API / BFF, IAM, SSO, analytics
   ai-gateway/        Go — /v1 AI traffic, provider adapters, routing, quota
   compliance-proxy/  Go — transparent TLS proxy, CONNECT, compliance pipeline
-  agent/             Go — desktop traffic interception (macOS / Linux / Windows;
-                     all builds in development, awaiting QA)
+  agent/             Go — desktop traffic interception (macOS + Linux GA;
+                     Windows experimental)
   shared/            Go — cross-service business logic (hooks, traffic, configtypes,
                      mq, thingclient, cache, …)
   control-plane-ui/  React + Vite + TypeScript — admin dashboard

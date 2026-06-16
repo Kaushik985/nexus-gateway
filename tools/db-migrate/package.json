@@ -4,13 +4,11 @@
   "private": true,
   "description": "Database schema, migrations, and seeds for Nexus Gateway",
   "scripts": {
-    "migrate:dev": "prisma migrate dev",
-    "migrate:deploy": "prisma migrate deploy",
-    "migrate:status": "prisma migrate status",
-    "migrate:reset": "prisma migrate reset",
-    "db:push": "prisma db push --accept-data-loss",
+    "db:push": "prisma db push",
     "generate": "prisma generate",
-    "seed": "prisma generate && tsx seed/seed.ts"
+    "seed": "prisma generate && tsx seed/seed.ts",
+    "seed:prod": "SEED_DEMO=false npm run seed",
+    "test": "tsx --test seed/__tests__/*.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -18,7 +16,7 @@
     "dotenv": "^17.4.2",
     "pg": "^8.21.0",
     "prisma": "^7.8.0",
-    "tsx": "^4.22.3",
+    "tsx": "^4.22.4",
     "yaml": "^2.9.0"
   }
 }

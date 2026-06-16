@@ -27,7 +27,6 @@ If a row for your edit area didn't exist in the trigger map, that itself is a si
 - [ ] **Plan + Todo were live** before code (Cursor `TodoWrite` or Claude Code `TaskCreate`).
 - [ ] No code-level `TODO` / `FIXME` / `XXX` / `unimplemented` / `not implemented` / `stub` / `mock` strings in production code (test mocks are fine).
 - [ ] **English only** for committed text (docs, comments, commit messages, READMEs, config-doc strings).
-- [ ] No `git stash` was used (see the binding rule in CLAUDE.md — parallel sessions share the working tree).
 - [ ] All my commits use **explicit pathspec** so no other session's WIP got swept in.
 
 ## High-blast-radius surfaces — check if your change touches any

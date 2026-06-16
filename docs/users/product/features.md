@@ -141,4 +141,4 @@ UI section names match the sidebar labels in `packages/control-plane-ui/src/i18n
 - `packages/control-plane/internal/identity/scim/scimstore/scim_store.go` — OIDC JIT user provisioning
 - `packages/shared/identity/iam/` — NRN-based RBAC and ABAC
 - `packages/shared/transport/thingclient/` — node registration and target-config pull
-- `tools/db-migrate/schema.prisma` — Prisma schema for all managed objects
+- `tools/db-migrate/schema/` — Prisma schema for all managed objects

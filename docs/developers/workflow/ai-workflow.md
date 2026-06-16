@@ -21,7 +21,8 @@ Plan + Todo → Architecture → Requirements → Story spec → OpenAPI → Cod
   it if components, boundaries, data flow, deployment, or external integrations
   change, otherwise record an explicit "no architecture impact" note.
 - **Requirements.** Capture functional and non-functional requirements, roles,
-  constraints, a glossary, and MoSCoW priority under `docs/developers/specs/`.
+  constraints, a glossary, and MoSCoW priority in the epic requirements document
+  (stored in the internal `docs/developers/specs/` tree).
 - **Story spec.** Break requirements down into epics, stories, and tasks — each
   story carrying a user-story statement, its tasks, and acceptance criteria
   (spec-driven development).
@@ -60,9 +61,11 @@ rule under `.cursor/rules/`:
   instead of add when in doubt (`adversarial-product-review.mdc`).
 - **Real implementation only.** No `TODO` / `FIXME` / stub / fake-return in
   production code; test doubles belong in test code.
-- **Development-phase policy: no backward compatibility, no defer.** Obsolete
-  code, tables, and endpoints are deleted outright when replaced; rollback is
-  `git revert`, not a compatibility layer (`no-backward-compatibility.mdc`).
+- **Release policy (1.0 GA): backward compatibility for shipped contracts.**
+  Shipped contracts (public/admin API, agent↔Hub protocol, released `shared/`
+  API, DB schema, config keys, `traffic_event` shape) stay backward compatible
+  or ship a migration + deprecation window; internal-only code stays greenfield
+  — delete dead code outright, no parallel legacy paths (`release-compat-policy.mdc`).
 - **One worktree per session.** Each parallel session runs in its own
   `git worktree` so the working tree and index are private to it
   (`worktree-per-session.mdc`).

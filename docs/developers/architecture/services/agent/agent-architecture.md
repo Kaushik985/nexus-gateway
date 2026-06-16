@@ -111,8 +111,10 @@ one of two categories:
 - **Category A — inline.** Hub pushes the full state bytes in the shadow; the
   applier consumes them directly. The agent's Category A keys are `killswitch`
   and `agent_settings`.
-- **Category B — pull.** Hub pushes a `{needsPull:true}` marker only. The Loader
-  then issues an authenticated HTTP GET to Hub
+- **Category B — pull.** Hub pushes minimal state bytes over WS as a pull signal
+  only; the client's `RegisterRawPull` flag (not any `{needsPull:true}` marker in
+  the payload) drives the fetch. The Loader discards the pushed bytes and
+  issues an authenticated HTTP GET to Hub
   (`/api/internal/things/config/<key>?type=agent`, Bearer device token plus an
   `X-Thing-Id` header) to fetch the live bytes before applying. The agent's
   Category B keys are `exemptions`, `interception_domains`, `hooks`,
@@ -226,7 +228,8 @@ them rather than redefining them:
 ## References
 
 - `packages/agent/cmd/agent/main.go` — command dispatch and build identity
-- `packages/agent/cmd/agent/cmd_run.go` — daemon lifecycle and goroutine wiring
+- `packages/agent/cmd/agent/cmd_run.go` — daemon lifecycle: the ordered subsystem boot sequence and shutdown sequencing
+- `packages/agent/cmd/agent/wiring/` — per-subsystem constructors `cmdRun` calls in boot order (logger, Hub clients, compliance, audit queue, diag, status server, platform interception)
 - `packages/agent/cmd/agent/configdispatch.go` — shadow config loader, Category A/B registration, Hub pull
 - `packages/agent/cmd/agent/configcache.go` — persist-on-apply and boot replay of the offline config cache
 - `packages/agent/internal/sync/shadow/cache.go` — per-key offline config cache (`config_cache` table)

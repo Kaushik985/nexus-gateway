@@ -2,7 +2,7 @@
 
 PII redaction in the Nexus Gateway is a **two-axis policy**: every match by a content-touching hook can independently change the **in-flight** body (the bytes Nexus forwards upstream) and the **storage** body (the bytes the audit pipeline persists to `traffic_event_normalized`). The two axes are encoded as `onMatch.inflightAction` and `onMatch.storageAction` on every hook config; pipeline aggregation picks the strictest storage policy across all matched hooks, and the proxy stamps a small closed set of standard `ReasonCode` values onto the audit row whenever the storage axis diverged from the inflight axis, or when an adapter could not honour an inflight redact.
 
-Detection produces byte-addressed `TransformSpan` values against the canonical (post-normalize) payload. The same span set drives **both** rewrites: the adapter's `RewriteRequestBody` / `RewriteResponseBody` applies it on the wire, and the audit writer's `applyStorageAction` applies it on the persisted bytes. Spans address `messages.<i>.content.<j>` (chat), `messages.<i>.content.<j>.toolResult` (tool output), or `inputs.<i>` (embeddings), so the redaction set is wire-shape-independent.
+Detection produces byte-addressed `TransformSpan` values against the canonical (post-normalize) payload. The same span set drives **both** rewrites: the adapter's `RewriteRequestBody` / `RewriteResponseBody` applies it on the wire, and the audit producers' shared `redact.ApplyStorageAction` applies it on the persisted bytes. Spans address `messages.<i>.content.<j>` (chat), `messages.<i>.content.<j>.toolResult` (tool output), or `inputs.<i>` (embeddings), so the redaction set is wire-shape-independent.
 
 Anchor packages:
 
@@ -14,7 +14,9 @@ Anchor packages:
 - `packages/shared/transport/normalize/core/types.go` — `NormalizedPayload`, `TransformSpan`, `TransformSource`, `TransformAction`.
 - `packages/shared/transport/normalize/core/apply_spans.go` — `ApplySpans` engine that walks the canonical payload and rewrites the addressed content blocks.
 - `packages/shared/traffic/adapter.go` + `packages/shared/traffic/types.go` — adapter `RewriteRequestBody` / `RewriteResponseBody` contract and `ErrRewriteUnsupported` sentinel.
-- `packages/ai-gateway/internal/platform/audit/audit.go` — `applyStorageAction` and the `Record` fields that ferry spans + storage policy from the hook pipeline to the audit writer.
+- `packages/shared/traffic/redact/redact.go` — `ApplyStorageAction` (normalized-copy governance), `StorageRawBody` (raw-copy governance), `MarshalSpans`, `CollectRuleIDs` — the storage-policy helpers every audit producer calls.
+- `packages/ai-gateway/internal/platform/audit/record.go` — the `Record` fields that ferry spans + storage policy from the hook pipeline to the AI Gateway audit writer.
+- `packages/shared/policy/pipeline/audit_emitter.go` — `AuditEmitter.buildEvent`, the single choke point where compliance-proxy and agent rows have the storage policy applied to both the raw captured copy and the normalized copy before any writer sees the event.
 - `packages/ai-gateway/internal/ingress/proxy/proxy.go` — `Reason*` stamping, MODIFY decision dispatch, ErrRewriteUnsupported handling.
 - `packages/ai-gateway/internal/policy/aiguard/types.go` — `aiguard.Redaction` (LLM-as-judge suggested span), the AI-Guard analogue of a hook-emitted span.
 
@@ -107,28 +109,45 @@ The same three-arm pattern runs on the response side via `extractor.RewriteRespo
 
 Adapters MUST walk their schema in the same order as `ExtractRequest` / `ExtractResponse` emitted segments, so position `i` in `content.Segments` pairs with the i-th extractable slot — this is the canonical adapter contract documented on `Adapter.RewriteRequestBody`.
 
-## 6. Storage-only rewrite — `applyStorageAction`
+## 6. Storage rewrite — `shared/traffic/redact`
 
-The audit writer's `recordToMessage` builds the normalized payload via the registered normalizer, then calls `applyStorageAction(raw, action, spans, ruleIDs)` to fold the storage policy into the persisted bytes:
+The storage half of the policy is enforced by the shared `packages/shared/traffic/redact` package, which governs **every persisted copy** of matched traffic — the normalized sidecar AND the raw captured wire bytes — for all three audit producers:
 
 ```
-applyStorageAction(raw, action, spans, ruleIDs) →
+ApplyStorageAction(raw, action, spans, ruleIDs, redetect) →   (normalized copy)
   ""/keep        → raw unchanged
-  "redact"       → ApplySpans(unmarshal(raw), spans) → marshal
-  "drop-content" → NormalizedPayload{Kind, NormalizeVersion, Protocol, Redacted:true, RuleIDs}
+  "redact"       → ApplySpans(unmarshal(raw), spans) → marshal + relocated span offsets
+                   (unresolved spans retry via storage-time re-detection — see below)
+  "drop-content" → NormalizedPayload{Kind, NormalizeVersion, Protocol, Redacted:true,
+                   RedactedReason:"operator-drop", RuleIDs}
+
+StorageRawBody(captured, redacted, action) →        (raw captured copy)
+  ""/keep        → captured bytes as-is
+  "redact"       → ONLY the adapter-rewritten redacted wire copy; absent → NULL
+  "drop-content" / unknown → NULL
+  captured nil   → NULL always (capture-off must never be resurrected)
 ```
 
-The `keep` arm preserves the original bytes — admin opt-in for environments where the audit log itself is the compliance boundary. The `redact` arm runs the same `ApplySpans` engine that drives in-flight rewrite, so the storage-side bytes match the inflight bytes byte-for-byte when both policies are active. The `drop-content` arm replaces the payload with a small envelope that preserves the `Kind` discriminator, the `NormalizeVersion`, the `Protocol`, sets `Redacted = true`, and lists the matching rule IDs — operators can still see *that* the policy dropped the body and *which rules* matched, just not the content itself.
+The `keep` arm preserves the original bytes — admin opt-in for environments where the audit log itself is the compliance boundary. The `redact` arm runs the same `ApplySpans` engine that drives in-flight rewrite, so the redacted replacement text in the stored copy matches the inflight rewrite byte-for-byte when both policies are active (the surrounding payload shapes differ: storage is canonical JSON, inflight is the wire format); it also returns the spans relocated to their offsets in the redacted text so the audit UI can mark each redaction inline. The `drop-content` arm replaces the payload with a small envelope that preserves the `Kind` discriminator, the `NormalizeVersion`, the `Protocol`, sets `Redacted = true` with `RedactedReason = "operator-drop"`, and lists the matching rule IDs — operators can still see *that* the policy dropped the body and *which rules* matched, just not the content itself.
 
-If unmarshal / marshal fails the function falls back to the original bytes so the audit row still carries the normalized snapshot. Storage policy is observability discipline, not a runtime gate — a corrupted span set must not cause an audit row to vanish.
+**Storage-time re-detection closes the address-translation gap.** Hook-time spans address the hook-time normalized projection, but the storage-time normalized payload can index the same content at different addresses (cross-format requests project system/tool segments differently), so a span can fail to resolve even though its content is present in the stored copy. Rather than degrading immediately, the redact arm retries through the optional `redact.Redetector` parameter — `func(text string, ruleIDs []string) []Match` — which re-locates the *failed rules'* content on the storage-time payload's own text blocks (every `messages.<i>.content.<j>`, `…toolResult`, reasoning block, `inputs.<i>`, and HTTP body view). Resolvable original spans plus re-detected spans apply in one pass. Overlap with already-claimed ranges is handled **byte-precisely, never match-granularly**: a re-detected match is trimmed to the sub-ranges not already covered by an applied span (or an earlier re-detected span) at the same address, and only those remainders become spans — suppressing a partially-overlapping match outright would let its uncovered bytes persist unredacted whenever the rule's coverage is satisfied by another occurrence, while emitting the overlapping range as-is would break the disjoint-span assumption `ApplySpans` needs to guarantee full byte replacement. A match whose every byte is already claimed emits nothing but still counts its rule as covered (those bytes are replaced either way), so a failed rule whose only occurrence sits inside an already-resolved span does not force a needless degradation. A re-detected match without a replacement falls back to the `[REDACTED_<RULE_ID>]` template. On success the stored payload is the **redacted conversation** — structure preserved, matched substrings replaced with markers — not a placeholder. The closure is wired where the compiled patterns live: the hook pipeline checks each bound hook for the `RedetectText` capability (implemented by `pii-detector`; remote-suggestion hooks like the AI-guard webhook cannot re-scan and do not implement it) and stamps the fan-out closure onto `CompliancePipelineResult.Redetect` (in-process only, `json:"-"`). `shared/traffic/redact` never imports the hooks packages — it sees only the function value.
 
-The audit `Record` carries three field pairs that ferry the pipeline result to the writer:
+**The store fails safe, and the failure is self-diagnosing.** Under a `redact` policy, any condition that survives re-detection — the hook emitted no spans (keyword / content-safety matches locate no byte ranges), the payload does not unmarshal, an unresolved span whose rule the redetector cannot re-find (or no redetector is available), or the patched payload fails to marshal — degrades the normalized copy to the drop placeholder rather than persisting unredacted or partially redacted content. The placeholder carries a structured diagnosis:
 
-- `RequestStorageAction` / `ResponseStorageAction` (string form of `StorageAction`)
-- `RequestTransformSpans` / `ResponseTransformSpans` (`[]TransformSpan`)
-- `RequestRedactRuleIDs` / `ResponseRedactRuleIDs` (the union of rule IDs that produced redact spans)
+- `redactedReason` — `"operator-drop"` (the operator chose drop-content; dropping is the policy) vs `"redact-degraded"` (the operator chose redact; the storage rewrite could not apply it precisely). Rows written before the reason was stamped carry neither value; the UIs treat them neutrally rather than asserting either story.
+- `redactedDetail.cause` — one of `no-spans`, `payload-unmarshal`, `spans-unresolved`, `marshal-failed`.
+- `redactedDetail.failedAddresses` — the unresolved spans' content addresses (e.g. `messages.2.content.0`). Addresses only, never content.
 
-The proxy stamps these from the pipeline result at the request boundary (request stage) and response hook boundary (response / streaming / cache-hit stages); `applyStorageAction` reads them inside `recordToMessage`.
+Degradation also **preserves the original spans** on the second return value, so the row keeps `request_redaction_spans` / `response_redaction_spans` for diagnosis — spans carry byte offsets, rule IDs, and replacement markers, never the matched content, so persisting them next to a dropped payload leaks nothing. A placeholder that itself fails to marshal stores SQL `NULL`. The raw copy under `redact` persists **only** when an inflight rewrite produced a redacted wire copy; otherwise it drops to `NULL` — an unredactable raw copy would make the audit store the leak.
+
+The Traffic drawer (CP-UI) and the Agent dashboard event details render three distinct banners keyed on `redactedReason`: operator-drop keeps the "operator set storageAction=drop-content" copy; redact-degraded states that the hook's storage policy was redact and the stored copy was dropped because the redaction could not be safely applied to it, rendering the cause as a localized phrase carrying the machine token (unknown tokens fall back verbatim) plus the failed addresses; a row with no recorded reason gets a neutral "content not stored per the storage policy" banner that asserts neither operator intent nor a degradation — the degradation is never blamed on the operator, and a reason-less row is never dressed up as an operator decision.
+
+Both outcomes are observable: every redetect rescue and every degradation increments `nexus_redact_storage_outcome_total{outcome="rescued"|"degraded", cause=...}`. The counter is part of the compliance pipeline metric set — each data-plane service registers it at boot via `pipeline.RegisterDefaultMetrics("nexus")` in its wiring — and is fed through the `redact.OnStorageOutcome` callback seam (the outcome is only decidable inside `ApplyStorageAction`, and the redact package deliberately carries no metrics dependency), so all three audit producers report through the same series. A sustained `degraded` rate is the operator signal that a policy is dropping content it was asked to redact.
+
+Enforcement points:
+
+- **AI Gateway** — `recordToMessage` (`packages/ai-gateway/internal/platform/audit/message.go`) calls both helpers per direction. The audit `Record` ferries `RequestStorageAction` / `ResponseStorageAction`, `RequestTransformSpans` / `ResponseTransformSpans`, `RequestRedactRuleIDs` / `ResponseRedactRuleIDs`, `RequestRedetect` / `ResponseRedetect` (the pipeline's re-detection closure), and `RequestBodyRedacted` / `ResponseBodyRedacted` (the adapter `Rewrite*Body` output) from the pipeline result to the writer; the proxy stamps them at the request boundary and every response hook boundary (response / streaming / cache-hit stages).
+- **Compliance Proxy + Agent** — `AuditEmitter.buildEvent` (`packages/shared/policy/pipeline/audit_emitter.go`) is the single choke point both MITM services emit through. It reads the per-stage `CompliancePipelineResult.StorageAction` + `TransformSpans` + `Redetect`, applies `StorageRawBody` to the captured bodies (the tlsbump forward handler stamps `AuditInfo.RequestBodyRedacted` when an inflight rewrite succeeded) and `ApplyStorageAction` to the runtime-normalized copies, and stamps the relocated spans onto `AuditEvent.RequestRedactionSpans` / `ResponseRedactionSpans` — so every downstream persistence (proxy MQ wire, agent SQLite, agent→Hub upload) receives only governed copies.
 
 ## 7. Pipeline aggregation across multiple hooks
 
@@ -148,9 +167,11 @@ Spans address the **canonical** post-normalize body (`messages.<i>.content.<j>`,
 
 - A request that arrives as OpenAI Chat Completions, Anthropic Messages, Gemini GenerateContent, or the OpenAI Responses API all canonicalize via `IngressChatToCanonical` before the hook pipeline runs. The pii-detector sees the same canonical text and emits the same `messages.0.content.0` span set.
 - The adapter's `RewriteRequestBody` translates the canonical span set back into the wire-specific schema — `RewriteRequestBody` is the inverse of `ExtractRequest` for that adapter, slot-for-slot.
-- The audit writer's `applyStorageAction` applies the same spans against the canonical payload that lives in `traffic_event_normalized`.
+- The audit producers' shared `redact.ApplyStorageAction` applies the same spans against the canonical payload that lives in `traffic_event_normalized`.
 
 The wire formats can differ in how many slots an adapter exposes — `ExtractRequest` for an embeddings request returns `inputs[i]` slots, whereas a chat request returns `messages[i].content[j]` slots — and the span emitter follows the same shape (`KindAIEmbedding` branch in `executeRedact` emits `inputs.<i>` addresses; chat branch emits `messages.<i>.content.<j>` / `…toolResult`).
+
+The hook-time projection and the audit-time normalized payload are produced by different code paths (the traffic adapter's `Extract*` vs the shared normalize registry), and on cross-format requests they can index the same content at different addresses — e.g. an ingress body whose system/tool segments project as extra messages on one side. Spans emitted against one projection then fail to resolve against the other. The storage rewrite absorbs this class via the §6 storage-time re-detection: the failed rules' patterns re-scan the storage-time payload's own text blocks, so the persisted copy is redacted at the right addresses regardless of the projection skew.
 
 The webhook-forward hook exists for the special case of *external* compliance webhooks that return a flat-offset redaction list against a flat joined projection. Those redactions arrive as `aiguard.Redaction`-shaped wire records and are decoded into `TransformSpan` with `ContentAddress = "webhook.flat"` — a sentinel address that `ApplySpans` does **not** resolve. The webhook spans therefore land in the audit row for forensic completeness but do *not* mutate the in-flight body; inflight redaction of AI-Guard-style suggestions requires the internal `aiguard-classify` path inside ai-gateway, which produces canonical `SourceAIGuard` spans against the addressed payload structure.
 

@@ -26,6 +26,8 @@ Nexus is the service provider (SP) in any federation; "identity provider" here a
 
 **Key concepts.** A project belongs to exactly one organization. Virtual Keys attach at the project level.
 
+**Virtual-key revocation latency (acknowledged design decision).** When a Virtual Key is revoked, disabled, or expired, the AI Gateway stops honouring it within at most 30 seconds. The Gateway caches validated keys with a 30-second TTL to keep per-request authentication fast; on any key change the Hub pushes an invalidation that evicts the cached entry immediately, so in practice revocation takes effect right away. The 30-second bound is the worst-case fail-safe for the rare case where that invalidation push is missed — the cached entry then expires on its own and the key is re-validated against current state. This bounded window is intentional and is not configurable.
+
 **Where the data comes from.** `projectApi` — `list`, `get`, `create`, `update`, `delete`.
 
 ## Users
@@ -80,11 +82,11 @@ A user's effective permissions come from two sources, shown by a badge on each p
 
 ## OAuth Clients
 
-**Purpose.** The inventory of third-party applications allowed to authenticate to the platform via OAuth — what `client_id` values the auth server will accept on `/oauth/authorize` and `/oauth/token`. The seeded clients (the Control Plane web console, the agent desktop, the operator-toolkit TUI) live in the same table; this page manages the admin-managed registrations alongside them.
+**Purpose.** The inventory of third-party applications allowed to authenticate to the platform via OAuth — what `client_id` values the auth server will accept on `/oauth/authorize` and `/oauth/token`. The seeded clients (the Control Plane web console, the agent desktop) live in the same table; this page manages the admin-managed registrations alongside them.
 
 **List page.** Columns: id (monospace), name, type (a pill of either `Public` or `Confidential`), the redirect-URI count (hover for the full list), the allowed-scopes count (hover for the full list), and created date. Row click drills into the detail page; the row's kebab carries Delete only — Edit and Rotate live on the detail page where the active-refresh-token count is in scope.
 
-**Create and detail.** Creation collects an id (kebab-case slug, immutable after create), a name, a type (`public` or `confidential`, also immutable after create), one or more redirect URIs (only `https://`, `http://localhost`, and `http://127.0.0.1` are accepted), a list of allowed scopes (any lowercase scope token; the common ones — `openid`, `profile`, `email`, `offline_access`, `admin`, `traffic:write` — autocomplete), a require-PKCE flag (forced on and disabled for public clients), and access + refresh token TTLs in seconds. The form starts from sensible defaults: `confidential`, PKCE on, `[openid, profile, email]`, 1 hour access TTL, 24 hour refresh TTL.
+**Create and detail.** Creation collects an id (kebab-case slug, immutable after create), a name, a type (`public` or `confidential`, also immutable after create), one or more redirect URIs (only `https://`, `http://localhost`, and `http://127.0.0.1` are accepted), a list of allowed scopes (any lowercase scope token; the common ones — `openid`, `profile`, `email`, `offline_access`, `admin`, `traffic:write` — autocomplete), and access + refresh token TTLs in seconds. PKCE is always mandatory for every client — there is no per-client toggle. The form starts from sensible defaults: `confidential`, `[openid, profile, email]`, 1 hour access TTL, 24 hour refresh TTL.
 
 The detail page is a five-card read-mode layout — Authentication, Redirect URIs, Allowed Scopes, Security, and Activity — with a sticky action header carrying Edit, Rotate secret (confidential only), and Delete. The Authentication card surfaces the client id (with copy) and, for confidential clients, a masked secret with a "last rotated" relative timestamp. The Allowed Scopes card renders each scope as a chip with a plain-English explanation; the `admin` scope shows in a warning tone because it bypasses individual resource grants. The Activity card surfaces the live `activeRefreshTokenCount` — rotating the secret does **not** revoke those tokens, so the rotate-confirm dialog repeats that warning with the live count interpolated in.
 
@@ -124,4 +126,4 @@ The detail page is a five-card read-mode layout — Authentication, Redirect URI
 - `packages/control-plane/internal/identity/iam/engine.go` — policy evaluation (explicit-deny-first)
 - `packages/control-plane/internal/identity/authserver/store/federated_store.go` — JIT OIDC user provisioning
 - `packages/control-plane-ui/src/api/` — `iamApi`, `organizationApi`, `projectApi`
-- `tools/db-migrate/schema.prisma` — `Organization`, `Project`, `NexusUser`, `IamGroup`, `IamPolicy`, `IamPolicyAttachment`, `IamGroupMembership`, `IamGroupPolicyAttachment` models
+- `tools/db-migrate/schema/` — `Organization`, `Project`, `NexusUser` (`identity.prisma`); `IamGroup`, `IamPolicy`, `IamPolicyAttachment`, `IamGroupMembership`, `IamGroupPolicyAttachment` (`iam.prisma`)

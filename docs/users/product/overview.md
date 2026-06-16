@@ -16,11 +16,11 @@ Nexus operates three independent intercept paths. Each path runs the full compli
 
 The shared hook pipeline lives in `packages/shared/policy/hooks/`; each intercept path invokes it on its own traffic.
 
-The Desktop Agent always egresses to the upstream provider directly. When enterprise network policy routes Agent traffic through the Compliance Proxy on the way out, the Agent stamps an Ed25519-signed `X-Nexus-Attestation` header on the outbound request. The Compliance Proxy verifies this header before the TLS bump (`packages/shared/transport/tlsbump/`); on a valid signature, the connection passes through without MITM, without re-running hooks, and without producing a duplicate audit record, because the Agent already ran them.
+The Desktop Agent always egresses to the upstream provider directly. When enterprise network policy routes Agent traffic through the Compliance Proxy on the way out, the Agent stamps an Ed25519-signed `X-Nexus-Attestation` header on the outbound request. The Compliance Proxy verifies this header before the TLS bump (`packages/shared/transport/tlsbump/`); on a valid signature (which proves the request came from an enrolled agent holding the registered enrollment key), the connection passes through without MITM, without re-running hooks, and without producing a duplicate audit record, because the Agent already ran them. Note: v1 attestation is enrollment-key attestation — the key is a software Ed25519 key registered at enrollment; hardware-rooted (TPM/Secure Enclave) attestation is not implemented in v1.
 
 ## What Nexus manages
 
-The control plane manages a catalog of objects that together define traffic-plane behavior. `tools/db-migrate/schema.prisma` is the source of truth for object shapes.
+The control plane manages a catalog of objects that together define traffic-plane behavior. `tools/db-migrate/schema/` is the source of truth for object shapes.
 
 **Tenancy and identity.** **Organization** and **Project** form the tenant hierarchy. Quotas, virtual keys, and routing rules are scoped to one or both. **User** and **IAM Group** are principals. **IAM Policy** documents grant permissions through group attachment or direct attachment, using NRN (Nexus Resource Name) resource identifiers.
 
@@ -129,4 +129,4 @@ Nexus serves four roles, each defined by the Control Plane UI surface they reach
 - `packages/ai-gateway/internal/routing/strategies/` — routing strategy implementations
 - `packages/control-plane/internal/platform/crypto/aes_gcm.go` — credential vault AES-256-GCM
 - `packages/nexus-hub/internal/observability/siem/` — SIEM forwarder
-- `tools/db-migrate/schema.prisma` — Prisma schema, source of truth for object shapes
+- `tools/db-migrate/schema/` — Prisma schema, source of truth for object shapes

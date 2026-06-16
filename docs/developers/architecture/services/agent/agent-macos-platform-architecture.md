@@ -135,13 +135,21 @@ replying `passthrough` without tracking the flow:
   flows are shed to `passthrough` so a stalled upload pipeline never blocks the
   user's network.
 
-Otherwise it resolves the source process from the PID, runs the policy engine
+Otherwise it resolves the source process and runs the policy engine
 (see [agent-policy-eval-architecture.md](agent-policy-eval-architecture.md)) to
 get inspect / passthrough / deny, records per-flow tracking state, and replies.
-On `flow_closed` it writes a transport-level audit row **only** for
-non-inspect flows — inspect flows have already produced per-HTTP-request rows
-inside `BumpFlow`, so no duplicate flow-level row is written. `flow_update_host`
-rewrites the tracked flow's destination host.
+Source attribution prefers the extension's kernel-attested
+`sourceAppSigningIdentifier` — carried on the `flow_new` frame as `bundleId`
+(`ne.FlowMsg.BundleID`) — over the daemon's own PID→`Info.plist` lookup, which is
+racy (PID reuse) and empty for sandboxed / CLI-helper processes such as Cursor's
+`node` helper; the PID path still fills name / path / user. On `flow_closed` it
+writes a transport-level audit row **only** for non-inspect flows — inspect flows
+have already produced per-HTTP-request rows inside `BumpFlow`, so no duplicate
+flow-level row is written — and emits one greppable `flow verdict` line per flow
+(bundle, host, decision, `bump_status`, `captured`) so a pinned-host
+`opaqueRelay` fallback (`decision=inspect captured=false`) is diagnosable from
+`agent.log` alone. `flow_update_host` rewrites the tracked flow's destination
+host.
 
 The shared TLS-bump pipeline that runs behind the bridge — leaf-cert minting,
 HTTP parse, hooks, audit emission, and the opaque-relay fail-open fallback — is
@@ -162,6 +170,16 @@ IPC round-trip would tank throughput:
   an **empty** allowlist. Empty means no UDP is killed — the deliberate fail-safe
   so a bootstrap gap or admin change never over-enforces against policy, and
   there is no hardcoded fallback list to silently override the admin.
+- **`bypass-bundles.json`** — the admin-controlled SOURCE-bundle exemption list.
+  The daemon writes it from the Hub-pushed `agent_settings.bypassBundles` shadow;
+  the extension reads it with the same 60 s lazy refresh and exact/helper-prefix
+  matching, and a flow whose `sourceAppSigningIdentifier` matches is declined for
+  native routing (no bump, no bridge). Matching is by source bundle, never by
+  host, so a trusted developer tool with pinned TLS (e.g. a local `claude-code`
+  CLI) can be kept off the inspection path while the same destination host stays
+  inspected for every other app. Missing/unreadable → **empty** → exempt nothing
+  (inspect everything); the list ships empty and is populated only by deliberate
+  admin config.
 - **`daemon.pid`** — the daemon's own PID for the self-intercept guard, refreshed
   every few seconds so a daemon restart is picked up without restarting the
   extension; a missing file disables the filter rather than false-blocking.

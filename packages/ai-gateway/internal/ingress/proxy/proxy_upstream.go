@@ -89,6 +89,19 @@ func (h *Handler) fetchUpstreamWithPreparedBody(r *http.Request, w http.Response
 	}
 
 	if execResult.Error != nil {
+		// Client gone before we produced a response: the inbound request context
+		// is canceled (the client closed the connection / hit its own deadline),
+		// which propagated into the upstream call and surfaced as an attempt
+		// failure. This is a CLIENT-side cancellation, not a provider fault —
+		// record it as 499 CLIENT_CLOSED so provider-availability metrics and
+		// dashboards don't blame the upstream for a client disconnect. Checked
+		// first: a client that walked away dominates whatever the in-flight
+		// attempt was about to report. (The body write is a no-op on a closed
+		// connection; the value is the audit/metrics attribution via rec.)
+		if ctxErr := r.Context().Err(); errors.Is(ctxErr, context.Canceled) || errors.Is(ctxErr, context.DeadlineExceeded) {
+			h.writeDetailedErr(w, rec, statusClientClosedRequest, "CLIENT_CLOSED", "client closed request before upstream responded", "")
+			return nil, routingcore.RoutingTarget{}, attempts, execResult.Error
+		}
 		// If the last attempt was rate-limited, propagate 429 so clients can
 		// back off rather than receiving an opaque 502.
 		if n := len(execResult.Attempts); n > 0 && execResult.Attempts[n-1].StatusCode == http.StatusTooManyRequests {

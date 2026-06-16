@@ -16,6 +16,13 @@ import (
 // proxy_errors.go holds the gateway-generated error writers and provider-error
 // extraction helpers split out of proxy.go (behavior-unchanged relocation).
 
+// statusClientClosedRequest mirrors nginx's 499: the client closed the
+// connection (or its request context was canceled) before the gateway produced
+// a response. It is NOT a provider failure — recording it as 502
+// PROVIDER_UNAVAILABLE would blame the upstream for a client-side disconnect and
+// pollute provider-availability metrics. Go's net/http defines no 499 constant.
+const statusClientClosedRequest = 499
+
 func (h *Handler) writeError(w http.ResponseWriter, rec *audit.Record, status int, message string) {
 	h.writeIngressError(w, rec, status, "", message, "")
 }

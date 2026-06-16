@@ -309,6 +309,43 @@ func TestServeProxy_Fake_AllTargetsExhausted_NonRate(t *testing.T) {
 	}
 }
 
+// TestServeProxy_Fake_ClientCanceled_499 exercises the CLIENT_CLOSED 499
+// branch: when the inbound request context is canceled (client walked away
+// mid-flight), the upstream-exhausted error must be attributed to the client
+// as 499, NOT to the provider as 502 PROVIDER_UNAVAILABLE — so provider
+// availability metrics aren't polluted by client disconnects.
+func TestServeProxy_Fake_ClientCanceled_499(t *testing.T) {
+	fexec := &fakeExecutor{Result: &executor.ExecutionResult{
+		Error: executor.ErrAllTargetsExhausted,
+		Attempts: []executor.Attempt{
+			{StatusCode: 0, Error: "context canceled"},
+		},
+	}}
+	deps := makeFakeDeps(t, fexec, &fakeBridge{})
+
+	h := NewHandler(deps).ServeProxy(Ingress{
+		WireShape:  typology.WireShapeOpenAIChat,
+		BodyFormat: provcore.FormatOpenAI,
+	})
+	body := `{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`
+	w := httptest.NewRecorder()
+	// Drive the request under an already-canceled context — the client
+	// "disconnected" before the gateway could respond.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h(w, freshChatRequest(t, body).WithContext(ctx))
+
+	if w.Code != statusClientClosedRequest {
+		t.Fatalf("status=%d want 499 (client closed); body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "CLIENT_CLOSED") {
+		t.Errorf("body=%s want CLIENT_CLOSED (not PROVIDER_UNAVAILABLE)", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "PROVIDER_UNAVAILABLE") {
+		t.Errorf("client cancel must NOT be recorded as PROVIDER_UNAVAILABLE: %s", w.Body.String())
+	}
+}
+
 // TestServeProxy_Fake_AllTargetsExhausted_TerminalRateLimited exercises
 // the PROVIDER_RATE_LIMITED 429 branch: last attempt's StatusCode == 429
 // short-circuits the 502 envelope path.

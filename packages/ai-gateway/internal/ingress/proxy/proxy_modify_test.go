@@ -90,7 +90,7 @@ func TestRunRequestHooks_Modify_RewritesBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-test"}
 
-	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection; response=%s", rec.Body.String())
 	}
@@ -138,7 +138,7 @@ func TestRunRequestHooks_NoHooks_ReturnsOriginalBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-test"}
 
-	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection")
 	}
@@ -240,7 +240,7 @@ func TestRunRequestHooks_PopulatesSourceIPAndProviderRegion(t *testing.T) {
 		Region:    "us-east-1",
 	}
 
-	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-ip-region", body, target, openAIIngress, slog.Default())
+	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-ip-region", body, target, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection; response=%s", rec.Body.String())
 	}
@@ -342,7 +342,7 @@ func TestRunRequestHooks_BlockingRulePropagatesToAudit(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-blocking-rule"}
 
-	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-blocking-rule", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-blocking-rule", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if !rejected {
 		t.Fatalf("expected hook to reject the request; response=%s", rec.Body.String())
 	}
@@ -381,7 +381,7 @@ func TestRunRequestHooks_PrefersXForwardedFor(t *testing.T) {
 
 	target := routingcore.RoutingTarget{Region: "eu-west-1"}
 
-	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-xff", body, target, openAIIngress, slog.Default())
+	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-xff", body, target, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection")
 	}
@@ -420,7 +420,7 @@ func TestRunRequestHooks_RejectHard_WritesHookMarker(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-reject-marker"}
 
-	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-reject-marker", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-reject-marker", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if !rejected {
 		t.Fatal("expected hook to reject the request")
 	}
@@ -487,7 +487,7 @@ func TestRunRequestHooks_BlockSoft_WritesHookMarker(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-soft-marker"}
 
-	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-soft-marker", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-soft-marker", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if !rejected {
 		t.Fatal("expected hook to reject (soft) the request")
 	}

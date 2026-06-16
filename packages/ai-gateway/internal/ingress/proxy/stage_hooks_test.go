@@ -149,7 +149,7 @@ func TestRunRequestHooks_StorageDropContent_StampsReasonCode(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-test"}
 
-	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection; response=%s", rec.Body.String())
 	}
@@ -193,7 +193,7 @@ func TestRunRequestHooks_StorageRedactOnly_StampsReasonCode(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-test"}
 
-	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection; response=%s", rec.Body.String())
 	}
@@ -225,7 +225,7 @@ func TestRunRequestHooks_RewriteUnsupported_ForwardsOriginalBody(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-test"}
 
-	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unsupported rewrite must not reject; response=%s", rec.Body.String())
 	}
@@ -252,7 +252,7 @@ func TestRunRequestHooks_RewriteFailure_Returns500(t *testing.T) {
 	rec := httptest.NewRecorder()
 	auditRec := &audit.Record{RequestID: "req-test"}
 
-	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, slog.Default())
+	_, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-test", body, routingcore.RoutingTarget{}, openAIIngress, nil, slog.Default())
 	if !rejected {
 		t.Fatal("hard rewrite failure must reject the request")
 	}

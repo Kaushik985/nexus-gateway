@@ -1,7 +1,7 @@
 {
   "defaults": {
     "protocol": "openai-chat",
-    "target": "https://api.taskforce10x.com/v1/chat/completions",
+    "target": "http://localhost:3050/v1/chat/completions",
     "headers": { "Authorization": "Bearer REPLACE_WITH_VK" },
     "model": "claude-haiku-4-5",
     "max_tokens": 64

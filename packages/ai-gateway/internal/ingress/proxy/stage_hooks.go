@@ -46,7 +46,7 @@ func (st requestHooksStage) run() bool {
 	if pt := s.resolvedReq.Passthrough(); pt.AnyBypassActive() && pt.BypassHooks {
 		s.rec.HookDecision = "BYPASSED"
 	} else {
-		rewrittenBody, reqHookResult, rejected := h.runRequestHooks(s.r, s.w, s.rec, s.requestID, s.body, requestHookTarget, s.resolved, s.logger)
+		rewrittenBody, reqHookResult, rejected := h.runRequestHooks(s.r, s.w, s.rec, s.requestID, s.body, requestHookTarget, s.resolved, s.phaseTimer, s.logger)
 		if rejected {
 			return false
 		}
@@ -69,7 +69,13 @@ func (st requestHooksStage) run() bool {
 //     header is written inside this function before the error response.
 //   - rejected: true when the pipeline rejected the request and an
 //     error response has already been written to w.
-func (h *Handler) runRequestHooks(r *http.Request, w http.ResponseWriter, rec *audit.Record, requestID string, body []byte, target routingcore.RoutingTarget, in Ingress, logger *slog.Logger) (rewrittenBody []byte, pipelineResult *hookcore.CompliancePipelineResult, rejected bool) {
+//
+// pt may be nil (e.g. unit tests that do not wire a PhaseTimer); each
+// sub-phase recording is nil-guarded. Sub-phase durations are recorded via
+// MarkBetween (explicit duration) so they never disturb the main stage-mark
+// cursor, and they surface in traffic_event.latency_breakdown independently of
+// the per-hook RequestHooksMs aggregate.
+func (h *Handler) runRequestHooks(r *http.Request, w http.ResponseWriter, rec *audit.Record, requestID string, body []byte, target routingcore.RoutingTarget, in Ingress, pt *traffic.PhaseTimer, logger *slog.Logger) (rewrittenBody []byte, pipelineResult *hookcore.CompliancePipelineResult, rejected bool) {
 	// Pick the traffic adapter matching the detected ingress body
 	// format so content extraction + rewrite run through the right
 	// schema parser. For OpenAI-compat ingress this is the classic
@@ -80,10 +86,16 @@ func (h *Handler) runRequestHooks(r *http.Request, w http.ResponseWriter, rec *a
 	trafficAdapter := h.trafficAdapterFor(in.BodyFormat)
 	ingressFormat := string(in.BodyFormat)
 
+	extractStart := time.Now()
+	normalized := h.extractRequestContentForHooks(r.Context(), trafficAdapter, ingressFormat, body, r.URL.Path, logger)
+	if pt != nil {
+		pt.MarkBetween(traffic.PhaseHookExtract, time.Since(extractStart))
+	}
+
 	input := &hookcore.HookInput{
 		RequestID:      requestID,
 		Stage:          "request",
-		Normalized:     h.extractRequestContentForHooks(r.Context(), trafficAdapter, ingressFormat, body, r.URL.Path, logger),
+		Normalized:     normalized,
 		IngressType:    "AI_GATEWAY",
 		Method:         r.Method,
 		Path:           r.URL.Path,
@@ -104,12 +116,16 @@ func (h *Handler) runRequestHooks(r *http.Request, w http.ResponseWriter, rec *a
 	input.InputModality = []hookcore.Modality{hookcore.ModalityText}
 
 	resolver := h.deps.HookConfigCache.Resolver(r.Context())
+	buildStart := time.Now()
 	pipeline, err := resolver.BuildPipeline(
 		"request", "AI_GATEWAY",
 		input.EndpointType,
 		input.InputModality,
 		5*time.Second, 15*time.Second, false, true /* strictFailClosed: reverse proxy refuses fail-closed-unbuildable */, logger,
 	)
+	if pt != nil {
+		pt.MarkBetween(traffic.PhaseHookBuild, time.Since(buildStart))
+	}
 	if err != nil {
 		logger.Error("failed to build request hook pipeline", "error", err)
 		h.writeError(w, rec, http.StatusInternalServerError, "hook pipeline error")
@@ -121,7 +137,11 @@ func (h *Handler) runRequestHooks(r *http.Request, w http.ResponseWriter, rec *a
 	pipeline.SetAllowModify(true)
 	pipeline.SetClearSoftOnApprove(true)
 
+	pipelineStart := time.Now()
 	hookResult := pipeline.Execute(r.Context(), input)
+	if pt != nil {
+		pt.MarkBetween(traffic.PhaseHookPipeline, time.Since(pipelineStart))
+	}
 
 	rec.HookDecision = string(hookResult.Decision)
 	rec.HookReason = hookResult.Reason
@@ -190,7 +210,11 @@ func (h *Handler) runRequestHooks(r *http.Request, w http.ResponseWriter, rec *a
 	// unknown schema after Extract succeeded) indicates an internal
 	// inconsistency and surfaces as 500.
 	if hookResult.Decision == hookcore.Modify && len(hookResult.ModifiedContent) > 0 {
+		rewriteStart := time.Now()
 		rewritten, n, rErr := trafficAdapter.RewriteRequestBody(r.Context(), body, r.URL.Path, contentBlocksToNormalized(hookResult.ModifiedContent))
+		if pt != nil {
+			pt.MarkBetween(traffic.PhaseHookRewrite, time.Since(rewriteStart))
+		}
 		switch {
 		case errors.Is(rErr, traffic.ErrRewriteUnsupported):
 			logger.Warn("hook produced Modify but adapter does not support rewrite; forwarding original body",

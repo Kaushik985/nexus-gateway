@@ -199,7 +199,7 @@ func TestRunRequestHooks_UsesIngressFormatTrafficAdapter(t *testing.T) {
 			rec := httptest.NewRecorder()
 			auditRec := &audit.Record{RequestID: "req-" + tc.name}
 
-			_, _, rejected := h.runRequestHooks(req, rec, auditRec, auditRec.RequestID, body, routingcore.RoutingTarget{}, tc.ingress, slog.Default())
+			_, _, rejected := h.runRequestHooks(req, rec, auditRec, auditRec.RequestID, body, routingcore.RoutingTarget{}, tc.ingress, nil, slog.Default())
 			if rejected {
 				t.Fatalf("unexpected rejection")
 			}

@@ -15,13 +15,13 @@
   "scenarios": [
     {
       "name": "openai-ingress", "weight": 50,
-      "protocol": "openai-chat", "target": "https://api.taskforce10x.com/v1/chat/completions",
+      "protocol": "openai-chat", "target": "http://localhost:3050/v1/chat/completions",
       "turns": 1, "stream": false,
       "content": { "mode": "pool", "prompts": ["Explain X in one sentence."] }
     },
     {
       "name": "anthropic-ingress", "weight": 50,
-      "protocol": "anthropic", "target": "https://api.taskforce10x.com/v1/messages",
+      "protocol": "anthropic", "target": "http://localhost:3050/v1/messages",
       "headers": { "anthropic-version": "2023-06-01" },
       "turns": 1, "stream": true,
       "content": { "mode": "pool", "prompts": ["Explain Y in one sentence."] }

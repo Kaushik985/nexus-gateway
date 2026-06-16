@@ -56,6 +56,7 @@ func main() {
 	outDir := flag.String("out", "runs", "output directory")
 	target := flag.String("target", "", "override defaults.target")
 	vk := flag.String("vk", "", "convenience: sets defaults Authorization: Bearer <vk> on all scenarios")
+	modelOv := flag.String("model", "", "override defaults.model (and scenarios inheriting it); e.g. a gateway that needs a 'provider/model' form")
 	stagesS := flag.String("stages", "", "override stages, e.g. '1:10s,100:60s,1000:120s'")
 	flag.Parse()
 	if *cfgPath == "" {
@@ -76,6 +77,14 @@ func main() {
 		for i := range cfg.Scenarios {
 			cfg.Scenarios[i].Headers["Authorization"] = "Bearer " + *vk
 		}
+	}
+	if *modelOv != "" {
+		for i := range cfg.Scenarios {
+			if cfg.Scenarios[i].Model == cfg.Defaults.Model || cfg.Scenarios[i].Model == "" {
+				cfg.Scenarios[i].Model = *modelOv
+			}
+		}
+		cfg.Defaults.Model = *modelOv
 	}
 	if *stagesS != "" {
 		cfg.Stages = parseStagesFlag(*stagesS)

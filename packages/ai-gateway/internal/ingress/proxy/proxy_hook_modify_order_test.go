@@ -66,7 +66,7 @@ func TestRunRequestHooks_ModifyOrder_HookRewritePrecedesCodecEncode(t *testing.T
 		BodyFormat: provcore.FormatAnthropic,
 	}
 
-	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-order", body, routingcore.RoutingTarget{}, anthropicIngress, slog.Default())
+	rewritten, _, rejected := h.runRequestHooks(req, rec, auditRec, "req-order", body, routingcore.RoutingTarget{}, anthropicIngress, nil, slog.Default())
 	if rejected {
 		t.Fatalf("unexpected rejection; response=%s", rec.Body.String())
 	}

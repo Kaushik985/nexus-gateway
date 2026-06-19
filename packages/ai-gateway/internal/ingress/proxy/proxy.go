@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +46,38 @@ import (
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/typology"
 	"github.com/AlphaBitCore/nexus-gateway/packages/shared/transport/wirerewrite"
 )
+
+// traceLatencyEnabled mirrors the NEXUS_TRACE_LATENCY env var (default false).
+// When set, the proxy emits one "request_latency_breakdown" slog line per request
+// carrying the already-collected LatencyBreakdown map + total latency, so a
+// benchmark run can read per-stage timing from live logs without querying the
+// traffic_event.latency_breakdown JSONB. Read once at process start; a package
+// var (not const) so tests can toggle it. No new timing is added — this only
+// surfaces the existing PhaseTimer snapshot.
+var traceLatencyEnabled = parseTraceLatencyEnv()
+
+func parseTraceLatencyEnv() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("NEXUS_TRACE_LATENCY"))) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// maybeLogLatencyBreakdown emits the per-request latency breakdown only when
+// NEXUS_TRACE_LATENCY is enabled. No-op when disabled, so it is safe to call on
+// every request with no behavior change in the default configuration.
+func maybeLogLatencyBreakdown(logger *slog.Logger, requestID string, breakdown map[string]int, totalMs int) {
+	if !traceLatencyEnabled || logger == nil {
+		return
+	}
+	logger.Info("request_latency_breakdown",
+		"request_id", requestID,
+		"breakdown", breakdown,
+		"total_ms", totalMs,
+	)
+}
 
 // NewUpstreamClient returns an http.Client configured for upstream provider
 // requests. Uses a shared transport with connection pooling and timeouts.
@@ -411,6 +444,8 @@ func (h *Handler) ServeProxy(in Ingress) http.HandlerFunc {
 				snap[string(traffic.PhaseAuditEmit)] = emitMs
 			}
 			rec.LatencyBreakdown = snap
+			// NEXUS_TRACE_LATENCY: surface the breakdown in live logs (default off).
+			maybeLogLatencyBreakdown(logger, requestID, snap, rec.LatencyMs)
 			h.deps.AuditWriter.Enqueue(rec)
 		}()
 

@@ -79,6 +79,24 @@ func maybeLogLatencyBreakdown(logger *slog.Logger, requestID string, breakdown m
 	)
 }
 
+// auditDisabled mirrors the NEXUS_AUDIT_DISABLED env var (default false). When
+// set, the proxy skips AuditWriter.Enqueue on the request path — audit records
+// are dropped. BENCHMARK DIAGNOSTIC ONLY: confirms the audit-writer
+// heap-retention / GC-pause hypothesis by removing per-request body retention.
+// Never set in production. Package var (not const) so tests can toggle it.
+var auditDisabled = os.Getenv("NEXUS_AUDIT_DISABLED") == "1"
+
+// enqueueAudit hands the record to the audit writer unless NEXUS_AUDIT_DISABLED
+// is set. Single chokepoint for both the request-defer and cache-hit finalize
+// call sites so the benchmark flag gates them identically. Does NOT touch the
+// Writer, ring buffer, or NATS — only whether Enqueue is called.
+func (h *Handler) enqueueAudit(rec *audit.Record) {
+	if auditDisabled {
+		return
+	}
+	h.deps.AuditWriter.Enqueue(rec)
+}
+
 // NewUpstreamClient returns an http.Client configured for upstream provider
 // requests. Uses a shared transport with connection pooling and timeouts.
 // Tunables come from the live [specutil.ActiveConfig] snapshot so the
@@ -446,7 +464,7 @@ func (h *Handler) ServeProxy(in Ingress) http.HandlerFunc {
 			rec.LatencyBreakdown = snap
 			// NEXUS_TRACE_LATENCY: surface the breakdown in live logs (default off).
 			maybeLogLatencyBreakdown(logger, requestID, snap, rec.LatencyMs)
-			h.deps.AuditWriter.Enqueue(rec)
+			h.enqueueAudit(rec)
 		}()
 
 		// Phase 1: Read body (uses ingress format to pick the right
@@ -1269,7 +1287,7 @@ func (h *Handler) finalize(rec *audit.Record, start time.Time) {
 		}
 		rec.LatencyMs = ms
 	}
-	h.deps.AuditWriter.Enqueue(rec)
+	h.enqueueAudit(rec)
 }
 
 // errRequestTooLarge is returned by readBody when the inbound body

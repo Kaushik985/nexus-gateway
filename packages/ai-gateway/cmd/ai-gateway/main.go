@@ -53,6 +53,9 @@ func run() int {
 	}
 	slog.SetDefault(logger)
 	slog.Info("shared initialized", slog.Int("sharedHooks", len(builtins.Registry.All())))
+	if os.Getenv("NEXUS_AUDIT_DISABLED") == "1" {
+		slog.Warn("NEXUS_AUDIT_DISABLED=1: audit records will be dropped — benchmark mode only")
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

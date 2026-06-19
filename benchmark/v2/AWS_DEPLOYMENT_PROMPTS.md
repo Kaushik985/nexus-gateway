@@ -620,3 +620,36 @@ When all boxes tick, send `aws-results/` + the comparison markdown to James + th
 | `NEXUS_OPENAI_CREDENTIAL_ID` | Override the openai-prod credential id if it differs from the local-seed default. |
 
 Local-seed credential id (likely differs on AWS): `abff2f77-5506-4d73-99a3-6b60ed756bac` — confirm the real one via Prompt 5.3 step 2.
+
+---
+
+# 11. Field notes — real bugs hit on the 2026-06 AWS run (read before deploying)
+
+These are actual failures from the first AWS deployment. Each is environmental
+or wiring (not a harness code bug, except where noted), and each has a one-line
+avoidance. The two harness code issues (dataset under-padding, preflight health
+false-negative) are already fixed in the repo.
+
+| # | Symptom | Cause | Avoid it |
+|---|---------|-------|----------|
+| 1 | Bifrost provider insert rolled back | SQLite UNIQUE on `config_keys.name`; a second key with `name=''` collided with the existing empty-name key, rolling back the whole txn | Give every Bifrost provider key a **non-empty, unique name** (e.g. `mock-provider-key`). |
+| 2 | `curl /health` → no response right after `docker restart bifrost` → false `BIFROST_UNHEALTHY` | Container in `health: starting` (~8s) | **Fixed in `cli.py preflight`** (retries ~12s). For ad-hoc checks, wait/retry or `docker inspect --format '{{.State.Health.Status}}'`. |
+| 3 | Couldn't load Nexus CP; added `:3001` to the security group | CP is served by **nginx on :443** (`https://<ip>`); `:3001` is internal only | Use the nginx HTTPS URL. The `:3001` SG rule was unnecessary — check nginx config first. |
+| 4 | Dataset copy: "No such file or directory" at `~/v2/` | **SSM runs as root**, so `~` = `/root`, not `/home/ssm-user`; harness is at `/root/benchmark/v2/` | Use absolute paths under SSM; the harness lives at `/root/benchmark/v2/`. |
+| 5 | S-02 ran on ~41-token (then ~12.5k-token) prompts | Local dataset stale / `len//4` over-counted real tokens | **Fixed**: dataset now ~16k REAL cl100k tokens. Always pull the committed `long_context_v2.json`; re-pad with `scripts/pad_long_context_dataset.py` (token-targeted). |
+| 6 | Heredoc `SSHEOF: command not found` | Opening delimiter quoted `'"SSHEOF"'` but closing was bare `SSHEOF` — they must match exactly | Use identical delimiters: `<<'EOF' … EOF`. Better: use `scripts/hooks_toggle.sh` (no heredoc). |
+| 7 | PKCE Python script got 400 on `/oauth/authorize` | `urllib.request` auto-follows the 302 to the callback (which 400s with no code yet) | **Don't hand-roll it** — `scripts/hooks_toggle.sh` already does this correctly (curl `-o /dev/null -w '%{redirect_url}'`, no follow). Reuse it. |
+| 8 | Wrong LiteLLM master key | `docker inspect` env order ≠ `.env`; `grep LITELLM_MASTER_KEY` matched `POSTGRES_PASSWORD` first (both long-random) | Read the key from `~/litellm/.env`, or anchor the grep: `grep -E '^LITELLM_MASTER_KEY='`. |
+| 9 | SSM "background" tasks returned instantly | The local command only printed the SSM **command ID**; the real work ran inside SSM | Poll the SSM command: `aws ssm get-command-invocation --command-id <id> --instance-id <id>` until `Status` is `Success`. |
+| 10 | `hooks_toggle.sh` would hit wrong CP / PKCE would fail | `NEXUS_CP_URL` + `NEXUS_OAUTH_REDIRECT_URI` missing from `.env.local` (it had `NEXUS_BASE_URL`/`NEXUS_ADMIN_URL` only) | **Fixed in `.env.local.example`** (now documents both + the AWS nginx-HTTPS gotcha). Copy the template and fill them. |
+
+## Repo fixes shipped in response to these (commit after this message)
+
+- `scripts/pad_long_context_dataset.py` — now **token-targeted** (sums real cl100k
+  tokens via tiktoken-if-available, calibrated fallback otherwise); dataset
+  regenerated to ~16,000 real tokens/prompt (was ~12,570). *(Bug 5)*
+- `engine/runner.py` — `verify=False` (self-signed Nexus/mock certs). *(supports Bug 3)*
+- `cli.py preflight` — health check now retries ~12s + uses `verify=False`, so a
+  starting container doesn't false-fail. *(Bug 2)*
+- `.env.local.example` — `NEXUS_CP_URL`/`NEXUS_OAUTH_REDIRECT_URI` documented with
+  the AWS nginx-HTTPS gotcha. *(Bugs 3, 10)*

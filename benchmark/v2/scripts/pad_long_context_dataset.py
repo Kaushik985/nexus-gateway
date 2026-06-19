@@ -48,9 +48,16 @@ SRC = DATASETS / "long_context_v2.json"
 PADDED = DATASETS / "long_context_v2_padded.json"
 
 TARGET_TOKENS = 16_000
-# ~63.6k chars of body ≈ ~15.9k tokens; with the instruction + markers + repeated
-# tail this lands each prompt in the ideal 15,500–16,500 band (target ~16k).
-CONTEXT_TARGET_CHARS = 63_600
+# CALIBRATION (fixed 2026-06-16): the cl100k tokenizer averages ~5.1 chars/token
+# on this structured prose, NOT the 4.0 the old len//4 proxy assumed. The first
+# cut (63.6k chars) measured ~16k by len//4 but only ~12,570 REAL tokens on the
+# AWS runner — below the 14k floor for a long-context test. Target the char count
+# off the REAL chars/token ratio so prompts land at ~16k *real* tokens.
+CHARS_PER_TOKEN = 5.1            # fallback ratio if tiktoken is unavailable
+# Body target in REAL tokens. The full prompt = instruction (~65 tok) + markers +
+# body + repeated tail (~70 tok) ≈ body + 140. Target body so the whole prompt
+# lands ~16k tokens, inside the ideal 15,500–16,500 band.
+BODY_TARGET_TOKENS = TARGET_TOKENS - 140
 CONTEXT_MARKER = "\n\n--- CONTEXT ---\n\n"
 END_MARKER = "\n\n--- END CONTEXT ---\n\n"
 
@@ -190,14 +197,20 @@ SECTION_THEMES = [
 ]
 
 
-def build_context(paragraphs: list[str], target_chars: int) -> str:
+def build_context(paragraphs: list[str], target_tokens: int) -> str:
     """Compose the curated domain paragraphs into a structured, coherent
-    long-form document of at least `target_chars` characters."""
+    long-form document of ~`target_tokens` REAL tokens.
+
+    Token-targeted (not char-targeted): the cl100k chars/token ratio varies by
+    topic (number/acronym-dense prose tokenizes denser), so a fixed char target
+    over/undershoots per topic. We sum real per-block token counts as we build
+    and stop at the target — accurate within ~one paragraph regardless of topic.
+    """
     out: list[str] = []
-    total = 0
+    total = 0  # running REAL token count
     section_idx = 0
     para_idx = 0
-    while total < target_chars:
+    while total < target_tokens:
         theme = SECTION_THEMES[section_idx % len(SECTION_THEMES)]
         pass_no = section_idx // len(SECTION_THEMES) + 1
         header = f"\n\n## Section {section_idx + 1} — {theme}"
@@ -205,7 +218,7 @@ def build_context(paragraphs: list[str], target_chars: int) -> str:
             header += f" (continued, part {pass_no})"
         header += "\n\n"
         out.append(header)
-        total += len(header)
+        total += count_tokens(header)
         # Each section emits a rotation of the paragraph pool with a short
         # connective lead-in that ties the paragraph to the section's lens.
         n_paras = len(paragraphs)
@@ -215,8 +228,8 @@ def build_context(paragraphs: list[str], target_chars: int) -> str:
             lead = f"{section_idx + 1}.{j + 1}  "
             block = lead + p + "\n\n"
             out.append(block)
-            total += len(block)
-            if total >= target_chars:
+            total += count_tokens(block)
+            if total >= target_tokens:
                 break
         section_idx += 1
     return "".join(out).rstrip() + "\n"
@@ -254,7 +267,7 @@ def pad_prompt(instruction: str) -> str:
             f"No seed domain content for UUID prefix '{prefix}'. "
             f"Instruction: {instruction[:80]!r}"
         )
-    body = build_context(paragraphs, CONTEXT_TARGET_CHARS)
+    body = build_context(paragraphs, BODY_TARGET_TOKENS)
     tail = instruction_without_uuid(instruction)
     return (
         f"{instruction}"
@@ -265,6 +278,17 @@ def pad_prompt(instruction: str) -> str:
         if tail else
         f"{instruction}{CONTEXT_MARKER}{body}{END_MARKER}Based on the context above, respond to the request."
     )
+
+
+def count_tokens(text: str) -> int:
+    """Real cl100k token count via tiktoken if installed (no hard dep — the
+    runner may not have it), else the calibrated chars/token fallback so the
+    estimate still reflects REAL tokens rather than the old len//4 over-count."""
+    try:
+        import tiktoken
+        return len(tiktoken.get_encoding("cl100k_base").encode(text))
+    except Exception:
+        return int(len(text) / CHARS_PER_TOKEN)
 
 
 def main() -> None:
@@ -279,8 +303,8 @@ def main() -> None:
         instruction = extract_instruction(raw)
         padded = pad_prompt(instruction)
         padded_prompts.append(padded)
-        orig_tok = len(instruction) // 4
-        pad_tok = len(padded) // 4
+        orig_tok = count_tokens(instruction)
+        pad_tok = count_tokens(padded)
         met = "yes" if 14_000 <= pad_tok <= 17_000 else "NO"
         print(f"{i + 1:>3}  {orig_tok:>9}  {pad_tok:>11}  {met:>10}")
 
@@ -306,7 +330,7 @@ def validate(path: Path) -> None:
     assert data["count"] == 10, "Must have exactly 10 prompts"
     results = []
     for i, p in enumerate(data["prompts"]):
-        tokens = len(p) // 4
+        tokens = count_tokens(p)
         ok = 14_000 <= tokens <= 17_000
         # extra integrity checks the spec requires
         has_uuid = p.startswith("[REQUEST-")
